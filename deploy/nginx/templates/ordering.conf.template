@@ -1,0 +1,94 @@
+# 域名来自 deploy/.env 的 DOMAIN：nginx 镜像启动时用 envsubst 把本模板渲染为 /etc/nginx/conf.d/ordering.conf
+
+# HTTP：证书签发校验 + 其余跳转 HTTPS
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 10m;
+
+    # 安全响应头与 CSP（见 includes/ 下各文件的说明）；server 级默认按商家后台配置，/h5/ 单独覆盖
+    include /etc/nginx/includes/security-headers.inc;
+    include /etc/nginx/includes/csp-merchant.inc;
+
+    # 顾客 H5 点餐应用（customer-web 静态导出，basePath=/h5）：浏览、下单、会员余额支付
+    location /h5/ {
+        alias /usr/share/nginx/h5/;
+        try_files $uri $uri/ /h5/index.html;
+        include /etc/nginx/includes/security-headers.inc;
+        include /etc/nginx/includes/csp-h5.inc;
+        add_header Cache-Control "no-cache";
+    }
+
+    # 带内容哈希的构建产物可以长期缓存
+    location /h5/_next/static/ {
+        alias /usr/share/nginx/h5/_next/static/;
+        include /etc/nginx/includes/security-headers.inc;
+        include /etc/nginx/includes/csp-h5.inc;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # 桌码链接 /q/<token>（已张贴的二维码不变）：跳转到 H5 点餐首页，由应用解析桌码
+    location ~ "^/q/([A-Za-z0-9_-]{1,64})/?$" {
+        absolute_redirect off;
+        return 302 /h5/?token=$1;
+    }
+    location /q/ {
+        return 404;
+    }
+
+    # API 反向代理
+    location /api/ {
+        proxy_pass http://backend:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 菜品图片
+    location /uploads/ {
+        alias /data/uploads/;
+        expires 7d;
+        include /etc/nginx/includes/security-headers.inc;
+        add_header Cache-Control "public";
+    }
+
+    # WebSocket（V1 实时推送预留）
+    location /ws/ {
+        proxy_pass http://backend:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+
+    # 接口文档、监控端点不对公网开放
+    location ~ ^/(actuator|v3/api-docs|swagger-ui) {
+        return 404;
+    }
+
+    # 商家端（SPA）
+    location / {
+        root /usr/share/nginx/merchant;
+        try_files $uri /index.html;
+    }
+}

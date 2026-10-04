@@ -1,0 +1,75 @@
+# 生产编排：nginx（含两个前端的静态文件）+ backend + postgres + certbot 续期
+# 使用方法见 deploy/README.md：填写 .env 后运行 ./deploy.sh（首次部署和更新都是它）
+name: ordering
+
+services:
+  nginx:
+    build:
+      context: ..
+      dockerfile: deploy/nginx/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    # 每 6 小时 reload 一次：让 certbot 续期后的新证书生效（否则要到容器重启才换证书）
+    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"
+    volumes:
+      - uploads:/data/uploads:ro            # 菜品图片（后端写入，nginx 只读提供）
+      - certbot-conf:/etc/letsencrypt:ro    # 证书
+      - certbot-www:/var/www/certbot:ro     # 证书续期的校验文件
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build: ../server
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/ordering
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      QR_BASE_URL: https://${DOMAIN}/q/
+      BOOTSTRAP_ENABLED: ${BOOTSTRAP_ENABLED:-false}
+      BOOTSTRAP_STORE_NAME: ${BOOTSTRAP_STORE_NAME:-}
+      BOOTSTRAP_OWNER_USERNAME: ${BOOTSTRAP_OWNER_USERNAME:-}
+      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD:-}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ordering
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d ordering"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # 每 12 小时检查一次证书是否需要续期；首次签发由 ./deploy.sh 完成
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    restart: unless-stopped
+
+volumes:
+  pgdata:        # 数据库数据
+  uploads:       # 菜品图片
+  certbot-conf:  # 证书
+  certbot-www:
