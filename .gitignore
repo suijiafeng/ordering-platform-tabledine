@@ -18,6 +18,7 @@ dist/
 deploy/.env
 deploy/secrets/
 
+<<<<<<< HEAD
 Claude outputs/
 
 # 杂项
@@ -25,3 +26,7 @@ Claude outputs/
 
 # Claude 本地构建协作目录
 .claude-build/
+=======
+# 杂项
+*.whl
+>>>>>>> 38621df (chore: 移除误提交的 bcrypt 安装包)
