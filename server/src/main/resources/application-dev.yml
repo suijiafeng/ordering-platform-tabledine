@@ -1,0 +1,23 @@
+# 本地开发：docker compose 启动的 postgres + 种子数据 + 模拟小程序登录
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/seed
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+app:
+  jwt:
+    # 仅开发环境使用，生产必须通过 JWT_SECRET 注入
+    secret: ${JWT_SECRET:dev-only-secret-please-change-0123456789abcdef}
+  auth:
+    mock-enabled: ${AUTH_MOCK_ENABLED:true}
+  cors:
+    allowed-origins: http://localhost:5173
+
+logging:
+  level:
+    com.example.ordering: debug

@@ -1,0 +1,8 @@
+# 生产环境：所有敏感配置来自环境变量；关闭接口文档与模拟登录
+app:
+  auth:
+    mock-enabled: false
+
+logging:
+  level:
+    root: info

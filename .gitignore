@@ -1,0 +1,17 @@
+# 通用
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.log
+
+# 后端
+server/target/
+
+# 前端
+node_modules/
+dist/
+
+# 部署敏感信息
+deploy/.env
+deploy/secrets/

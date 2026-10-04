@@ -1,0 +1,56 @@
+.page {
+  padding: 24px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 24px;
+}
+
+.store-name {
+  font-size: 36px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.table {
+  font-size: 30px;
+  color: #555;
+}
+
+.warn {
+  margin-top: 16px;
+  color: #d4380d;
+}
+
+.scan-btn {
+  margin-top: 24px;
+}
+
+.placeholder {
+  align-items: center;
+  color: #999;
+  min-height: 300px;
+  justify-content: center;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.muted {
+  color: #999;
+  font-size: 24px;
+}
+
+.link {
+  color: #1677ff;
+  font-size: 26px;
+}
