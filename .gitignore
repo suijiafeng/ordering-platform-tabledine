@@ -15,3 +15,6 @@ dist/
 # 部署敏感信息
 deploy/.env
 deploy/secrets/
+
+# 杂项
+*.whl
