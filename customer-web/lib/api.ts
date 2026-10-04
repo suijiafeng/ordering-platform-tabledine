@@ -53,7 +53,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   const body = await response.json().catch(() => null) as Envelope<T> | null
-  if (auth && (response.status === 401 || body?.code === 40101)) {
+  // 只有「登录失效」（40101）才退出登录；其他 401（如账号或密码错误）按普通业务错误提示
+  if (auth && (body?.code === 40101 || (response.status === 401 && !body))) {
     logout()
     redirectToLogin()
     throw new ApiError(40101, body?.message || '登录已失效', response.status)

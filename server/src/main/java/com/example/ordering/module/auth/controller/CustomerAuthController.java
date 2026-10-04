@@ -44,8 +44,8 @@ public class CustomerAuthController {
     @Operation(summary = "会员修改自己的密码（成功后需重新登录）")
     @RateLimit(permits = 5, windowSeconds = 60)
     @PutMapping("/api/v1/c/me/password")
-    public Result<Void> changePassword(@Valid @RequestBody CustomerChangePasswordRequest req) {
-        customerAuthService.changeOwnPassword(req);
+    public Result<Void> changePassword(@Valid @RequestBody CustomerChangePasswordRequest req, HttpServletRequest request) {
+        customerAuthService.changeOwnPassword(req, ClientIp.of(request));
         return Result.ok();
     }
 }

@@ -140,7 +140,7 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
         // 会员自己改密：旧 token 失效，新密码可登录
         mvc.perform(authed(put("/api/v1/c/me/password"), token).contentType(MediaType.APPLICATION_JSON)
                         .content(json("oldPassword", "bad", "newPassword", "newpass66")))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnprocessableEntity());
         mvc.perform(authed(put("/api/v1/c/me/password"), token).contentType(MediaType.APPLICATION_JSON)
                         .content(json("oldPassword", "pw123456", "newPassword", "newpass66")))
                 .andExpect(status().isOk());
@@ -163,13 +163,16 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(40103));
         mvc.perform(authed(patch("/api/v1/m/members/" + memberId + "/status"), owner).contentType(MediaType.APPLICATION_JSON)
                 .content(json("enabled", true))).andExpect(status().isOk());
+        // 重新启用后，停用前签发的 token 仍然无效（token_version 已在停用时递增），需要重新登录
+        mvc.perform(authed(get("/api/v1/c/me"), token3)).andExpect(status().isUnauthorized());
         memberLogin(phone, "reset888");
 
-        // 原密码错误：拒绝修改
+        // 原密码错误：拒绝修改，返回 422（不是 401：顾客端遇到 401 会退出登录）
         String other = memberToken();
         mvc.perform(authed(put("/api/v1/c/me/password"), other).contentType(MediaType.APPLICATION_JSON)
                         .content(json("oldPassword", "wrong-pass", "newPassword", "newpass66")))
-                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(40102));
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(42201));
+        mvc.perform(authed(get("/api/v1/c/me"), other)).andExpect(status().isOk());
         // 已停用的小程序登录留下的非会员顾客：商家端按 ID 找不到，不能充值
         jdbc.update("INSERT INTO customer (status) VALUES (1)");
         Long legacyId = jdbc.queryForObject("SELECT MAX(id) FROM customer WHERE phone IS NULL", Long.class);

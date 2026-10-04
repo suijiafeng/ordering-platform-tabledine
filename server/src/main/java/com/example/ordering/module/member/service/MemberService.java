@@ -93,12 +93,17 @@ public class MemberService {
         return MemberView.of(customerMapper.selectById(c.getId()));
     }
 
-    /** 停用后旧 token 立即失效（JwtAuthFilter 每次请求校验状态） */
+    /** 停用后旧 token 立即失效（JwtAuthFilter 每次请求校验状态与 token_version），重新启用后也需要重新登录 */
     public MemberView setEnabled(Long id, boolean enabled) {
         Customer c = ownMember(id);
-        customerMapper.update(null, Wrappers.<Customer>lambdaUpdate()
+        var update = Wrappers.<Customer>lambdaUpdate()
                 .set(Customer::getStatus, enabled ? Customer.STATUS_NORMAL : Customer.STATUS_DISABLED)
-                .eq(Customer::getId, c.getId()));
+                .eq(Customer::getId, c.getId());
+        if (!enabled) {
+            // 与员工一致：停用时 token_version 递增，之后即使重新启用，停用前签发的 token 也不再有效
+            update.setSql("token_version = token_version + 1");
+        }
+        customerMapper.update(null, update);
         return MemberView.of(customerMapper.selectById(c.getId()));
     }
 
