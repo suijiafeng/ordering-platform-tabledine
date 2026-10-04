@@ -9,6 +9,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
@@ -19,6 +21,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Iterator;
 import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
@@ -32,7 +35,9 @@ public class ImageUploadService {
 
     private static final Set<String> ALLOWED_TYPES = Set.of("image/jpeg", "image/png");
     private static final long MAX_BYTES = 5L * 1024 * 1024;
-    private static final int MAX_PIXELS_SIDE = 8000;
+    /** 解码后每像素约 4 字节：4096² ≈ 64MB，再大的图一次并发几张就能打爆堆 */
+    private static final int MAX_PIXELS_SIDE = 4096;
+    private static final long MAX_PIXELS_TOTAL = 12_000_000L;
     private static final float JPEG_QUALITY = 0.85f;
 
     private final StorageService storageService;
@@ -53,18 +58,37 @@ public class ImageUploadService {
         if (file.getContentType() == null || !ALLOWED_TYPES.contains(file.getContentType().toLowerCase())) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "仅支持 JPG / PNG 图片");
         }
+        // 先只读文件头拿尺寸，超限直接拒绝；ImageIO.read 会先把整张图解码进内存，
+        // 一张几 MB 的「压缩炸弹」（30000×30000 全零像素）解码需要数 GB，直接 OOM 拖垮整个服务
         BufferedImage src;
-        try (InputStream in = file.getInputStream()) {
-            src = ImageIO.read(in);
-        } catch (IOException e) {
-            src = null;
-        }
-        // 以实际解码结果为准，不信任客户端声明的 Content-Type
-        if (src == null) {
+        try (InputStream in = file.getInputStream(); ImageInputStream iis = ImageIO.createImageInputStream(in)) {
+            if (iis == null) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID, "无法识别的图片文件");
+            }
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
+            if (!readers.hasNext()) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID, "无法识别的图片文件");
+            }
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(iis, true, true);
+                int w = reader.getWidth(0);
+                int h = reader.getHeight(0);
+                if (w <= 0 || h <= 0 || w > MAX_PIXELS_SIDE || h > MAX_PIXELS_SIDE || (long) w * h > MAX_PIXELS_TOTAL) {
+                    throw new BusinessException(ErrorCode.PARAM_INVALID, "图片尺寸过大（最长边不超过 " + MAX_PIXELS_SIDE + " 像素）");
+                }
+                src = reader.read(0);
+            } finally {
+                reader.dispose();
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            // 畸形文件会让解码器抛 IOException 之外的运行时异常（数组越界、非法参数），统一按无法识别处理
             throw new BusinessException(ErrorCode.PARAM_INVALID, "无法识别的图片文件");
         }
-        if (src.getWidth() > MAX_PIXELS_SIDE || src.getHeight() > MAX_PIXELS_SIDE) {
-            throw new BusinessException(ErrorCode.PARAM_INVALID, "图片尺寸过大");
+        if (src == null) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "无法识别的图片文件");
         }
 
         BufferedImage main = resize(src, props.getMaxSize());

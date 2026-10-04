@@ -75,7 +75,8 @@ public class TableService {
     }
 
     /** 批量新建；已存在的桌号跳过 */
-    @Transactional
+    // 不开事务：PostgreSQL 里事务内捕获唯一键冲突后事务已中止，后续语句全部失败；
+    // 本接口语义是「逐张新建、已存在跳过」，每张独立提交即可
     public List<TableView> createBatch(TableBatchRequest req) {
         if (req.from() > req.to() || req.to() - req.from() >= 200) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "序号范围不合法（一次最多 200 张）");
@@ -96,7 +97,12 @@ public class TableService {
             t.setCode(code);
             t.setStatus(DiningTable.STATUS_ENABLED);
             t.setQrToken(QrTokenGenerator.next());
-            tableMapper.insert(t);
+            try {
+                tableMapper.insert(t);
+            } catch (DuplicateKeyException e) {
+                // 并发双击：对方刚插入了同一桌号，按「已存在」跳过（需要独立事务避免整批回滚）
+                continue;
+            }
             created.add(TableView.of(t, qrBaseUrl));
         }
         return created;
