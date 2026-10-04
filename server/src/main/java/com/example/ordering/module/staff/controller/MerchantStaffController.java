@@ -7,6 +7,7 @@ import com.example.ordering.module.staff.dto.StaffStatusRequest;
 import com.example.ordering.module.staff.dto.StaffUpdateRequest;
 import com.example.ordering.module.staff.dto.StaffView;
 import com.example.ordering.module.staff.service.StaffService;
+import com.example.ordering.ratelimit.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -63,6 +64,7 @@ public class MerchantStaffController {
     }
 
     @Operation(summary = "修改自己的密码（成功后需重新登录）")
+    @RateLimit(permits = 5, windowSeconds = 60)
     @PutMapping("/me/password")
     public Result<Void> changePassword(@Valid @RequestBody ChangePasswordRequest req) {
         staffService.changeOwnPassword(req);

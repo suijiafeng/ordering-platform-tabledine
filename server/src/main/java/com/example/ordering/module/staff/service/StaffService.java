@@ -58,17 +58,27 @@ public class StaffService {
 
     public StaffView update(Long id, StaffUpdateRequest req) {
         Staff s = getRequired(id);
-        s.setName(req.name().trim());
-        if (StringUtils.hasText(req.password())) {
-            if (s.getRole().equals(Staff.ROLE_OWNER) && !s.getId().equals(LoginUser.currentStaff().id())) {
-                throw new BusinessException(ErrorCode.FORBIDDEN, "不能重置其他店主的密码");
-            }
-            s.setPasswordHash(passwordEncoder.encode(req.password()));
-            s.setTokenVersion(s.getTokenVersion() + 1);
+        LoginUser me = LoginUser.currentStaff();
+        boolean resetPassword = StringUtils.hasText(req.password());
+        if (resetPassword && s.getId().equals(me.id())) {
+            // 改自己的密码必须走 /me/password 校验旧密码，避免被盗用的会话直接改密夺号
+            throw new BusinessException(ErrorCode.FORBIDDEN, "修改自己的密码请使用「修改密码」并验证当前密码");
         }
-        s.setUpdatedAt(OffsetDateTime.now());
-        staffMapper.updateById(s);
-        return StaffView.of(s);
+        if (resetPassword && Staff.ROLE_OWNER.equals(s.getRole())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "不能重置其他店主的密码");
+        }
+        // 定向更新：只写本次修改的列。整行 updateById 会把读到的旧 status / token_version 写回，
+        // 与并发的停用 / 改密互相覆盖（例如把刚停用的员工重新启用）
+        var w = Wrappers.<Staff>lambdaUpdate()
+                .set(Staff::getName, req.name().trim())
+                .set(Staff::getUpdatedAt, OffsetDateTime.now())
+                .eq(Staff::getId, id);
+        if (resetPassword) {
+            w.set(Staff::getPasswordHash, passwordEncoder.encode(req.password()))
+                    .setSql("token_version = token_version + 1");
+        }
+        staffMapper.update(null, w);
+        return StaffView.of(getRequired(id));
     }
 
     public StaffView setEnabled(Long id, boolean enabled) {
@@ -80,31 +90,39 @@ public class StaffService {
         if (Staff.ROLE_OWNER.equals(s.getRole())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "不能停用店主账号");
         }
-        if (s.isEnabled() == enabled) {
-            return StaffView.of(s);
-        }
-        s.setStatus(enabled ? Staff.STATUS_ENABLED : Staff.STATUS_DISABLED);
+        var w = Wrappers.<Staff>lambdaUpdate()
+                .set(Staff::getStatus, enabled ? Staff.STATUS_ENABLED : Staff.STATUS_DISABLED)
+                .set(Staff::getUpdatedAt, OffsetDateTime.now())
+                .eq(Staff::getId, id)
+                .eq(Staff::getStatus, enabled ? Staff.STATUS_DISABLED : Staff.STATUS_ENABLED);
         if (!enabled) {
-            s.setTokenVersion(s.getTokenVersion() + 1);
+            w.setSql("token_version = token_version + 1");
         }
-        s.setUpdatedAt(OffsetDateTime.now());
-        staffMapper.updateById(s);
-        return StaffView.of(s);
+        staffMapper.update(null, w);
+        return StaffView.of(getRequired(id));
     }
 
     /** 当前登录员工修改自己的密码；成功后旧 token 失效，需重新登录 */
     public void changeOwnPassword(ChangePasswordRequest req) {
-        Staff s = getRequired(LoginUser.currentStaff().id());
+        LoginUser me = LoginUser.currentStaff();
+        Staff s = getRequired(me.id());
         if (!passwordEncoder.matches(req.oldPassword(), s.getPasswordHash())) {
             throw new BusinessException(ErrorCode.BAD_CREDENTIALS, "当前密码不正确");
         }
         if (req.oldPassword().equals(req.newPassword())) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "新密码不能与当前密码相同");
         }
-        s.setPasswordHash(passwordEncoder.encode(req.newPassword()));
-        s.setTokenVersion(s.getTokenVersion() + 1);
-        s.setUpdatedAt(OffsetDateTime.now());
-        staffMapper.updateById(s);
+        // 条件更新：期间被停用（状态变化）则不生效
+        int rows = staffMapper.update(null, Wrappers.<Staff>lambdaUpdate()
+                .set(Staff::getPasswordHash, passwordEncoder.encode(req.newPassword()))
+                .set(Staff::getUpdatedAt, OffsetDateTime.now())
+                .setSql("token_version = token_version + 1")
+                .eq(Staff::getId, s.getId())
+                .eq(Staff::getStatus, Staff.STATUS_ENABLED)
+                .eq(Staff::getTokenVersion, s.getTokenVersion()));
+        if (rows == 0) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
     }
 
     private Staff getRequired(Long id) {

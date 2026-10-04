@@ -2,6 +2,8 @@ package com.example.ordering.security;
 
 import com.example.ordering.common.ErrorCode;
 import com.example.ordering.common.Platform;
+import com.example.ordering.module.customer.entity.Customer;
+import com.example.ordering.module.customer.mapper.CustomerMapper;
 import com.example.ordering.module.staff.entity.Staff;
 import com.example.ordering.module.staff.mapper.StaffMapper;
 import com.example.ordering.tenant.StoreContext;
@@ -41,11 +43,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final StaffMapper staffMapper;
+    private final CustomerMapper customerMapper;
     private final JsonResponseWriter writer;
 
-    public JwtAuthFilter(JwtService jwtService, StaffMapper staffMapper, JsonResponseWriter writer) {
+    public JwtAuthFilter(JwtService jwtService, StaffMapper staffMapper, CustomerMapper customerMapper,
+                         JsonResponseWriter writer) {
         this.jwtService = jwtService;
         this.staffMapper = staffMapper;
+        this.customerMapper = customerMapper;
         this.writer = writer;
     }
 
@@ -55,6 +60,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             UserType expected = expectedAudience(request.getRequestURI());
             String token = resolveToken(request);
+            // 登录 / 刷新接口不解析请求头里的旧 token：否则旧 token 会注入门店上下文，
+            // 多租户插件把登录查询限定到旧门店，换门店账号登录会被误判为密码错误
+            if (isAuthEndpoint(request.getRequestURI())) {
+                token = null;
+            }
             if (expected != null && token != null) {
                 Optional<Claims> parsed = jwtService.parse(token);
                 if (parsed.isPresent()) {
@@ -85,6 +95,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         LoginUser user;
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
         if (type == UserType.CUSTOMER) {
+            Customer customer = customerMapper.selectById(id);
+            if (customer == null || customer.getStatus() == null || customer.getStatus() != Customer.STATUS_NORMAL) {
+                return; // 顾客被停用 → 401，不必等 token 过期
+            }
             Platform platform = Platform.valueOf(claims.get(JwtService.CLAIM_PLATFORM, String.class));
             user = new LoginUser(UserType.CUSTOMER, id, null, null, platform);
             authorities.add(new SimpleGrantedAuthority("ROLE_CUSTOMER"));
@@ -106,6 +120,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, authorities);
         SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    private static boolean isAuthEndpoint(String uri) {
+        return uri.startsWith("/api/v1/c/auth/") || uri.equals("/api/v1/m/auth/login") || uri.equals("/api/v1/m/auth/refresh");
     }
 
     /** 与 SecurityConfig 中的公开接口保持一致 */

@@ -70,6 +70,20 @@ class StaffIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void ownerCannotResetOwnPasswordWithoutOldPassword() throws Exception {
+        String owner = ownerToken();
+        long ownerId = staffLogin("admin", "admin123").path("staff").path("id").asLong();
+        mvc.perform(authed(put("/api/v1/m/staff/" + ownerId), owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("name", "店主", "password", "hijacked1")))
+                .andExpect(status().isForbidden());
+        // 只改名仍允许，且原密码不变
+        mvc.perform(authed(put("/api/v1/m/staff/" + ownerId), owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("name", "店主")))
+                .andExpect(status().isOk());
+        staffLogin("admin", "admin123");
+    }
+
+    @Test
     void staffChangesOwnPassword() throws Exception {
         String owner = ownerToken();
         String username = "p" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);

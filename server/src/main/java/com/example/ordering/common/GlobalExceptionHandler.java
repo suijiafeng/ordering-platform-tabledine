@@ -6,7 +6,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,6 +21,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.time.format.DateTimeParseException;
 import java.util.stream.Collectors;
 
 /**
@@ -61,7 +66,9 @@ public class GlobalExceptionHandler {
             HttpMessageNotReadableException.class,
             MissingServletRequestParameterException.class,
             MissingServletRequestPartException.class,
-            MethodArgumentTypeMismatchException.class
+            MethodArgumentTypeMismatchException.class,
+            ServletRequestBindingException.class,
+            DateTimeParseException.class
     })
     public ResponseEntity<Result<Void>> handleBadRequest(Exception e) {
         return build(ErrorCode.PARAM_INVALID, ErrorCode.PARAM_INVALID.getMessage());
@@ -72,9 +79,26 @@ public class GlobalExceptionHandler {
         return build(ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.getMessage());
     }
 
-    @ExceptionHandler({NoResourceFoundException.class, HttpRequestMethodNotSupportedException.class})
+    @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Result<Void>> handleNotFound(Exception e) {
         return build(ErrorCode.NOT_FOUND, ErrorCode.NOT_FOUND.getMessage());
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Result<Void>> handleMethod(Exception e) {
+        return build(ErrorCode.METHOD_NOT_ALLOWED, ErrorCode.METHOD_NOT_ALLOWED.getMessage());
+    }
+
+    @ExceptionHandler({HttpMediaTypeNotSupportedException.class, HttpMediaTypeNotAcceptableException.class})
+    public ResponseEntity<Result<Void>> handleMediaType(Exception e) {
+        return build(ErrorCode.UNSUPPORTED_MEDIA_TYPE, ErrorCode.UNSUPPORTED_MEDIA_TYPE.getMessage());
+    }
+
+    /** 兜底：DTO 校验遗漏导致的超长 / 违反约束，按参数错误返回，不暴露数据库信息 */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Result<Void>> handleDataIntegrity(DataIntegrityViolationException e) {
+        log.warn("数据约束冲突: {}", e.getMostSpecificCause().getMessage());
+        return build(ErrorCode.PARAM_INVALID, "数据不合法，请检查输入长度或格式");
     }
 
     @ExceptionHandler(Exception.class)

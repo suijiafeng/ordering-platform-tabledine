@@ -14,6 +14,8 @@ COPY --from=build /app/target/ordering-server-*.jar /app/app.jar
 USER app
 EXPOSE 8080
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75 -Duser.timezone=Asia/Shanghai"
+# 镜像默认生产配置；忘记设置时也不会以开发模式（模拟登录 / 模拟支付 / 开发密钥）启动
+ENV SPRING_PROFILES_ACTIVE=prod
 HEALTHCHECK --interval=15s --timeout=3s --start-period=40s --retries=5 \
   CMD wget -qO- http://localhost:8080/actuator/health || exit 1
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

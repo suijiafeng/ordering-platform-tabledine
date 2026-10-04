@@ -23,8 +23,9 @@ public class PayChannelRegistry {
                               org.springframework.core.env.Environment env) {
         this.mock = appProperties.getPay().isMockEnabled();
         if (mock) {
-            if (env.matchesProfiles("prod")) {
-                throw new IllegalStateException("生产环境禁止开启支付 Mock（app.pay.mock-enabled）");
+            // 白名单而不是黑名单：只有显式 dev / test 才允许模拟渠道（profile 名叫 production / prd 也拒绝）
+            if (!com.example.ordering.config.StartupSafetyCheck.isDevOrTest(env)) {
+                throw new IllegalStateException("仅 dev / test 环境允许开启支付 Mock（app.pay.mock-enabled）");
             }
             log.warn("支付渠道处于 MOCK 模式，不会发生真实资金往来，仅限开发 / 测试环境");
             for (Platform p : Platform.values()) {

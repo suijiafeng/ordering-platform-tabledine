@@ -106,6 +106,7 @@ export default function StaffPage() {
   ]
 
   const isNew = editing === 'new'
+  const isSelf = editing !== null && editing !== 'new' && editing.id === me?.id
 
   return (
     <Card
@@ -136,6 +137,9 @@ export default function StaffPage() {
           <Form.Item name="name" label="姓名" rules={[{ required: true, max: 32, message: '请输入姓名（最多 32 字）' }]}>
             <Input />
           </Form.Item>
+          {isSelf ? (
+            <Typography.Text type="secondary">修改自己的密码请使用右上角头像菜单中的「修改密码」（需验证当前密码）</Typography.Text>
+          ) : (
           <Form.Item
             name="password"
             label={isNew ? '初始密码' : '重置密码'}
@@ -144,6 +148,7 @@ export default function StaffPage() {
           >
             <Input.Password placeholder={isNew ? '6~64 位' : '留空不修改'} />
           </Form.Item>
+          )}
         </Form>
       </Modal>
     </Card>
