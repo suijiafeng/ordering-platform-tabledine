@@ -303,7 +303,9 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(toJson(Map.of("type", "CUSTOM", "reason", "补偿", "amount", 4999))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("SUCCESS"));
+                // 响应在事务内构建，渠道调用在提交后：先返回 PROCESSING，Mock 渠道随即成功
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PROCESSING"));
+        assertThat(getData("/api/v1/m/orders/" + orderNo, owner).path("refundableAmount").asLong()).isEqualTo(1);
         // 再退 2 分（超 1 分余额）
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)

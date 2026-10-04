@@ -92,7 +92,7 @@ public class OrderViewAssembler {
                 payment == null ? null : PaymentView.of(payment),
                 refunds,
                 logs.stream().map(l -> new OrderStatusLogView(l.getFromStatus(), l.getToStatus(), l.getOperatorType(),
-                        l.getOperatorId(), staffNames.get(l.getOperatorId()), l.getRemark(), l.getCreatedAt())).toList(),
+                        l.getOperatorId(), l.getOperatorId() == null ? null : staffNames.get(l.getOperatorId()), l.getRemark(), l.getCreatedAt())).toList(),
                 canCancel, canApplyRefund);
     }
 

@@ -83,7 +83,7 @@ public abstract class AbstractIntegrationTest {
     }
 
     protected JsonNode data(MvcResult r) throws Exception {
-        return objectMapper.readTree(r.getResponse().getContentAsString()).path("data");
+        return objectMapper.readTree(r.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");
     }
 
     protected String toJson(Object value) throws Exception {

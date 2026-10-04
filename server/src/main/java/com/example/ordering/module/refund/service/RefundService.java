@@ -615,11 +615,12 @@ public class RefundService {
         return result;
     }
 
+    /** 员工 ID → 姓名。返回 HashMap（允许 get(null)，系统 / 顾客操作的 operatorId 为空） */
     public Map<Long, String> staffNames(Collection<Long> staffIds) {
-        if (staffIds == null || staffIds.isEmpty()) {
-            return Map.of();
-        }
         Map<Long, String> names = new HashMap<>();
+        if (staffIds == null || staffIds.isEmpty()) {
+            return names;
+        }
         for (Staff s : staffMapper.selectBatchIds(staffIds)) {
             names.put(s.getId(), s.getName());
         }
