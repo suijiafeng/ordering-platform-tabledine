@@ -1,7 +1,6 @@
 import Taro from '@tarojs/taro'
 import { ApiError, UNAUTHORIZED, httpErrorToResponse } from './apiError'
-import { getLoginCode } from './login'
-import { apiBaseUrl, currentPlatform, isH5 } from './platform'
+import { apiBaseUrl } from './platform'
 
 const TOKEN_KEY = 'customer_token'
 const TOKEN_EXPIRE_KEY = 'customer_token_expire_at'
@@ -9,8 +8,6 @@ const TOKEN_EXPIRE_KEY = 'customer_token_expire_at'
 const EXPIRE_MARGIN_MS = 60 * 1000
 
 export const LOGIN_PAGE = '/pages/login/index'
-
-let loginPromise: Promise<string> | null = null
 
 export function getToken(): string | null {
   const token = Taro.getStorageSync<string>(TOKEN_KEY)
@@ -26,7 +23,7 @@ export function clearToken() {
   Taro.removeStorageSync(TOKEN_EXPIRE_KEY)
 }
 
-/** H5：是否已登录会员账号（小程序端总是能静默登录，不需要判断） */
+/** 是否已登录会员账号 */
 export function isLoggedIn(): boolean {
   return getToken() !== null
 }
@@ -38,31 +35,19 @@ interface LoginResult {
 }
 
 /**
- * 确保已登录并返回 token。并发调用只会发起一次登录。
- * - 小程序：没有可用 token 时静默登录
- * - H5：没有可用 token 时直接抛 40101，由请求层跳转登录页（浏览器没有静默登录）
- * @param force 忽略本地 token，强制重新登录（服务端返回 401 时使用）
+ * 返回当前会员 token；没有可用 token 时抛 40101，由请求层跳转登录页。
+ * 小程序与 H5 一致：不再静默登录（openid 登录），统一用店家开通的会员账号。
  */
-export function ensureLogin(force = false): Promise<string> {
-  if (!force) {
-    const cached = getToken()
-    if (cached) {
-      return Promise.resolve(cached)
-    }
+export function ensureLogin(): Promise<string> {
+  const cached = getToken()
+  if (cached) {
+    return Promise.resolve(cached)
   }
-  if (isH5) {
-    clearToken()
-    return Promise.reject(new ApiError(UNAUTHORIZED, '请先登录', 401))
-  }
-  if (!loginPromise) {
-    loginPromise = doLogin().finally(() => {
-      loginPromise = null
-    })
-  }
-  return loginPromise
+  clearToken()
+  return Promise.reject(new ApiError(UNAUTHORIZED, '请先登录', 401))
 }
 
-/** H5 会员密码登录：成功后保存 token */
+/** 会员密码登录：成功后保存 token */
 export async function passwordLogin(phone: string, password: string): Promise<void> {
   const body = await postLogin('/api/v1/c/auth/password-login', { phone, password })
   saveToken(body)
@@ -74,7 +59,7 @@ export function logout() {
 }
 
 /**
- * H5：跳到登录页，登录成功后回到 redirect（当前页面路径，含参数）。
+ * 跳到登录页，登录成功后回到 redirect（当前页面路径，含参数）。
  * 已在登录页时不重复跳转。
  */
 export function goToLogin(redirect?: string) {
@@ -99,17 +84,6 @@ export function currentPagePath(): string {
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
   return `/${top.route}${query ? `?${query}` : ''}`
-}
-
-async function doLogin(): Promise<string> {
-  let code: string
-  try {
-    code = await getLoginCode()
-  } catch (e) {
-    throw new ApiError(-1, (e as Error)?.message || '获取登录凭证失败')
-  }
-  const body = await postLogin('/api/v1/c/auth/login', { platform: currentPlatform(), code })
-  return saveToken(body)
 }
 
 type LoginBody = { code: number; message: string; data: LoginResult }

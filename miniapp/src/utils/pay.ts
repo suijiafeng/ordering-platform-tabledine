@@ -1,40 +1,12 @@
-import Taro from '@tarojs/taro'
-import { initPay, mockPay } from '../api/order'
+import { initPay } from '../api/order'
 
-export type PayOutcome = 'success' | 'cancel' | 'fail'
+export type PayOutcome = 'success' | 'fail'
 
 /**
- * 发起支付并拉起收银台。
- * 注意：success 只表示客户端流程走完，最终以服务端回调 / 查单后的订单状态为准（详情页轮询确认）。
+ * 发起支付。会员账号的订单一律余额支付：服务端在发起支付的同一事务里扣费并入账，没有收银台；
+ * 余额不足时 initPay 抛 42203（请求层已提示）。小程序内不再调起微信 / 支付宝支付。
  */
 export async function payOrder(orderNo: string): Promise<PayOutcome> {
   const init = await initPay(orderNo)
-  if (init.params.balance) {
-    // 余额支付：服务端在发起支付的同一事务里已扣费入账，没有收银台；余额不足时 initPay 直接抛 42203
-    return 'success'
-  }
-  if (init.mock) {
-    await mockPay(orderNo)
-    return 'success'
-  }
-  try {
-    if (process.env.TARO_ENV === 'alipay') {
-      const res = (await Taro.tradePay({ tradeNO: String(init.params.tradeNO) })) as { resultCode?: string }
-      // 9000 支付成功；8000 处理中 / 6004 结果未知：交由服务端回调或查单确认，不能提示用户重付；6001 用户取消
-      if (res.resultCode === '6001') return 'cancel'
-      return res.resultCode === '9000' || res.resultCode === '8000' || res.resultCode === '6004' ? 'success' : 'fail'
-    }
-    const p = init.params
-    await Taro.requestPayment({
-      timeStamp: String(p.timeStamp),
-      nonceStr: String(p.nonceStr),
-      package: String(p.package),
-      signType: p.signType as 'RSA',
-      paySign: String(p.paySign),
-    })
-    return 'success'
-  } catch (e) {
-    const msg = String((e as { errMsg?: string }).errMsg ?? '')
-    return /cancel/i.test(msg) ? 'cancel' : 'fail'
-  }
+  return init.params.balance ? 'success' : 'fail'
 }

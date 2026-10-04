@@ -8,7 +8,6 @@ import { useTableStore } from '../../store/table'
 import { formatYuan } from '../../utils/money'
 import { payOrder } from '../../utils/pay'
 import { goToLogin, isLoggedIn } from '../../utils/auth'
-import { isH5 } from '../../utils/platform'
 import { ignoreShownError } from '../../utils/errors'
 import './index.css'
 import { toast } from '../../utils/toast'
@@ -32,8 +31,8 @@ export default function Checkout() {
       if (!table?.qrToken) toast('桌码已失效，请重新扫码')
       return
     }
-    if (isH5 && !isLoggedIn()) {
-      // 浏览器点餐：只在下单时要求登录，登录成功后回到本页，购物车仍在
+    if (!isLoggedIn()) {
+      // 只在下单时要求登录会员账号，登录成功后回到本页，购物车仍在
       goToLogin('/pages/checkout/index')
       return
     }
@@ -56,7 +55,6 @@ export default function Checkout() {
       requestId.current = `${Date.now()}${Math.random().toString(36).slice(2, 10)}`
       useCartStore.getState().clear()
       const outcome = await payOrder(orderNo)
-      if (outcome === 'cancel') toast('已取消支付，可在订单中继续支付')
       if (outcome === 'fail') toast('支付未完成，可在订单中重试')
     } catch (e) {
       // 请求层已提示。下单失败：保留 requestId，重试时服务端按它幂等，不会重复下单；
@@ -126,7 +124,7 @@ export default function Checkout() {
       <View className='co-bar'>
         <Text className='co-bar-total'>¥{formatYuan(cartTotal(items))}</Text>
         <View className={`co-submit ${table.storeOpen && !submitting ? '' : 'disabled'}`} onClick={() => table.storeOpen && submit()}>
-          <Text>{!table.storeOpen ? '已打烊' : submitting ? '提交中…' : isH5 ? (isLoggedIn() ? '余额支付' : '登录并支付') : '提交并支付'}</Text>
+          <Text>{!table.storeOpen ? '已打烊' : submitting ? '提交中…' : isLoggedIn() ? '余额支付' : '登录并支付'}</Text>
         </View>
       </View>
     </View>

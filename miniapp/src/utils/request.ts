@@ -2,7 +2,7 @@ import Taro from '@tarojs/taro'
 import { ApiError, UNAUTHORIZED, httpErrorToResponse } from './apiError'
 import { clearToken, ensureLogin, goToLogin } from './auth'
 import { toast } from './toast'
-import { apiBaseUrl, isH5 } from './platform'
+import { apiBaseUrl } from './platform'
 
 export interface ApiResult<T> {
   code: number
@@ -24,15 +24,15 @@ export interface RequestOptions {
 
 /**
  * 统一请求封装：
- * - 自动注入 customer token（小程序未登录时先静默登录；H5 未登录则跳转登录页）
- * - 收到 401 / 40101：小程序清除 token、重新静默登录后重放一次；H5 清除 token 并跳转登录页
+ * - 自动注入会员 token；未登录时跳转登录页（小程序与 H5 一致，不再静默登录）
+ * - 收到 401 / 40101（token 过期、会员被停用或改密）：清除 token 并跳转登录页
  * - code !== 0：默认 Toast 提示并抛出 ApiError
  */
-export async function request<T>(options: RequestOptions, retried = false): Promise<T> {
+export async function request<T>(options: RequestOptions): Promise<T> {
   const { url, method = 'GET', data, auth = true, silent = false } = options
   const header: Record<string, string> = { 'Content-Type': 'application/json' }
   if (auth) {
-    header.Authorization = `Bearer ${await loginOrFail(false, silent)}`
+    header.Authorization = `Bearer ${await loginOrFail()}`
   }
 
   let res: { statusCode: number; data: ApiResult<T> }
@@ -58,15 +58,11 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
 
   const body = res.data
   const code = body?.code ?? -1
-  if (auth && !retried && (res.statusCode === 401 || code === UNAUTHORIZED)) {
+  if (auth && (res.statusCode === 401 || code === UNAUTHORIZED)) {
+    // 会员 token 过期 / 被停用或改密：回到登录页，登录后回到当前页
     clearToken()
-    if (isH5) {
-      // 会员 token 过期 / 被停用或改密：回到登录页，登录后回到当前页
-      goToLogin()
-      throw new ApiError(UNAUTHORIZED, body?.message || '请先登录', res.statusCode)
-    }
-    await loginOrFail(true, silent)
-    return request<T>(options, true)
+    goToLogin()
+    throw new ApiError(UNAUTHORIZED, body?.message || '请先登录', res.statusCode)
   }
   if (code !== 0) {
     const message = body?.message || '请求失败'
@@ -78,22 +74,12 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
   return body.data
 }
 
-/**
- * 静默登录；失败（顾客被停用 40103、换取凭证失败 40104、限流 42901）时按业务错误提示并抛 ApiError，
- * 否则各页面会在没有任何提示的情况下卡在「重试中」或显示空列表。
- */
-async function loginOrFail(force: boolean, silent: boolean): Promise<string> {
+/** 未登录：跳转登录页并以 40101 中断本次请求（不弹「请先登录」打断用户） */
+async function loginOrFail(): Promise<string> {
   try {
-    return await ensureLogin(force)
+    return await ensureLogin()
   } catch (e) {
-    const err = e instanceof ApiError ? e : new ApiError(-1, (e as Error)?.message || '登录失败')
-    if (isH5 && err.code === UNAUTHORIZED) {
-      goToLogin()  // 浏览器没有静默登录：未登录就去登录页，不弹「请先登录」打断
-      throw err
-    }
-    if (!silent) {
-      toast(err.message)
-    }
-    throw err
+    goToLogin()
+    throw e
   }
 }

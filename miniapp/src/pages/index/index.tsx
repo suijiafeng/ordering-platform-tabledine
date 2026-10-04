@@ -154,7 +154,7 @@ export default function Index() {
   if (!current) {
     return (
       <View className='empty-page'>
-        <Text className='empty-title'>{isH5 ? '请扫描桌上的二维码点餐' : '请扫描桌上的二维码点餐'}</Text>
+        <Text className='empty-title'>请扫描桌上的二维码点餐</Text>
         {error && <Text className='warn'>{error}</Text>}
         {isH5 ? (
           <>
@@ -170,7 +170,10 @@ export default function Index() {
         ) : (
           <>
             <Button className='scan-btn' onClick={handleScan} loading={loadingTable}>扫一扫</Button>
-            <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
+            <View className='header-links'>
+              <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
+              <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/me/index' })}>我的账户</Text>
+            </View>
           </>
         )}
       </View>
@@ -186,7 +189,7 @@ export default function Index() {
         </View>
         <View className='header-links'>
           <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
-          {isH5 && <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/me/index' })}>我的账户</Text>}
+          <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/me/index' })}>我的账户</Text>
         </View>
       </View>
       {!current.storeOpen && <View className='closed-tip'><Text>店铺已打烊，暂不能下单</Text></View>}

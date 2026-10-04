@@ -15,9 +15,6 @@ export const createOrder = (data: CreateOrderPayload) =>
 export const initPay = (orderNo: string) =>
   request<PayInitResult>({ url: `/api/v1/c/orders/${orderNo}/pay`, method: 'POST' })
 
-export const mockPay = (orderNo: string) =>
-  request<OrderDetail>({ url: `/api/v1/c/orders/${orderNo}/mock-pay`, method: 'POST' })
-
 export const fetchOrder = (orderNo: string, silent = false) =>
   request<OrderDetail>({ url: `/api/v1/c/orders/${orderNo}`, silent })
 

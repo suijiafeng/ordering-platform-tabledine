@@ -36,7 +36,6 @@ export default function OrderDetailPage() {
 
   const onPay = () => runOrderAction(async () => {
     const outcome = await payOrder(orderNo)
-    if (outcome === 'cancel') toast('已取消支付')
     if (outcome === 'fail') toast('支付未完成，请重试')
   })
 
