@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { App, Button, Card, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Space, Switch, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, ReloadOutlined, WalletOutlined } from '@ant-design/icons'
@@ -24,8 +24,18 @@ const TXN_TYPE: Record<WalletTransaction['type'], { label: string; color: string
  * 会员充值：会员账号由商家创建（手机号 + 密码），余额由商家充值，H5 下单直接从余额扣费。
  * 所有员工可查看会员与流水；建号、改密、停用、充值仅店主（涉及资金）。
  */
+function newRequestId(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  }
+}
+
 export default function MembersPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
+  // 本次充值窗口的请求号：失败后在同一窗口重试仍用它，服务端据此避免重复入账
+  const rechargeRequestId = useRef('')
   const isOwner = useIsOwner()
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
@@ -75,7 +85,7 @@ export default function MembersPage() {
       if (editing === 'new') {
         const initialAmount = v.initialYuan ? yuanToFen(v.initialYuan) : undefined
         await createMember({ phone: v.phone.trim(), name: v.name.trim(), password: v.password!, initialAmount })
-        message.success(initialAmount ? `已开户并充值 ¥${formatYuan(initialAmount)}` : '已开户')
+        message.success(initialAmount ? `已开户并充值 ${formatYuan(initialAmount)}` : '已开户')
       } else if (editing) {
         const password = v.password || undefined
         await updateMember(editing.id, { name: v.name.trim(), password })
@@ -93,10 +103,17 @@ export default function MembersPage() {
   const doRecharge = async () => {
     const v = await rechargeForm.validateFields().catch(() => null)
     if (!v || !recharging) return
+    // 充值不可撤销：提交前再确认一次金额，避免多输一个 0
+    const confirmed = await modal.confirm({
+      title: `确认为 ${recharging.name} 充值 ${formatYuan(yuanToFen(v.yuan))}？`,
+      content: '充值后余额立即到账，无法撤销。',
+      okText: '确认充值',
+    })
+    if (!confirmed) return
     setSaving(true)
     try {
-      const updated = await rechargeMember(recharging.id, { amount: yuanToFen(v.yuan), remark: v.remark?.trim() || undefined })
-      message.success(`已为 ${updated.name} 充值 ¥${v.yuan.toFixed(2)}，当前余额 ¥${formatYuan(updated.balance)}`)
+      const updated = await rechargeMember(recharging.id, { amount: yuanToFen(v.yuan), remark: v.remark?.trim() || undefined, requestId: rechargeRequestId.current })
+      message.success(`已为 ${updated.name} 充值 ${formatYuan(yuanToFen(v.yuan))}，当前余额 ${formatYuan(updated.balance)}`)
       setRecharging(null)
       void load()
     } catch (e) {
@@ -124,7 +141,7 @@ export default function MembersPage() {
       dataIndex: 'balance',
       width: 120,
       align: 'right',
-      render: (v: number) => <Typography.Text strong type={v <= 0 ? 'secondary' : undefined}>¥{formatYuan(v)}</Typography.Text>,
+      render: (v: number) => <Typography.Text strong type={v <= 0 ? 'secondary' : undefined}>{formatYuan(v)}</Typography.Text>,
     },
     {
       title: '状态',
@@ -148,7 +165,7 @@ export default function MembersPage() {
       render: (_, r) => (
         <Space size={0}>
           {isOwner && (
-            <Button type="link" size="small" icon={<WalletOutlined />} disabled={!r.enabled} onClick={() => { rechargeForm.resetFields(); setRecharging(r) }}>充值</Button>
+            <Button type="link" size="small" icon={<WalletOutlined />} disabled={!r.enabled} onClick={() => { rechargeForm.resetFields(); rechargeRequestId.current = newRequestId(); setRecharging(r) }}>充值</Button>
           )}
           <Button type="link" size="small" onClick={() => setTxnMember(r)}>流水</Button>
           {isOwner && <Button type="link" size="small" onClick={() => openEdit(r)}>编辑</Button>}
@@ -233,7 +250,7 @@ export default function MembersPage() {
         destroyOnHidden
       >
         {recharging && (
-          <Typography.Paragraph>当前余额 <Typography.Text strong>¥{formatYuan(recharging.balance)}</Typography.Text></Typography.Paragraph>
+          <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan(recharging.balance)}</Typography.Text></Typography.Paragraph>
         )}
         <Form form={rechargeForm} layout="vertical" autoComplete="off">
           <Form.Item name="yuan" label="充值金额（元）" rules={[{ required: true, type: 'number', min: 0.01, max: 1000000, message: '请输入 0.01 ~ 1000000 之间的金额' }]}>
@@ -259,6 +276,7 @@ function TransactionsDrawer({ member, onClose }: { member: MemberItem | null; on
 
   useEffect(() => {
     setPage(1)
+    setData({ list: [], total: 0 })  // 换会员时先清空，避免短暂显示上一位会员的流水
   }, [member?.id])
 
   useEffect(() => {
@@ -291,7 +309,7 @@ function TransactionsDrawer({ member, onClose }: { member: MemberItem | null; on
 
   return (
     <Drawer title={member ? `${member.name} 的余额流水` : '余额流水'} open={member !== null} onClose={onClose} width={640}>
-      {member && <Typography.Paragraph>当前余额 <Typography.Text strong>¥{formatYuan(member.balance)}</Typography.Text></Typography.Paragraph>}
+      {member && <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan(member.balance)}</Typography.Text></Typography.Paragraph>}
       <Table
         rowKey="id"
         size="small"

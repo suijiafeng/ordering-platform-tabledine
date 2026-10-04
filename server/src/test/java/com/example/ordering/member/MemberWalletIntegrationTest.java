@@ -178,6 +178,40 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
     }
 
 
+    @Test
+    void rechargeWithSameRequestIdIsCreditedOnce() throws Exception {
+        String owner = ownerToken();
+        String phone = randomPhone();
+        MvcResult created = mvc.perform(authed(post("/api/v1/m/members"), owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("phone", phone, "name", "幂等", "password", "pw123456")))
+                .andExpect(status().isOk()).andReturn();
+        long memberId = data(created).path("id").asLong();
+        String requestId = UUID.randomUUID().toString();
+        // 超时后重试 / 双击：同一请求号只入账一次
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(authed(post("/api/v1/m/members/" + memberId + "/recharge"), owner).contentType(MediaType.APPLICATION_JSON)
+                            .content(json("amount", 1000, "requestId", requestId)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.balance").value(1000));
+        }
+        // 新的请求号是一次新的充值
+        mvc.perform(authed(post("/api/v1/m/members/" + memberId + "/recharge"), owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("amount", 1000, "requestId", UUID.randomUUID().toString())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.balance").value(2000));
+    }
+
+    @Test
+    void memberCannotOrderAtAnotherStore() throws Exception {
+        String member = memberToken();  // 门店 1 的会员
+        Long otherStore = jdbc.queryForObject("INSERT INTO store (name) VALUES ('另一家店') RETURNING id", Long.class);
+        String token = "other-store-" + UUID.randomUUID().toString().substring(0, 8);
+        jdbc.update("INSERT INTO dining_table (store_id, code, qr_token) VALUES (?, 'B1', ?)", otherStore, token);
+        Map<String, Object> item = Map.of("dishId", 1, "specItemIds", List.of(), "addonItemIds", List.of(), "quantity", 1);
+        mvc.perform(authed(post("/api/v1/c/orders"), member).contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson(Map.of("clientRequestId", UUID.randomUUID().toString(), "qrToken", token,
+                                "items", List.of(item), "peopleCount", 1))))
+                .andExpect(status().isForbidden());
+    }
+
     private long balance(String memberToken) throws Exception {
         return getData("/api/v1/c/me", memberToken).path("balance").asLong();
     }

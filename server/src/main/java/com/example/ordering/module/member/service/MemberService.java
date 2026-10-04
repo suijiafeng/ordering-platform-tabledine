@@ -68,7 +68,7 @@ public class MemberService {
             throw new BusinessException(ErrorCode.CONFLICT, "该手机号已注册");
         }
         if (req.initialAmount() != null && req.initialAmount() > 0) {
-            walletService.recharge(c, req.initialAmount(), staff.id(), "开户充值");
+            walletService.recharge(c, req.initialAmount(), staff.id(), "开户充值", null);
         }
         return MemberView.of(customerMapper.selectById(c.getId()));
     }
@@ -109,7 +109,8 @@ public class MemberService {
             throw new BusinessException(ErrorCode.CONFLICT, "会员已停用，请先启用");
         }
         walletService.recharge(c, req.amount(), LoginUser.currentStaff().id(),
-                StringUtils.hasText(req.remark()) ? req.remark().trim() : null);
+                StringUtils.hasText(req.remark()) ? req.remark().trim() : null,
+                StringUtils.hasText(req.requestId()) ? req.requestId().trim() : null);
         return MemberView.of(customerMapper.selectById(c.getId()));
     }
 

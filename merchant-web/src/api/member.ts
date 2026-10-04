@@ -16,7 +16,8 @@ export const setMemberEnabled = (id: number, enabled: boolean) =>
   request<MemberItem>({ url: `/api/v1/m/members/${id}/status`, method: 'PATCH', data: { enabled } })
 
 /** amount 单位：分 */
-export const rechargeMember = (id: number, data: { amount: number; remark?: string }) =>
+/** requestId：每次打开充值窗口生成一个，超时重试 / 重复点击只入账一次 */
+export const rechargeMember = (id: number, data: { amount: number; remark?: string; requestId: string }) =>
   request<MemberItem>({ url: `/api/v1/m/members/${id}/recharge`, method: 'POST', data })
 
 export const listMemberTransactions = (id: number, params: { page: number; pageSize: number }) =>

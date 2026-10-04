@@ -28,5 +28,7 @@ public class WalletTransaction {
     /** RECHARGE：操作员工 */
     private Long operatorId;
     private String remark;
+    /** 充值请求号（商家端生成，幂等用） */
+    private String requestId;
     private OffsetDateTime createdAt;
 }

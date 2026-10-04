@@ -6,6 +6,8 @@ import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
 import com.example.ordering.common.Platform;
 import com.example.ordering.common.PageResult;
+import com.example.ordering.module.customer.entity.Customer;
+import com.example.ordering.module.customer.mapper.CustomerMapper;
 import com.example.ordering.module.menu.dto.AddonGroupView;
 import com.example.ordering.module.menu.dto.SpecGroupView;
 import com.example.ordering.module.menu.entity.Dish;
@@ -70,13 +72,14 @@ public class CustomerOrderService {
     private final PayService payService;
     private final RefundService refundService;
     private final TransactionTemplate tx;
+    private final CustomerMapper customerMapper;
 
     public CustomerOrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper, DishMapper dishMapper,
                         DiningTableMapper tableMapper, MenuGroupLoader groupLoader,
                         com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper,
                         com.example.ordering.module.menu.service.MerchantMenuService menuService, StoreService storeService,
                         OrderStateService orderStateService, OrderViewAssembler assembler, PayService payService,
-                        RefundService refundService, TransactionTemplate tx) {
+                        RefundService refundService, TransactionTemplate tx, CustomerMapper customerMapper) {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.dishMapper = dishMapper;
@@ -90,6 +93,7 @@ public class CustomerOrderService {
         this.payService = payService;
         this.refundService = refundService;
         this.tx = tx;
+        this.customerMapper = customerMapper;
     }
 
     // ==================== 创建 ====================
@@ -129,6 +133,11 @@ public class CustomerOrderService {
         Store store = storeService.getRequired(table.getStoreId());
         if (!store.isOpen()) {
             throw new BusinessException(ErrorCode.STORE_CLOSED);
+        }
+        // 会员余额由开户门店收取，只能在该门店消费（否则 A 店收的钱在 B 店花掉，两边账都对不上）
+        Customer customer = customerMapper.selectById(user.id());
+        if (customer == null || !store.getId().equals(customer.getStoreId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "当前会员账号不属于本店，请使用本店会员账号下单");
         }
 
         // 2. 菜品与规格 / 加料

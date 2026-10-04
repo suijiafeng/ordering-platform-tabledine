@@ -43,16 +43,31 @@ public class WalletService {
         this.transactionMapper = transactionMapper;
     }
 
-    /** 商家充值：余额增加，返回充值后的余额 */
+    /**
+     * 商家充值：余额增加，返回充值后的余额。
+     * requestId 非空时幂等：同一会员同一请求号只入账一次，重复提交直接返回当前余额（先锁会员行，并发重复提交串行判断）。
+     */
     @Transactional
-    public long recharge(Customer member, long amountInCents, Long operatorId, String remark) {
+    public long recharge(Customer member, long amountInCents, Long operatorId, String remark, String requestId) {
         if (amountInCents <= 0) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "充值金额必须大于 0");
+        }
+        if (requestId != null) {
+            Customer locked = customerMapper.selectOne(Wrappers.<Customer>lambdaQuery().eq(Customer::getId, member.getId()).last("FOR UPDATE"));
+            boolean done = transactionMapper.exists(Wrappers.<WalletTransaction>lambdaQuery()
+                    .eq(WalletTransaction::getCustomerId, member.getId())
+                    .eq(WalletTransaction::getType, WalletTransactionType.RECHARGE)
+                    .eq(WalletTransaction::getRequestId, requestId));
+            if (done) {
+                log.info("会员 {} 充值请求 {} 已处理，忽略重复提交", member.getId(), requestId);
+                return locked.getBalance();
+            }
         }
         Long after = customerMapper.creditBalance(member.getId(), amountInCents);
         WalletTransaction txn = newTransaction(member.getStoreId(), member.getId(), WalletTransactionType.RECHARGE, amountInCents, after);
         txn.setOperatorId(operatorId);
         txn.setRemark(remark);
+        txn.setRequestId(requestId);
         transactionMapper.insert(txn);
         log.info("会员 {} 充值 {} 分，余额 {} 分，操作人 {}", member.getId(), amountInCents, after, operatorId);
         return after;
