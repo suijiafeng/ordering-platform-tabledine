@@ -118,7 +118,7 @@ export default function RefundsPage() {
         <Space direction="vertical" size={0}>
           <span>{REFUND_TYPE[r.type]}{r.items.length > 0 ? `：${r.items.map((i) => `${i.dishName}×${i.quantity}`).join('、')}` : ''}</span>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.reason}</Typography.Text>
-          {r.failReason && <Typography.Text type="danger" style={{ fontSize: 12 }}>{r.failReason}</Typography.Text>}
+          {r.failReason && <Typography.Text type={r.status === 'FAILED' ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>{r.failReason}</Typography.Text>}
           {r.rejectReason && <Typography.Text type="secondary" style={{ fontSize: 12 }}>拒绝理由：{r.rejectReason}</Typography.Text>}
         </Space>
       ),

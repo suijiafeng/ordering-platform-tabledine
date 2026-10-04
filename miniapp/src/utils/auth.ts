@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { ApiError, httpErrorToResponse } from './apiError'
 import { getLoginCode } from './login'
 import { currentPlatform } from './platform'
 
@@ -49,16 +50,33 @@ export function ensureLogin(force = false): Promise<string> {
 }
 
 async function doLogin(): Promise<string> {
-  const code = await getLoginCode()
-  const res = await Taro.request<{ code: number; message: string; data: LoginResult }>({
-    url: `${process.env.TARO_APP_API_BASE}/api/v1/c/auth/login`,
-    method: 'POST',
-    header: { 'Content-Type': 'application/json' },
-    data: { platform: currentPlatform(), code },
-  })
+  let code: string
+  try {
+    code = await getLoginCode()
+  } catch (e) {
+    throw new ApiError(-1, (e as Error)?.message || '获取登录凭证失败')
+  }
+  type LoginBody = { code: number; message: string; data: LoginResult }
+  let res: { statusCode: number; data: LoginBody }
+  try {
+    res = await Taro.request<LoginBody>({
+      url: `${process.env.TARO_APP_API_BASE}/api/v1/c/auth/login`,
+      method: 'POST',
+      header: { 'Content-Type': 'application/json' },
+      data: { platform: currentPlatform(), code },
+      timeout: 10000,
+    })
+  } catch (e) {
+    const recovered = httpErrorToResponse<LoginBody>(e)
+    if (!recovered) {
+      throw new ApiError(-1, '网络异常，登录失败')
+    }
+    res = recovered
+  }
   const body = res.data
   if (res.statusCode !== 200 || !body || body.code !== 0) {
-    throw new Error(body?.message || '登录失败')
+    // 带上后端业务码（40103 停用 / 40104 换取失败 / 42901 限流），调用方据此提示与止损
+    throw new ApiError(body?.code ?? -1, body?.message || '登录失败', res.statusCode)
   }
   Taro.setStorageSync(TOKEN_KEY, body.data.token)
   Taro.setStorageSync(TOKEN_EXPIRE_KEY, Date.now() + body.data.expiresIn * 1000)

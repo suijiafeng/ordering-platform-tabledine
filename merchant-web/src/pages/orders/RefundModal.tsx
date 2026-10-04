@@ -4,7 +4,6 @@ import type { ColumnsType } from 'antd/es/table'
 import { refundOrder } from '../../api/order'
 import type { OrderDetail, OrderItemView, RefundType } from '../../api/types'
 import { fenToYuan, formatYuan, yuanToFen } from '../../utils/money'
-import { useIsOwner } from '../../utils/auth'
 
 interface Props {
   order: OrderDetail | null
@@ -16,7 +15,6 @@ interface Props {
 /** 商家主动退款：整单 / 按菜品（选数量）/ 自定义金额（仅店主） */
 export default function RefundModal({ order, open, onClose, onDone }: Props) {
   const { message } = App.useApp()
-  const isOwner = useIsOwner()
   const [type, setType] = useState<RefundType>('FULL')
   const [reason, setReason] = useState('')
   const [amountYuan, setAmountYuan] = useState<number | null>(null)
@@ -108,10 +106,9 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
         <Form.Item label="退款方式">
           <Radio.Group value={type} onChange={(e) => setType(e.target.value as RefundType)}>
             <Radio.Button value="FULL">整单全额</Radio.Button>
-            <Radio.Button value="ITEM" disabled={!isOwner}>按菜品</Radio.Button>
-            <Radio.Button value="CUSTOM" disabled={!isOwner}>自定义金额</Radio.Button>
+            <Radio.Button value="ITEM">按菜品</Radio.Button>
+            <Radio.Button value="CUSTOM">自定义金额</Radio.Button>
           </Radio.Group>
-          {!isOwner && <div style={{ marginTop: 6 }}><Typography.Text type="secondary" style={{ fontSize: 12 }}>部分退款与自定义金额仅店主可操作</Typography.Text></div>}
         </Form.Item>
         {type === 'ITEM' && (
           <Table<OrderItemView> rowKey="id" size="small" pagination={false} columns={columns} dataSource={items} style={{ marginBottom: 16 }} />

@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { ApiError, UNAUTHORIZED, httpErrorToResponse } from './apiError'
 import { clearToken, ensureLogin } from './auth'
 
 export interface ApiResult<T> {
@@ -7,11 +8,7 @@ export interface ApiResult<T> {
   data: T
 }
 
-export class ApiError extends Error {
-  constructor(public code: number, message: string, public statusCode?: number) {
-    super(message)
-  }
-}
+export { ApiError } from './apiError'
 
 export interface RequestOptions {
   url: string
@@ -23,8 +20,6 @@ export interface RequestOptions {
   silent?: boolean
 }
 
-const UNAUTHORIZED = 40101
-
 /**
  * 统一请求封装：
  * - 自动注入 customer token（未登录时先静默登录）
@@ -35,10 +30,10 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
   const { url, method = 'GET', data, auth = true, silent = false } = options
   const header: Record<string, string> = { 'Content-Type': 'application/json' }
   if (auth) {
-    header.Authorization = `Bearer ${await ensureLogin()}`
+    header.Authorization = `Bearer ${await loginOrFail(false, silent)}`
   }
 
-  let res: Taro.request.SuccessCallbackResult<ApiResult<T>>
+  let res: { statusCode: number; data: ApiResult<T> }
   try {
     res = await Taro.request<ApiResult<T>>({
       url: `${process.env.TARO_APP_API_BASE}${url}`,
@@ -48,17 +43,22 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
       timeout: 10000,
     })
   } catch (e) {
-    if (!silent) {
-      Taro.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
+    // 支付宝端非 2xx 走 fail：从错误对象里恢复出带状态码的响应，按业务错误处理
+    const recovered = httpErrorToResponse<ApiResult<T>>(e)
+    if (!recovered) {
+      if (!silent) {
+        Taro.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
+      }
+      throw new ApiError(-1, '网络异常')
     }
-    throw new ApiError(-1, '网络异常')
+    res = recovered
   }
 
   const body = res.data
   const code = body?.code ?? -1
   if (auth && !retried && (res.statusCode === 401 || code === UNAUTHORIZED)) {
     clearToken()
-    await ensureLogin(true)
+    await loginOrFail(true, silent)
     return request<T>(options, true)
   }
   if (code !== 0) {
@@ -69,4 +69,20 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
     throw new ApiError(code, message, res.statusCode)
   }
   return body.data
+}
+
+/**
+ * 静默登录；失败（顾客被停用 40103、换取凭证失败 40104、限流 42901）时按业务错误提示并抛 ApiError，
+ * 否则各页面会在没有任何提示的情况下卡在「重试中」或显示空列表。
+ */
+async function loginOrFail(force: boolean, silent: boolean): Promise<string> {
+  try {
+    return await ensureLogin(force)
+  } catch (e) {
+    const err = e instanceof ApiError ? e : new ApiError(-1, (e as Error)?.message || '登录失败')
+    if (!silent) {
+      Taro.showToast({ title: err.message, icon: 'none' })
+    }
+    throw err
+  }
 }

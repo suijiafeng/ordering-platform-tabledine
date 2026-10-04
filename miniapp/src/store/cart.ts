@@ -18,6 +18,8 @@ export interface CartItem {
 }
 
 const MAX_QTY_PER_ITEM = 99
+/** 与后端 CreateOrderRequest.items @Size(max=50) 一致 */
+const MAX_LINES = 50
 const storageKey = (storeId: number) => `cart_${storeId}`
 
 interface CartState {
@@ -61,6 +63,10 @@ export const useCartStore = create<CartState>((set, get) => ({
     if (existing) {
       existing.quantity = Math.min(MAX_QTY_PER_ITEM, existing.quantity + quantity)
     } else {
+      if (items.length >= MAX_LINES) {
+        Taro.showToast({ title: `单笔订单最多 ${MAX_LINES} 种菜品`, icon: 'none' })
+        return
+      }
       items.push({
         key,
         dishId: dish.id,

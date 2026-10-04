@@ -130,6 +130,7 @@ export default function DishesPage() {
               size="small"
               min={0}
               max={100000}
+              precision={0}
               placeholder="不限"
               defaultValue={v ?? undefined}
               style={{ width: 100 }}

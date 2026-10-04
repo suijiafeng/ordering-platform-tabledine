@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Taro, { useDidHide, useDidShow, useRouter } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 import { applyRefund, cancelOrder, fetchOrder, withdrawRefund } from '../../api/order'
+import { ApiError, NOT_FOUND } from '../../utils/apiError'
 import type { OrderDetail } from '../../api/types'
 import RefundPopup from '../../components/RefundPopup'
 import { formatYuan } from '../../utils/money'
@@ -18,7 +19,10 @@ export default function OrderDetailPage() {
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
+  /** 不可恢复的错误（订单不存在 / 账号不可用）：停止轮询并显示原因 */
+  const [fatal, setFatal] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>()
+  const fatalRef = useRef(false)
   const visible = useRef(false)
 
   const load = useCallback(async () => {
@@ -27,8 +31,15 @@ export default function OrderDetailPage() {
       setOrder(o)
       setLoadFailed(false)
       return o
-    } catch {
-      setLoadFailed(true)
+    } catch (e) {
+      const err = e as ApiError
+      if (err?.code === NOT_FOUND) {
+        setFatal('订单不存在或不属于当前账号')
+      } else if (err?.statusCode === 401 || err?.code === 40103) {
+        setFatal(err.message || '账号不可用')
+      } else {
+        setLoadFailed(true)
+      }
       return null
     }
   }, [orderNo])
@@ -39,10 +50,11 @@ export default function OrderDetailPage() {
     const o = await load()
     // 请求期间页面可能已离开（onUnload 不触发 onHide），不要再排下一次
     if (!visible.current) return
-    const hasActiveRefund = o?.refunds.some((r) => r.status === 'APPLYING' || r.status === 'PROCESSING')
+    // FAILED 在后端同样是「进行中」（商家可重试 / 线下登记），要继续轮询直到有终态
+    const hasActiveRefund = o?.refunds.some((r) => r.status === 'APPLYING' || r.status === 'PROCESSING' || r.status === 'FAILED')
     const settled = o != null && ['DONE', 'CLOSED', 'CANCELLED'].includes(o.status) && !hasActiveRefund
-    // 一次失败不终止轮询，下次自动恢复
-    if (!settled) {
+    // 一次失败不终止轮询，下次自动恢复；不可恢复错误（订单不存在等）则停止
+    if (!settled && !fatalRef.current) {
       timer.current = setTimeout(poll, POLL_MS)
     }
   }, [load])
@@ -113,10 +125,13 @@ export default function OrderDetailPage() {
 
   const onWithdraw = (refundNo: string) => run(() => withdrawRefund(refundNo))
 
+  fatalRef.current = fatal != null
+
   if (!order) {
     return (
       <View className='od-loading'>
-        <Text>{loadFailed ? '加载失败，正在重试…' : '加载中…'}</Text>
+        <Text>{fatal ?? (loadFailed ? '加载失败，正在重试…' : '加载中…')}</Text>
+        {fatal && <Text className='od-link' onClick={goOrderList}>查看全部订单</Text>}
       </View>
     )
   }
@@ -169,6 +184,7 @@ export default function OrderDetailPage() {
               </View>
               <Text className='od-row-desc'>原因：{r.reason}</Text>
               {r.rejectReason && <Text className='od-row-desc'>商家回复：{r.rejectReason}</Text>}
+              {r.status === 'FAILED' && r.failReason && <Text className='od-row-desc'>失败原因：{r.failReason}，商家会重新处理</Text>}
             </View>
           ))}
         </View>
@@ -181,7 +197,7 @@ export default function OrderDetailPage() {
         {order.canApplyRefund && <View className='od-btn' onClick={() => setRefundOpen(true)}><Text>申请退款</Text></View>}
         <View className='od-btn' onClick={goOrderList}><Text>全部订单</Text></View>
       </View>
-      {refundOpen && <RefundPopup items={order.items} onClose={() => setRefundOpen(false)} onSubmit={onRefundSubmit} />}
+      {refundOpen && <RefundPopup items={order.items} refundableAmount={order.refundableAmount} onClose={() => setRefundOpen(false)} onSubmit={onRefundSubmit} />}
     </View>
   )
 }

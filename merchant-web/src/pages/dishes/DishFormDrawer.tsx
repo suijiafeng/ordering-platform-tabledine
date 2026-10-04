@@ -151,7 +151,28 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="priceYuan" label="基础价（元）" rules={[{ required: true, message: '请输入价格' }]}>
+              <Form.Item
+                name="priceYuan"
+                label="基础价（元）"
+                extra="实际售价 = 基础价 + 所选规格加价 + 加料；任何一种规格组合的售价都必须大于 0"
+                rules={[
+                  { required: true, message: '请输入价格' },
+                  ({ getFieldValue }) => ({
+                    validator: (_, v: number | undefined) => {
+                      // 与后端一致：基础价 + 每个必选规格组里最便宜的一项（可选组只算负加价）≥ 0.01 元
+                      const groups = (getFieldValue('specGroups') ?? []) as { required?: boolean; items?: { priceDeltaYuan?: number }[] }[]
+                      let min = v ?? 0
+                      for (const g of groups) {
+                        const deltas = (g?.items ?? []).map((i) => i?.priceDeltaYuan ?? 0)
+                        if (deltas.length === 0) continue
+                        const d = Math.min(...deltas)
+                        min += g?.required === false ? Math.min(0, d) : d
+                      }
+                      return min >= 0.01 ? Promise.resolve() : Promise.reject(new Error('基础价加上最便宜的规格后必须大于 0 元'))
+                    },
+                  }),
+                ]}
+              >
                 <InputNumber min={0} max={100000} precision={2} style={{ width: '100%' }} prefix="¥" />
               </Form.Item>
             </Col>

@@ -182,7 +182,22 @@ export default function TablesPage() {
           <Form.Item name="from" label="从" rules={[{ required: true }]}>
             <InputNumber min={1} max={999} />
           </Form.Item>
-          <Form.Item name="to" label="到" rules={[{ required: true }]}>
+          <Form.Item
+            name="to"
+            label="到"
+            dependencies={['from']}
+            rules={[
+              { required: true },
+              ({ getFieldValue }) => ({
+                validator: (_, to: number) => {
+                  const from = getFieldValue('from') as number
+                  if (to < from) return Promise.reject(new Error('结束序号不能小于起始序号'))
+                  if (to - from >= 200) return Promise.reject(new Error('一次最多 200 张'))
+                  return Promise.resolve()
+                },
+              }),
+            ]}
+          >
             <InputNumber min={1} max={999} />
           </Form.Item>
         </Form>

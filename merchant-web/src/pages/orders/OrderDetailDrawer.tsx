@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Descriptions, Divider, Drawer, Input, Modal, Space, Spin, Table, Tag, Timeline, Typography } from 'antd'
+import { App, Button, Descriptions, Divider, Drawer, Input, Modal, Space, Spin, Table, Tag, Timeline, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { acceptOrder, cancelOrder, deliverOrder, getOrder, readyOrder, rejectOrder } from '../../api/order'
@@ -115,7 +115,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
         <Space direction="vertical" size={0} style={{ fontSize: 12 }}>
           <span>{r.reason}</span>
           {r.items.length > 0 && <Typography.Text type="secondary">{r.items.map((i) => `${i.dishName}×${i.quantity}`).join('、')}</Typography.Text>}
-          {r.failReason && <Typography.Text type="danger">{r.failReason}</Typography.Text>}
+          {r.failReason && <Typography.Text type={r.status === 'FAILED' ? 'danger' : 'secondary'}>{r.failReason}</Typography.Text>}
           {r.rejectReason && <Typography.Text type="secondary">拒绝理由：{r.rejectReason}</Typography.Text>}
           <Typography.Text type="secondary">{fmt(r.createdAt)}{r.operatorName ? ` · ${r.operatorName}` : ''}</Typography.Text>
         </Space>
@@ -128,6 +128,9 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
       return null
     }
     const s = order.status
+    // 后端同一订单同一时刻只允许一笔进行中退款（待审核 / 处理中 / 失败），再发起会被拒
+    const activeRefund = order.refunds.find((r) => r.status === 'APPLYING' || r.status === 'PROCESSING' || r.status === 'FAILED')
+    const blockedTip = activeRefund ? `已有一笔退款${activeRefund.status === 'APPLYING' ? '待审核' : activeRefund.status === 'PROCESSING' ? '处理中' : '失败待处理'}，请先处理` : undefined
     // 需求 §4：商家主动退款仅店主
     const canRefund = isOwner && (s === 'MAKING' || s === 'READY' || s === 'DONE') && order.refundableAmount > 0
     return (
@@ -144,9 +147,9 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
         {s === 'READY' && (
           <Button type="primary" loading={acting} onClick={() => run(() => deliverOrder(order.orderNo), '已送达')}>送达完成</Button>
         )}
-        {canRefund && <Button onClick={() => setRefundOpen(true)}>退款</Button>}
+        {canRefund && <Tooltip title={blockedTip}><Button disabled={!!activeRefund} onClick={() => setRefundOpen(true)}>退款</Button></Tooltip>}
         {isOwner && (s === 'MAKING' || s === 'READY') && (
-          <Button danger onClick={() => { setReason(''); setReasonModal('cancel') }}>整单取消</Button>
+          <Tooltip title={blockedTip}><Button danger disabled={!!activeRefund} onClick={() => { setReason(''); setReasonModal('cancel') }}>整单取消</Button></Tooltip>
         )}
       </Space>
     )
@@ -259,7 +262,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
         <Typography.Paragraph type="secondary">
           {reasonModal === 'reject' ? '订单将变为已取消，实付金额原路退回顾客，已扣减的限量库存回补。' : '订单将停止制作并变为已取消，实付金额原路退回顾客。'}
         </Typography.Paragraph>
-        <Input.TextArea rows={3} maxLength={255} showCount value={reason} onChange={(e) => setReason(e.target.value)}
+        <Input.TextArea rows={3} maxLength={200} showCount value={reason} onChange={(e) => setReason(e.target.value)}
           placeholder={reasonModal === 'reject' ? '原因（可选），如：忙不过来 / 菜品做不了' : '原因（必填）'} />
       </Modal>
     </Drawer>

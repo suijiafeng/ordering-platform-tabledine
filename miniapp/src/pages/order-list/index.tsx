@@ -16,6 +16,7 @@ export default function OrderList() {
   const [total, setTotal] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [failed, setFailed] = useState(false)
   // 刷新与加载更多可能交错：只采纳最后一次发起的请求
   const seq = useRef(0)
 
@@ -32,6 +33,9 @@ export default function OrderList() {
       })
       setPage(p)
       setTotal(res.total)
+      setFailed(false)
+    } catch {
+      if (mine === seq.current) setFailed(true)  // request 层已提示
     } finally {
       if (mine === seq.current) {
         setLoading(false)
@@ -53,8 +57,8 @@ export default function OrderList() {
 
   if (loaded && list.length === 0) {
     return (
-      <View className='ol-empty'>
-        <Text>暂无订单</Text>
+      <View className='ol-empty' onClick={() => failed && load(1)}>
+        <Text>{failed ? '加载失败，点击重试' : '暂无订单'}</Text>
       </View>
     )
   }

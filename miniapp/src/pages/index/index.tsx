@@ -57,8 +57,24 @@ export default function Index() {
       loadTable(token)
     } else if (!current) {
       restoreLast()
+    } else {
+      // 从确认订单页返回（下单被拒：售罄 / 下架 / 打烊）或长时间停留后回到前台：
+      // 刷新店铺营业状态与菜单，购物车按最新菜单对账，否则会反复撞同一个错误
+      refreshCurrent(current)
     }
   })
+
+  const refreshCurrent = async (table: NonNullable<typeof current>) => {
+    if (table.qrToken) {
+      try {
+        setCurrent({ ...(await resolveQr(table.qrToken, true)), qrToken: table.qrToken })
+        return  // setCurrent 触发下方 effect 重新加载菜单
+      } catch {
+        // 桌码失效等：保留原状态，下面至少刷新一次菜单
+      }
+    }
+    loadMenu(table.storeId).catch(() => {})
+  }
 
   useEffect(() => {
     if (current) {

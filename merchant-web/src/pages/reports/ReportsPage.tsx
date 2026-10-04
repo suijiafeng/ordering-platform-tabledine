@@ -96,7 +96,14 @@ export default function ReportsPage() {
           <DatePicker.RangePicker
             value={range}
             allowClear={false}
-            onChange={(v) => v && v[0] && v[1] && setRange([v[0], v[1]])}
+            onChange={(v) => {
+              if (!v || !v[0] || !v[1]) return
+              if (v[1].diff(v[0], 'day') > 91) {
+                message.warning('单次最多导出 92 天，请缩小范围')
+                return
+              }
+              setRange([v[0], v[1]])
+            }}
             disabledDate={(d) => d.isAfter(dayjs(), 'day')}
             presets={[
               { label: '今天', value: [dayjs(), dayjs()] },

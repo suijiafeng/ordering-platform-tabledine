@@ -48,11 +48,12 @@ export default function StaffPage() {
     setSaving(true)
     try {
       if (editing === 'new') {
-        await createStaff({ username: v.username.trim(), name: v.name.trim(), password: v.password! })
+        await createStaff({ username: v.username.trim(), name: v.name.trim(), password: v.password! })  // 密码原样提交，与登录时一致
         message.success('已新建店员账号')
       } else if (editing) {
-        await updateStaff(editing.id, { name: v.name.trim(), password: v.password?.trim() || undefined })
-        message.success(v.password ? '已保存，该员工需用新密码重新登录' : '已保存')
+        const password = v.password || undefined
+        await updateStaff(editing.id, { name: v.name.trim(), password })
+        message.success(password ? '已保存，该员工需用新密码重新登录' : '已保存')
       }
       setEditing(null)
       void load()
@@ -144,7 +145,7 @@ export default function StaffPage() {
             name="password"
             label={isNew ? '初始密码' : '重置密码'}
             extra={isNew ? undefined : '留空则不修改；填写后该员工需用新密码重新登录'}
-            rules={[{ required: isNew, min: 6, max: 64, message: '密码长度 6~64 位' }]}
+            rules={[{ required: isNew, min: 6, max: 64, message: '密码长度 6~64 位' }, { pattern: /^\S*$/, message: '密码不能包含空格' }]}
           >
             <Input.Password placeholder={isNew ? '6~64 位' : '留空不修改'} />
           </Form.Item>

@@ -16,9 +16,9 @@ export async function payOrder(orderNo: string): Promise<PayOutcome> {
   try {
     if (process.env.TARO_ENV === 'alipay') {
       const res = (await Taro.tradePay({ tradeNO: String(init.params.tradeNO) })) as { resultCode?: string }
-      // 9000 支付成功；8000 处理中，按成功处理交由服务端确认；6001 用户取消
+      // 9000 支付成功；8000 处理中 / 6004 结果未知：交由服务端回调或查单确认，不能提示用户重付；6001 用户取消
       if (res.resultCode === '6001') return 'cancel'
-      return res.resultCode === '9000' || res.resultCode === '8000' ? 'success' : 'fail'
+      return res.resultCode === '9000' || res.resultCode === '8000' || res.resultCode === '6004' ? 'success' : 'fail'
     }
     const p = init.params
     await Taro.requestPayment({
