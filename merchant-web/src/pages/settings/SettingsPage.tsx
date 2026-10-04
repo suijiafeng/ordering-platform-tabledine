@@ -3,6 +3,7 @@ import { App, Button, Card, Col, Form, Input, InputNumber, Result, Row, Space, S
 import { fetchStore, setBusinessStatus, updateStore } from '../../api/store'
 import type { StoreDetail, StoreUpdateRequest } from '../../api/types'
 import ImageUpload from '../../components/ImageUpload'
+import { ignoreShownError } from '../../utils/errors'
 
 /** 店铺设置（店主）：营业状态、基本信息、业务参数 */
 export default function SettingsPage() {
@@ -18,8 +19,8 @@ export default function SettingsPage() {
       const s = await fetchStore()
       setStore(s)
       form.setFieldsValue(s)
-    } catch {
-      // 错误提示已由 request 统一弹出，这里只切换到可重试的错误态，避免永久转圈
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示，这里只切换到可重试的错误态，避免永久转圈
       setLoadError(true)
     }
   }, [form])
@@ -47,6 +48,8 @@ export default function SettingsPage() {
       setStore(s)
       form.setFieldsValue(s)
       message.success('已保存')
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；表单保留用户的修改
     } finally {
       setSaving(false)
     }
@@ -105,17 +108,17 @@ export default function SettingsPage() {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item name="payTimeoutMin" label="未支付自动关单（分钟）" rules={[{ required: true }]}>
-                <InputNumber min={5} max={60} style={{ width: '100%' }} />
+                <InputNumber min={5} max={60} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item name="acceptTimeoutMin" label="未接单自动退款（分钟）" rules={[{ required: true }]} extra="手动接单模式下生效">
-                <InputNumber min={1} max={60} style={{ width: '100%' }} />
+                <InputNumber min={1} max={60} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item name="afterSaleHours" label="售后申请时限（小时）" rules={[{ required: true }]}>
-                <InputNumber min={0} max={168} style={{ width: '100%' }} />
+                <InputNumber min={0} max={168} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>

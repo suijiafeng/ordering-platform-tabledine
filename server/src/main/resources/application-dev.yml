@@ -1,4 +1,4 @@
-# 本地开发：docker compose 启动的 postgres + 种子数据 + 模拟小程序登录
+# 本地开发：docker compose 启动的 postgres + 种子数据（含测试会员）
 spring:
   flyway:
     locations: classpath:db/migration,classpath:db/seed
@@ -13,19 +13,17 @@ app:
   jwt:
     # 仅开发环境使用，生产必须通过 JWT_SECRET 注入
     secret: ${JWT_SECRET:dev-only-secret-please-change-0123456789abcdef}
-  auth:
-    mock-enabled: ${AUTH_MOCK_ENABLED:true}
-  pay:
-    # 开发环境：模拟支付 / 退款渠道，不产生真实资金往来；小程序调用 mock-pay 接口即可完成支付
-    mock-enabled: ${PAY_MOCK_ENABLED:true}
-    notify-base-url: ${PAY_NOTIFY_BASE_URL:http://localhost:8080}
   qr:
-    base-url: https://example.com/q/
+    # 本机桌码直接打开 customer-web，并把桌码 token 传给 H5；真机扫码时用环境变量改为电脑的局域网地址。
+    base-url: ${QR_BASE_URL:http://127.0.0.1:3000/h5/?token=}
   storage:
     local-dir: ./uploads
     serve-local: true
   cors:
-    allowed-origins: http://localhost:5173
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:3000
+      - http://127.0.0.1:3000
 
 logging:
   level:

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { App, Button, Card, Input, List, Modal, Space, Tag, Typography, theme as antdTheme } from 'antd'
+import { App, Button, Card, Input, List, Modal, Space, Switch, Tag, Typography, theme as antdTheme } from 'antd'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { createCategory, deleteCategory, sortCategories, updateCategory } from '../../api/menu'
 import type { Category } from '../../api/types'
+import { ignoreShownError } from '../../utils/errors'
 
 /** 「全部菜品」占位项（List 需要非空的数据项） */
 const ALL: Category = { id: -1, name: '全部菜品', sort: 0, status: 1 }
@@ -20,11 +21,14 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
   const { token } = antdTheme.useToken()
   const [editing, setEditing] = useState<Category | 'new' | null>(null)
   const [name, setName] = useState('')
+  // 停用的分类在顾客端隐藏，其下菜品也不能下单；在修改弹窗里可重新启用
+  const [enabled, setEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const openEdit = (c: Category | 'new') => {
     setEditing(c)
     setName(c === 'new' ? '' : c.name)
+    setEnabled(c === 'new' || c.status !== 0)
   }
 
   const save = async () => {
@@ -37,12 +41,12 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
       if (editing === 'new') {
         await createCategory(name.trim())
       } else if (editing) {
-        await updateCategory(editing.id, { name: name.trim() })
+        await updateCategory(editing.id, { name: name.trim(), status: enabled ? 1 : 0 })
       }
       setEditing(null)
       onChanged()
-    } catch {
-      // 错误提示已由 request 统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setSaving(false)
     }
@@ -55,8 +59,12 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
       return
     }
     ;[ids[index], ids[target]] = [ids[target], ids[index]]
-    await sortCategories(ids)
-    onChanged()
+    try {
+      await sortCategories(ids)
+      onChanged()
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；列表保持原顺序
+    }
   }
 
   const remove = (c: Category) => {
@@ -65,11 +73,15 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
       content: '分类下还有菜品时不能删除。',
       okButtonProps: { danger: true },
       onOk: async () => {
-        await deleteCategory(c.id)
-        if (selectedId === c.id) {
-          onSelect(null)
+        try {
+          await deleteCategory(c.id)
+          if (selectedId === c.id) {
+            onSelect(null)
+          }
+          onChanged()
+        } catch (e) {
+          ignoreShownError(e)  // 请求层已提示（如分类下还有菜品）
         }
-        onChanged()
       },
     })
   }
@@ -119,6 +131,12 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
         destroyOnHidden
       >
         <Input value={name} maxLength={32} placeholder="分类名称，如：招牌热菜" onChange={(e) => setName(e.target.value)} onPressEnter={save} />
+        {editing !== 'new' && (
+          <Space style={{ marginTop: 16 }}>
+            <Switch checked={enabled} onChange={setEnabled} />
+            <Typography.Text>{enabled ? '启用：顾客端可见' : '停用：顾客端隐藏，其下菜品不能下单'}</Typography.Text>
+          </Space>
+        )}
       </Modal>
     </Card>
   )

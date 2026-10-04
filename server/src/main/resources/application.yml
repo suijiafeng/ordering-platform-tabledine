@@ -17,7 +17,7 @@ spring:
   task:
     scheduling:
       pool:
-        # 渠道调用是同步且有超时，单线程时一个任务卡住会拖住其他所有定时任务
+        # 关单、自动退款、退款补偿、每日限量重置各自独立：单线程时一个任务变慢会拖住其他所有定时任务
         size: 4
   jackson:
     default-property-inclusion: always
@@ -54,33 +54,20 @@ springdoc:
 app:
   jwt:
     secret: ${JWT_SECRET:}
-    customer-ttl: 2h
+    member-ttl: 7d
     staff-access-ttl: 2h
     staff-refresh-ttl: 14d
   auth:
-    mock-enabled: false
     max-login-failures: 5
     lock-duration: 15m
-  wechat:
-    app-id: ${WECHAT_APP_ID:}
-    app-secret: ${WECHAT_APP_SECRET:}
-  alipay:
-    app-id: ${ALIPAY_APP_ID:}
-    private-key: ${ALIPAY_PRIVATE_KEY:}
-    alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
-  pay:
-    mock-enabled: false
-    # 公网地址，用于拼接渠道异步通知 URL（/api/v1/pay/notify/*）
-    notify-base-url: ${PAY_NOTIFY_BASE_URL:}
-  wechat-pay:
-    mch-id: ${WECHAT_PAY_MCH_ID:}
-    serial-no: ${WECHAT_PAY_SERIAL_NO:}
-    private-key: ${WECHAT_PAY_PRIVATE_KEY:}
-    api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
-    platform-public-key-id: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID:}
-    platform-public-key: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY:}
+  refund:
+    # 退款处理中超过该时长仍无结果，补偿任务按钱包流水查询并重试
+    query-after: 3m
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  security:
+    # 公网地址的反向代理 / 云负载均衡需在此登记，否则其 X-Real-IP 不被信任，所有请求会被按同一 IP 限流
+    trusted-proxies: ${TRUSTED_PROXIES:}
   qr:
     base-url: ${QR_BASE_URL:https://ordering.example.com/q/}
   storage:

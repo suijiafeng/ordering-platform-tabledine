@@ -16,7 +16,6 @@ public enum ErrorCode {
     UNAUTHORIZED(40101, "未登录或登录已失效", HttpStatus.UNAUTHORIZED),
     BAD_CREDENTIALS(40102, "账号或密码错误", HttpStatus.UNAUTHORIZED),
     ACCOUNT_DISABLED(40103, "账号已停用或暂时锁定", HttpStatus.UNAUTHORIZED),
-    MINIAPP_LOGIN_FAILED(40104, "小程序登录失败，请重试", HttpStatus.UNAUTHORIZED),
 
     FORBIDDEN(40301, "无权限", HttpStatus.FORBIDDEN),
 
@@ -31,12 +30,11 @@ public enum ErrorCode {
 
     PARAM_INVALID(42201, "参数不合法", HttpStatus.UNPROCESSABLE_ENTITY),
     REFUND_AMOUNT_EXCEEDED(42202, "退款金额超过可退余额", HttpStatus.UNPROCESSABLE_ENTITY),
+    BALANCE_INSUFFICIENT(42203, "账户余额不足，请联系店员充值", HttpStatus.UNPROCESSABLE_ENTITY),
 
     TOO_MANY_REQUESTS(42901, "请求过于频繁，请稍后再试", HttpStatus.TOO_MANY_REQUESTS),
 
     INTERNAL_ERROR(50000, "系统繁忙，请稍后再试", HttpStatus.INTERNAL_SERVER_ERROR),
-    PAY_CHANNEL_ERROR(50001, "支付渠道调用失败", HttpStatus.BAD_GATEWAY),
-    REFUND_CHANNEL_ERROR(50002, "退款渠道调用失败", HttpStatus.BAD_GATEWAY),
 
     SOLD_OUT(60001, "菜品已售罄", HttpStatus.CONFLICT),
     STORE_CLOSED(60002, "店铺已打烊", HttpStatus.CONFLICT);

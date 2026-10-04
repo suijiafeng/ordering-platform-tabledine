@@ -13,8 +13,11 @@ public enum RefundStatus {
     /** 线下退款并登记（终态，计入已退金额） */
     OFFLINE;
 
-    /** 占用「同一订单同一时刻只允许一笔」名额的状态（与 uk_refund_order_active 部分唯一索引一致） */
-    public boolean isActive() {
+    /**
+     * 尚未了结的退款：待审核、处理中，以及失败（商家仍需重试或登记线下退款）。
+     * 与 uk_refund_order_active / uk_refund_payment_active 部分唯一索引的状态集合一致。
+     */
+    public boolean isUnresolved() {
         return this == APPLYING || this == PROCESSING || this == FAILED;
     }
 

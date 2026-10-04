@@ -187,22 +187,77 @@ public class MerchantMenuService {
                 .set(Dish::getIsSoldOut, soldOut).set(Dish::getUpdatedAt, java.time.OffsetDateTime.now()).eq(Dish::getId, id));
     }
 
-    /** 设置每日限量：同时把今日剩余重置为该值；null 取消限量 */
+    /**
+     * 设置每日限量；null 取消限量。
+     * 今日剩余 = 新限量 − 今日已占用（原限量 − 原剩余）：中午把 10 改成 12 时已卖 5 份，剩余应是 7 而不是 12。
+     */
     public void updateStock(Long id, Integer dailyStock) {
         requireDish(id);
-        dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                .set(Dish::getDailyStock, dailyStock)
-                .set(Dish::getStockQuantity, dailyStock)
+        var w = Wrappers.<Dish>lambdaUpdate()
                 .set(Dish::getUpdatedAt, java.time.OffsetDateTime.now())
-                .eq(Dish::getId, id));
+                .eq(Dish::getId, id);
+        if (dailyStock == null) {
+            w.set(Dish::getDailyStock, null).set(Dish::getStockQuantity, null);
+        } else {
+            ensureStockFresh();  // 先把可能错过的 0 点重置补上，再按今日已占用重算
+            w.setSql("stock_quantity = GREATEST(0, " + dailyStock + " - (COALESCE(daily_stock, 0) - COALESCE(stock_quantity, 0)))")
+                    .set(Dish::getDailyStock, dailyStock)
+                    .set(Dish::getStockDate, java.time.LocalDate.now(STOCK_ZONE));
+        }
+        dishMapper.update(null, w);
+    }
+
+    static final java.time.ZoneId STOCK_ZONE = java.time.ZoneId.of("Asia/Shanghai");
+
+    /**
+     * 幂等的每日重置：业务日期落后于今天的限量菜，把今日剩余重置为每日限量并推进日期。
+     * 0 点定时任务、服务启动、下单前、顾客拉菜单时都会调用，停机错过 0 点也不会漏掉。
+     * 所有门店（无门店上下文时租户插件不过滤）。
+     * <p>本进程当天已成功执行过就直接返回：顾客匿名拉菜单很频繁，不必每次都跑一条跨门店 UPDATE。
+     * 在事务里调用时，等事务提交后才记为已执行（事务回滚则重置也回滚，下次还要再跑）。
+     */
+    public int ensureStockFresh() {
+        if (java.time.LocalDate.now(STOCK_ZONE).equals(stockFreshDate.get())) {
+            return 0;
+        }
+        return refreshDailyStock();
+    }
+
+    /** 不看本进程缓存，直接执行一次每日重置（0 点任务与启动时用） */
+    private int refreshDailyStock() {
+        java.time.LocalDate today = java.time.LocalDate.now(STOCK_ZONE);
+        int rows = dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .setSql("stock_quantity = daily_stock")
+                .set(Dish::getStockDate, today)
+                .isNotNull(Dish::getDailyStock)
+                .and(q -> q.isNull(Dish::getStockDate).or().lt(Dish::getStockDate, today)));
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            stockFreshDate.set(today);
+                        }
+                    });
+        } else {
+            stockFreshDate.set(today);
+        }
+        return rows;
+    }
+
+    /** 本进程最近一次成功执行每日重置的业务日期 */
+    private final java.util.concurrent.atomic.AtomicReference<java.time.LocalDate> stockFreshDate =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void resetDailyStockOnStartup() {
+        resetDailyStock();
     }
 
     /** 每天 0 点（Asia/Shanghai）把今日剩余重置为每日限量；所有门店（定时任务无门店上下文） */
     @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 0 * * *", zone = "Asia/Shanghai")
     public void resetDailyStock() {
-        int rows = dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                .setSql("stock_quantity = daily_stock")
-                .isNotNull(Dish::getDailyStock));
+        int rows = refreshDailyStock();
         if (rows > 0) {
             org.slf4j.LoggerFactory.getLogger(MerchantMenuService.class).info("已重置 {} 道菜的每日限量", rows);
         }

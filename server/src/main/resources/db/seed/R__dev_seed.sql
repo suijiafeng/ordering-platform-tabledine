@@ -58,7 +58,17 @@ VALUES
     (3, 1, '布丁', 300, 3)
 ON CONFLICT (id) DO NOTHING;
 
+-- H5 会员账号（手机号登录，密码 staff123），余额 100 元；流水与 customer.balance 保持一致
+INSERT INTO customer (id, nickname, phone, status, store_id, password_hash, balance)
+VALUES (1001, '测试会员', '13800000001', 1, 1, '$2a$10$gine/4MjPyHz3TSIvSYF9Objbi16p6mN8zvaHymzW.2zvfE74POs.', 10000)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO wallet_transaction (id, store_id, customer_id, type, amount, balance_after, operator_id, remark)
+VALUES (1001, 1, 1001, 'RECHARGE', 10000, 10000, 1, '开发环境种子充值')
+ON CONFLICT (id) DO NOTHING;
+
 -- 固定 ID 插入后，把序列推到当前最大值之后，避免后续新增主键冲突
+SELECT setval(pg_get_serial_sequence('customer', 'id'),        GREATEST((SELECT MAX(id) FROM customer), 1));
+SELECT setval(pg_get_serial_sequence('wallet_transaction', 'id'), GREATEST((SELECT MAX(id) FROM wallet_transaction), 1));
 SELECT setval(pg_get_serial_sequence('store', 'id'),           GREATEST((SELECT MAX(id) FROM store), 1));
 SELECT setval(pg_get_serial_sequence('staff', 'id'),           GREATEST((SELECT MAX(id) FROM staff), 1));
 SELECT setval(pg_get_serial_sequence('dining_table', 'id'),    GREATEST((SELECT MAX(id) FROM dining_table), 1));

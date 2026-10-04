@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
+import com.example.ordering.module.pay.channel.BalancePayChannel;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,6 +44,18 @@ public abstract class AbstractIntegrationTest {
         }
     }
 
+    protected static final String MEMBER_PASSWORD = "pw123456";
+    /** 测试会员手机号：从随机起点递增，避免与种子数据及其他测试类冲突 */
+    private static final java.util.concurrent.atomic.AtomicLong MEMBER_SEQ =
+            new java.util.concurrent.atomic.AtomicLong(java.util.concurrent.ThreadLocalRandom.current().nextLong(10_000_000, 90_000_000));
+
+    /**
+     * 余额退款执行器的 spy：默认走真实实现；测试里可注入「返还出错 / 返还成功但响应丢失 / 查询出错」等故障。
+     * 放在基类里，所有测试类共用同一个 Spring 上下文；每个测试结束后自动重置。
+     */
+    @SpyBean
+    protected BalancePayChannel balanceChannel;
+
     @Autowired
     protected MockMvc mvc;
     @Autowired
@@ -65,12 +79,26 @@ public abstract class AbstractIntegrationTest {
         return staffLogin("staff", "staff123").path("accessToken").asText();
     }
 
-    protected String customerToken(String platform, String code) throws Exception {
-        MvcResult r = mvc.perform(post("/api/v1/c/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content(json("platform", platform, "code", code)))
+    /** 新建一个余额充足（1 万元）的会员并登录，返回顾客 token */
+    protected String memberToken() throws Exception {
+        String phone = "139" + String.format("%08d", MEMBER_SEQ.incrementAndGet() % 100_000_000);
+        mvc.perform(authed(post("/api/v1/m/members"), ownerToken()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("phone", phone, "name", "测试会员", "password", MEMBER_PASSWORD, "initialAmount", 1_000_000)))
+                .andExpect(status().isOk());
+        return memberLogin(phone, MEMBER_PASSWORD);
+    }
+
+    protected String memberLogin(String phone, String password) throws Exception {
+        MvcResult r = mvc.perform(post("/api/v1/c/auth/password-login").contentType(MediaType.APPLICATION_JSON)
+                        .content(json("phone", phone, "password", password)))
                 .andExpect(status().isOk())
                 .andReturn();
         return data(r).path("token").asText();
+    }
+
+    /** 余额支付：发起即扣费入账 */
+    protected void pay(String customer, String orderNo) throws Exception {
+        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer)).andExpect(status().isOk());
     }
 
     protected static MockHttpServletRequestBuilder authed(MockHttpServletRequestBuilder builder, String token) {

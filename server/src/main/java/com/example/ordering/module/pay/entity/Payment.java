@@ -20,7 +20,7 @@ public class Payment {
     private Long orderId;
     private String outTradeNo;
     private Platform channel;
-    /** 渠道交易号（回调后回填） */
+    /** 交易号（余额支付为 BAL + 商户订单号） */
     private String transactionNo;
     private Long amount;
     private PaymentStatus status;

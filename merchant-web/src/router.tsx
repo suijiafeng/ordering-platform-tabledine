@@ -12,13 +12,15 @@ import OrdersPage from './pages/orders/OrdersPage'
 import KitchenPage from './pages/kitchen/KitchenPage'
 import RefundsPage from './pages/refunds/RefundsPage'
 import ReportsPage from './pages/reports/ReportsPage'
+import MembersPage from './pages/members/MembersPage'
 import { useAuthStore } from './store/auth'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((s) => s.accessToken)
   const location = useLocation()
   if (!token) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    // 带上查询参数：从新订单通知等链接（/orders?status=PAID&orderNo=…）过来，登录后回到同一个视图
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
   }
   return <>{children}</>
 }
@@ -46,6 +48,7 @@ export const router = createBrowserRouter([
       { path: 'dishes', element: <DishesPage /> },
       { path: 'tables', element: <TablesPage /> },
       { path: 'reports', element: <RequireOwner><ReportsPage /></RequireOwner> },
+      { path: 'members', element: <MembersPage /> },
       { path: 'staff', element: <RequireOwner><StaffPage /></RequireOwner> },
       { path: 'settings', element: <RequireOwner><SettingsPage /></RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },

@@ -9,6 +9,7 @@ import { formatYuan } from '../../utils/money'
 import { useIsOwner } from '../../utils/auth'
 import CategoryPanel from './CategoryPanel'
 import DishFormDrawer from './DishFormDrawer'
+import { ignoreShownError } from '../../utils/errors'
 
 const PAGE_SIZE = 20
 
@@ -30,6 +31,8 @@ export default function DishesPage() {
   const beginLoad = useLatestRequest()
   // 限量输入框是非受控的：保存失败时递增该值强制重建，让显示值回到服务端的旧值
   const [stockReset, setStockReset] = useState(0)
+  // 正在请求中的开关（`status-{id}` / `soldout-{id}`），显示 loading 并防止重复点击
+  const [switching, setSwitching] = useState<string | null>(null)
 
   const loadDishes = useCallback(async () => {
     const isLatest = beginLoad()
@@ -43,8 +46,8 @@ export default function DishesPage() {
       if (page > lastPage) {
         setPage(lastPage)
       }
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
     }
@@ -90,9 +93,17 @@ export default function DishesPage() {
         isOwner ? (
           <Switch
             checked={v === 1}
+            loading={switching === `status-${r.id}`}
             onChange={async (checked) => {
-              await setDishStatus(r.id, checked ? 1 : 0)
-              patchLocal(r.id, { status: checked ? 1 : 0 })
+              setSwitching(`status-${r.id}`)
+              try {
+                await setDishStatus(r.id, checked ? 1 : 0)
+                patchLocal(r.id, { status: checked ? 1 : 0 })
+              } catch (e) {
+                ignoreShownError(e)  // 请求层已提示；开关保持原值
+              } finally {
+                setSwitching(null)
+              }
             }}
           />
         ) : v === 1 ? <Tag color="green">上架</Tag> : <Tag>下架</Tag>,
@@ -105,10 +116,18 @@ export default function DishesPage() {
         <Switch
           checked={v}
           checkedChildren="售罄"
+          loading={switching === `soldout-${r.id}`}
           onChange={async (checked) => {
-            await setDishSoldOut(r.id, checked)
-            patchLocal(r.id, { soldOut: checked })
-            message.success(checked ? '已沽清' : '已恢复售卖')
+            setSwitching(`soldout-${r.id}`)
+            try {
+              await setDishSoldOut(r.id, checked)
+              patchLocal(r.id, { soldOut: checked })
+              message.success(checked ? '已沽清' : '已恢复售卖')
+            } catch (e) {
+              ignoreShownError(e)  // 请求层已提示；开关保持原值
+            } finally {
+              setSwitching(null)
+            }
           }}
         />
       ),
@@ -130,6 +149,7 @@ export default function DishesPage() {
               size="small"
               min={0}
               max={100000}
+              precision={0}
               placeholder="不限"
               defaultValue={v ?? undefined}
               style={{ width: 100 }}
@@ -139,10 +159,11 @@ export default function DishesPage() {
                 if (next !== v && (next === null || Number.isInteger(next))) {
                   try {
                     await setDishStock(r.id, next)
-                    // 设置限量同时把今日剩余重置为该值
-                    patchLocal(r.id, { dailyStock: next, stockQuantity: next })
-                  } catch {
-                    setStockReset((t) => t + 1)  // 已统一提示；回滚显示值
+                    // 今日剩余由后端按「新限量 − 今日已售」重算，重新加载才能显示正确的值
+                    void loadDishes()
+                  } catch (e) {
+                    setStockReset((t) => t + 1)  // 回滚显示值
+                    ignoreShownError(e)  // 请求层已提示
                   }
                 }
               }}
@@ -159,7 +180,14 @@ export default function DishesPage() {
           render: (_: unknown, r: DishItem) => (
             <Space>
               <Button type="link" size="small" onClick={() => setDrawer({ open: true, dishId: r.id })}>编辑</Button>
-              <Popconfirm title={`删除「${r.name}」？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteDish(r.id); loadDishes() }}>
+              <Popconfirm title={`删除「${r.name}」？`} okButtonProps={{ danger: true }} onConfirm={async () => {
+                try {
+                  await deleteDish(r.id)
+                  void loadDishes()
+                } catch (e) {
+                  ignoreShownError(e)  // 请求层已提示（如菜品仍在使用）
+                }
+              }}>
                 <Button type="link" size="small" danger>删除</Button>
               </Popconfirm>
             </Space>
@@ -216,7 +244,7 @@ export default function DishesPage() {
         categories={categories}
         defaultCategoryId={categoryId}
         onClose={() => setDrawer({ open: false, dishId: null })}
-        onSaved={() => { setDrawer({ open: false, dishId: null }); loadDishes() }}
+        onSaved={() => { setDrawer({ open: false, dishId: null }); void loadDishes() }}
       />
     </Row>
   )

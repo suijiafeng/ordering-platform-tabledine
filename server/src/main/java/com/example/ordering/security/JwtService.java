@@ -1,6 +1,5 @@
 package com.example.ordering.security;
 
-import com.example.ordering.common.Platform;
 import com.example.ordering.config.AppProperties;
 import com.example.ordering.module.staff.entity.Staff;
 import io.jsonwebtoken.Claims;
@@ -21,7 +20,7 @@ import java.util.UUID;
 /**
  * JWT 签发与校验。
  * <ul>
- *   <li>顾客：audience = customer，仅 access token（过期后小程序静默重登）</li>
+ *   <li>会员：audience = customer，仅 access token；携带 token_version，重置 / 修改密码后旧 token 失效</li>
  *   <li>员工：audience = merchant，access + refresh；携带 token_version，停用 / 改密后旧 token 失效</li>
  * </ul>
  */
@@ -29,7 +28,6 @@ import java.util.UUID;
 public class JwtService {
 
     public static final String CLAIM_TYPE = "typ";
-    public static final String CLAIM_PLATFORM = "plat";
     public static final String CLAIM_STORE = "sid";
     public static final String CLAIM_ROLE = "role";
     public static final String CLAIM_TOKEN_VERSION = "tv";
@@ -53,10 +51,14 @@ public class JwtService {
     public record IssuedToken(String token, long expiresInSeconds) {
     }
 
-    public IssuedToken issueCustomerToken(Long customerId, Platform platform) {
-        Duration ttl = props.getCustomerTtl();
+    /**
+     * 会员 token（audience = customer）。
+     * @param tokenVersion 会员的 token_version：重置 / 修改密码后递增，旧 token 失效
+     */
+    public IssuedToken issueCustomerToken(Long customerId, int tokenVersion) {
+        Duration ttl = props.getMemberTtl();
         String token = baseBuilder(UserType.CUSTOMER, customerId, TYPE_ACCESS, ttl)
-                .claim(CLAIM_PLATFORM, platform.name())
+                .claim(CLAIM_TOKEN_VERSION, tokenVersion)
                 .compact();
         return new IssuedToken(token, ttl.toSeconds());
     }

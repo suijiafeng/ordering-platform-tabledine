@@ -6,9 +6,8 @@ import com.example.ordering.module.order.entity.OperatorType;
 import com.example.ordering.module.order.entity.Order;
 import com.example.ordering.module.order.entity.OrderStatus;
 import com.example.ordering.module.order.mapper.OrderMapper;
-import com.example.ordering.module.order.service.OrderService;
+import com.example.ordering.module.order.service.CustomerOrderService;
 import com.example.ordering.module.order.service.OrderStateService;
-import com.example.ordering.module.pay.service.PayService;
 import com.example.ordering.module.refund.entity.Refund;
 import com.example.ordering.module.refund.entity.RefundInitiator;
 import com.example.ordering.module.refund.service.RefundService;
@@ -19,13 +18,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 订单 / 支付 / 退款定时任务（设计文档 §2.6，单实例 @Scheduled）。
+ * 订单 / 退款定时任务（设计文档 §2.6，单实例 @Scheduled）。
  * 每个订单单独处理并捕获异常，避免一条数据阻塞整批；状态变更均为条件更新，重复执行安全。
  */
 @Slf4j
@@ -33,28 +33,26 @@ import java.util.Map;
 public class OrderTasks {
 
     private final OrderMapper orderMapper;
-    private final OrderService orderService;
+    private final CustomerOrderService customerOrderService;
     private final OrderStateService orderStateService;
-    private final PayService payService;
     private final RefundService refundService;
     private final StoreService storeService;
     private final TransactionTemplate tx;
-    private final AppProperties.Pay payProps;
+    private final Duration refundQueryAfter;
 
-    public OrderTasks(OrderMapper orderMapper, OrderService orderService, OrderStateService orderStateService,
-                      PayService payService, RefundService refundService, StoreService storeService,
+    public OrderTasks(OrderMapper orderMapper, CustomerOrderService customerOrderService, OrderStateService orderStateService,
+                      RefundService refundService, StoreService storeService,
                       TransactionTemplate tx, AppProperties appProperties) {
         this.orderMapper = orderMapper;
-        this.orderService = orderService;
+        this.customerOrderService = customerOrderService;
         this.orderStateService = orderStateService;
-        this.payService = payService;
         this.refundService = refundService;
         this.storeService = storeService;
         this.tx = tx;
-        this.payProps = appProperties.getPay();
+        this.refundQueryAfter = appProperties.getRefund().getQueryAfter();
     }
 
-    /** 未支付关单：每分钟。先向渠道查一次，避免把刚支付成功但回调未到的订单关掉 */
+    /** 未支付关单：每分钟。余额支付在发起时即同步完成，待支付订单不会有「已付款但未入账」的情况 */
     @Scheduled(fixedDelay = 60_000, initialDelay = 30_000)
     public void closeExpiredOrders() {
         List<Order> expired = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
@@ -64,16 +62,7 @@ public class OrderTasks {
                 .last("LIMIT 200"));
         for (Order order : expired) {
             try {
-                PayService.PayCheck check = payService.queryAndSync(order);
-                if (check == PayService.PayCheck.PAID) {
-                    continue;  // 查到已支付，已入账
-                }
-                if (check == PayService.PayCheck.UNKNOWN) {
-                    // 渠道查询失败：无法确认没付，本轮不关单，下一轮再查（否则已付款订单会被关掉再退款）
-                    log.warn("订单 {} 查单结果未确认，暂不关单", order.getOrderNo());
-                    continue;
-                }
-                orderService.closeExpired(order, "支付超时自动关闭");
+                customerOrderService.closeExpired(order, "支付超时自动关闭");
             } catch (RuntimeException e) {
                 log.error("关单任务处理订单 {} 失败", order.getOrderNo(), e);
             }
@@ -83,9 +72,13 @@ public class OrderTasks {
     /** 未接单自动退款：每分钟。手动接单模式下，已支付超过店铺配置时长未接单 → 取消 + 全额退款 */
     @Scheduled(fixedDelay = 60_000, initialDelay = 45_000)
     public void autoRefundUnaccepted() {
+        // 超时判断放在 SQL 里（按各店的接单时限）：只取前 200 单再在内存里过滤，
+        // 会被时限较长门店的订单占满名额，导致其他门店早已超时的订单一直轮不到
         List<Order> paid = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
                 .eq(Order::getStatus, OrderStatus.PAID)
-                .lt(Order::getPaidAt, OffsetDateTime.now().minusMinutes(1))
+                .isNotNull(Order::getPaidAt)
+                .apply("paid_at < now() - make_interval(mins => COALESCE("
+                        + "(SELECT s.accept_timeout_min FROM store s WHERE s.id = orders.store_id), 10))")
                 .orderByAsc(Order::getId)
                 .last("LIMIT 200"));
         Map<Long, Store> stores = new HashMap<>();
@@ -100,7 +93,7 @@ public class OrderTasks {
                 tx.executeWithoutResult(s -> {
                     if (orderStateService.transition(order, OrderStatus.PAID, OrderStatus.CANCELLED, OperatorType.SYSTEM, null, remark)) {
                         orderStateService.restoreStock(order.getId());
-                        refundService.fullRefund(order, null, RefundInitiator.SYSTEM, null, remark);
+                        refundService.refundOrder(order, RefundInitiator.SYSTEM, null, remark);
                         log.warn("订单 {} 超时未接单，已自动取消并发起退款", order.getOrderNo());
                     }
                 });
@@ -110,27 +103,10 @@ public class OrderTasks {
         }
     }
 
-    /** 支付结果补偿查单：每 5 分钟，对创建一段时间后仍待支付的订单主动查单 */
-    @Scheduled(fixedDelay = 300_000, initialDelay = 60_000)
-    public void compensatePayments() {
-        List<Order> pending = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
-                .eq(Order::getStatus, OrderStatus.PENDING_PAY)
-                .lt(Order::getCreatedAt, OffsetDateTime.now().minus(payProps.getPayQueryAfter()))
-                .orderByAsc(Order::getId)
-                .last("LIMIT 200"));
-        for (Order order : pending) {
-            try {
-                payService.queryAndSync(order);
-            } catch (RuntimeException e) {
-                log.error("查单补偿处理订单 {} 失败", order.getOrderNo(), e);
-            }
-        }
-    }
-
-    /** 退款结果补偿：每 5 分钟，处理中超过 N 分钟的退款单主动查询 */
+    /** 退款结果补偿：每 5 分钟，处理中超过 N 分钟的退款单按钱包流水查询，未返还则重新提交 */
     @Scheduled(fixedDelay = 300_000, initialDelay = 90_000)
     public void compensateRefunds() {
-        List<Refund> processing = refundService.processingOlderThan(OffsetDateTime.now().minus(payProps.getRefundQueryAfter()));
+        List<Refund> processing = refundService.processingOlderThan(OffsetDateTime.now().minus(refundQueryAfter));
         for (Refund refund : processing) {
             try {
                 refundService.queryAndSync(refund);

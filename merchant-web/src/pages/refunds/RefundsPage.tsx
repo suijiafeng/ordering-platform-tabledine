@@ -12,6 +12,7 @@ import { useLatestRequest } from '../../hooks/useLatestRequest'
 import MoneyText from '../../components/MoneyText'
 import { RefundStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
+import { ignoreShownError } from '../../utils/errors'
 
 const PAGE_SIZE = 20
 const TABS = [
@@ -24,6 +25,9 @@ const TABS = [
 ]
 
 /** 退款管理（店主）：审核 / 重试 / 登记线下退款 */
+/** 已停用的微信 / 支付宝渠道的历史退款（后端失败原因固定以此开头），系统无法线上退款 */
+const isLegacyChannelRefund = (r: RefundView) => r.status === 'FAILED' && (r.failReason ?? '').startsWith('该笔支付来自已停用的')
+
 export default function RefundsPage() {
   const { message } = App.useApp()
   const [params, setParams] = useSearchParams()
@@ -45,8 +49,8 @@ export default function RefundsPage() {
     try {
       const res = await listRefunds({ status: status || undefined, page, pageSize: PAGE_SIZE })
       if (isLatest()) setData({ list: res.list, total: res.total })
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
     }
@@ -56,20 +60,35 @@ export default function RefundsPage() {
     void load()
   }, [load])
 
-  const run = async (refundNo: string, fn: () => Promise<RefundView>, ok: string) => {
+  // 轮询到的退款计数变化（新申请、退款失败）时刷新列表，角标和列表保持一致
+  const refundCountKey = counts ? `${counts.applyingRefundCount}-${counts.failedRefundCount}` : ''
+  useEffect(() => {
+    if (refundCountKey) void load()
+    // load 变化时上面的 effect 已经加载过，这里只跟随计数变化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refundCountKey])
+
+  // 处理完当前页最后一条后，回到上一页而不是停在空页
+  useEffect(() => {
+    if (!loading && page > 1 && data.list.length === 0 && data.total > 0) setPage((p) => p - 1)
+  }, [loading, page, data])
+
+  const runRefundAction = async (refundNo: string, fn: () => Promise<RefundView>, ok: string) => {
     setActing(refundNo)
     try {
       const r = await fn()
       if (r.status === 'FAILED') {
-        message.warning(`${ok}，但渠道返回失败：${r.failReason ?? ''}`)
+        message.warning(`${ok}，但退款失败：${r.failReason ?? ''}`)
+      } else if (ok === '已重新发起' && r.status === 'SUCCESS') {
+        message.info('该笔已退回会员余额，已自动更新为退款成功')
       } else if (ok === '已登记线下退款' && r.status === 'SUCCESS') {
-        // 登记线下退款前后端会先向渠道确认：渠道其实已退成功时自动改为成功，避免重复退款
-        message.info('渠道显示该笔已原路退款成功，已自动更新为退款成功，无需线下退款')
+        // 登记线下退款前后端会先查会员余额流水：其实已退回余额时自动改为成功，避免重复退款
+        message.info('该笔已退回会员余额，已自动更新为退款成功，无需线下退款')
       } else {
         message.success(ok)
       }
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setActing(null)
       void load()
@@ -86,7 +105,7 @@ export default function RefundsPage() {
     }
     const { kind, refund } = reasonModal
     setReasonModal(null)
-    await run(refund.refundNo,
+    await runRefundAction(refund.refundNo,
       () => (kind === 'reject' ? rejectRefund(refund.refundNo, reason.trim()) : offlineRefund(refund.refundNo, reason.trim())),
       kind === 'reject' ? '已拒绝' : '已登记线下退款')
     setReason('')
@@ -118,7 +137,7 @@ export default function RefundsPage() {
         <Space direction="vertical" size={0}>
           <span>{REFUND_TYPE[r.type]}{r.items.length > 0 ? `：${r.items.map((i) => `${i.dishName}×${i.quantity}`).join('、')}` : ''}</span>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.reason}</Typography.Text>
-          {r.failReason && <Typography.Text type="danger" style={{ fontSize: 12 }}>{r.failReason}</Typography.Text>}
+          {r.failReason && <Typography.Text type={r.status === 'FAILED' ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>{r.failReason}</Typography.Text>}
           {r.rejectReason && <Typography.Text type="secondary" style={{ fontSize: 12 }}>拒绝理由：{r.rejectReason}</Typography.Text>}
         </Space>
       ),
@@ -131,15 +150,19 @@ export default function RefundsPage() {
         <Space size={0} wrap>
           {r.status === 'APPLYING' && (
             <>
-              <Popconfirm title={`同意退款 ¥${(r.amount / 100).toFixed(2)}？`} description="将立即向支付渠道发起原路退款" onConfirm={() => run(r.refundNo, () => approveRefund(r.refundNo), '已同意，退款处理中')}>
+              <Popconfirm title={`同意退款 ¥${(r.amount / 100).toFixed(2)}？`} description="将立即退回顾客的会员余额" onConfirm={() => runRefundAction(r.refundNo, () => approveRefund(r.refundNo), '已同意，退款处理中')}>
                 <Button type="link" size="small" loading={acting === r.refundNo}>同意</Button>
               </Popconfirm>
               <Button type="link" size="small" danger onClick={() => { setReason(''); setReasonModal({ kind: 'reject', refund: r }) }}>拒绝</Button>
             </>
           )}
-          {r.status === 'FAILED' && (
+          {(r.status === 'FAILED' || r.status === 'PROCESSING') && (
+            // 处理中也允许重试 / 线下登记：后端会先查余额流水确认该单确实没退成功，已退则自动改为成功。
+            // 已停用的微信 / 支付宝渠道的历史支付单无法线上退款，重试必然失败，只提供线下登记
             <>
-              <Button type="link" size="small" loading={acting === r.refundNo} onClick={() => run(r.refundNo, () => retryRefund(r.refundNo), '已重新发起')}>重试</Button>
+              {!isLegacyChannelRefund(r) && (
+                <Button type="link" size="small" loading={acting === r.refundNo} onClick={() => runRefundAction(r.refundNo, () => retryRefund(r.refundNo), '已重新发起')}>重试</Button>
+              )}
               <Button type="link" size="small" onClick={() => { setReason(''); setReasonModal({ kind: 'offline', refund: r }) }}>登记线下退款</Button>
             </>
           )}

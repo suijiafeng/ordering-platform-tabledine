@@ -1,6 +1,5 @@
 package com.example.ordering.security;
 
-import com.example.ordering.common.Platform;
 import com.example.ordering.config.AppProperties;
 import com.example.ordering.module.staff.entity.Staff;
 import io.jsonwebtoken.Claims;
@@ -22,12 +21,12 @@ class JwtServiceTest {
     }
 
     @Test
-    void customerTokenCarriesAudienceAndPlatform() {
-        String token = jwtService.issueCustomerToken(42L, Platform.ALIPAY).token();
+    void customerTokenCarriesAudienceAndTokenVersion() {
+        String token = jwtService.issueCustomerToken(42L, 5).token();
         Claims claims = jwtService.parse(token).orElseThrow();
         assertThat(JwtService.audienceOf(claims)).isEqualTo(UserType.CUSTOMER);
         assertThat(claims.getSubject()).isEqualTo("42");
-        assertThat(claims.get(JwtService.CLAIM_PLATFORM, String.class)).isEqualTo("ALIPAY");
+        assertThat(claims.get(JwtService.CLAIM_TOKEN_VERSION, Integer.class)).isEqualTo(5);
         assertThat(claims.get(JwtService.CLAIM_TYPE, String.class)).isEqualTo(JwtService.TYPE_ACCESS);
     }
 
@@ -50,7 +49,7 @@ class JwtServiceTest {
 
     @Test
     void rejectsTamperedOrForeignToken() {
-        String token = jwtService.issueCustomerToken(1L, Platform.WECHAT).token();
+        String token = jwtService.issueCustomerToken(1L, 0).token();
         assertThat(jwtService.parse(token + "x")).isEmpty();
 
         JwtService other = new JwtService(props("another-secret-0123456789abcdef0123456789"));
@@ -62,9 +61,9 @@ class JwtServiceTest {
     @Test
     void rejectsExpiredToken() {
         AppProperties p = props("unit-test-secret-0123456789abcdef0123456789");
-        p.getJwt().setCustomerTtl(Duration.ofSeconds(-1));
+        p.getJwt().setMemberTtl(Duration.ofSeconds(-1));
         JwtService expiring = new JwtService(p);
-        String token = expiring.issueCustomerToken(1L, Platform.WECHAT).token();
+        String token = expiring.issueCustomerToken(1L, 0).token();
         assertThat(expiring.parse(token)).isEmpty();
     }
 

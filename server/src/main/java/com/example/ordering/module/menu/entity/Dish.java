@@ -41,6 +41,8 @@ public class Dish {
     /** 店主设置的每日限量（null 不限量）；每天 0 点 stock_quantity 重置为此值 */
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Integer dailyStock;
+    /** 今日剩余所属的业务日期（Asia/Shanghai）；跨天的订单取消不回补，停机错过 0 点按此补做重置 */
+    private java.time.LocalDate stockDate;
     @TableLogic
     private Integer deleted;
     @TableField(fill = FieldFill.INSERT)

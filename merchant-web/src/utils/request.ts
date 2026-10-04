@@ -44,7 +44,12 @@ function refreshAccessToken(): Promise<string> {
         setTokens(res.data.data)
         return res.data.data.accessToken
       } catch (e) {
-        logout()
+        // 只有 refresh token 本身被拒（401 / 401xx）才退出登录；网络超时、5xx 不代表登录失效，保留登录态，下次请求再续期
+        const rejected = (e instanceof ApiError && e.code >= 40100 && e.code < 40200)
+          || (axios.isAxiosError(e) && e.response?.status === 401)
+        if (rejected) {
+          logout()
+        }
         throw e
       }
     })().finally(() => {

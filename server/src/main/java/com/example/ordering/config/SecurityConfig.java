@@ -1,5 +1,7 @@
 package com.example.ordering.config;
 
+import com.example.ordering.common.ErrorCode;
+import com.example.ordering.common.BusinessException;
 import com.example.ordering.security.JwtAuthFilter;
 import com.example.ordering.security.RestAccessDeniedHandler;
 import com.example.ordering.security.RestAuthenticationEntryPoint;
@@ -33,7 +35,6 @@ public class SecurityConfig {
             "/api/v1/c/qr/**",
             "/api/v1/m/auth/login",
             "/api/v1/m/auth/refresh",
-            "/api/v1/pay/notify/**",
             "/actuator/health",
             "/uploads/**",
             "/v3/api-docs/**",
@@ -78,7 +79,29 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder();
+        // BCrypt 只使用前 72 字节：DTO 按字符数限制 64，但 64 个汉字是 192 字节，超出部分会被忽略（或在新版 Spring 中抛异常变成 500）。
+        // 设置密码时明确拒绝；比对时超长输入不可能是已保存的密码，直接判不匹配
+        return new PasswordEncoder() {
+            @Override
+            public String encode(CharSequence raw) {
+                if (utf8Length(raw) > BCRYPT_MAX_BYTES) {
+                    throw new BusinessException(ErrorCode.PARAM_INVALID, "密码过长：不超过 72 个字节（约 24 个汉字）");
+                }
+                return bcrypt.encode(raw);
+            }
+
+            @Override
+            public boolean matches(CharSequence raw, String encoded) {
+                return raw != null && utf8Length(raw) <= BCRYPT_MAX_BYTES && bcrypt.matches(raw, encoded);
+            }
+        };
+    }
+
+    private static final int BCRYPT_MAX_BYTES = 72;
+
+    private static int utf8Length(CharSequence s) {
+        return s == null ? 0 : s.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
     }
 
     /** 商家端跨域（生产环境同域部署，通常只在开发环境需要） */

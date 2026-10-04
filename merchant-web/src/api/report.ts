@@ -1,7 +1,12 @@
 import { request } from '../utils/request'
-import type { DashboardToday } from './types'
+import type { DashboardToday, ReportSummary } from './types'
 
 export const fetchDashboard = () => request<DashboardToday>({ url: '/api/v1/m/dashboard/today' })
+
+/** 区间统计：from / to 为 yyyy-MM-dd，最多 92 天 */
+export const fetchReportSummary = (from: string, to: string) =>
+  request<ReportSummary>({ url: '/api/v1/m/reports/summary', params: { from, to } })
+
 
 /** 导出 CSV：以 Blob 下载（需要携带 token，不能用 <a href> 直接下） */
 export async function exportReport(from: string, to: string): Promise<void> {
@@ -13,5 +18,6 @@ export async function exportReport(from: string, to: string): Promise<void> {
   document.body.appendChild(a)
   a.click()
   a.remove()
-  URL.revokeObjectURL(url)
+  // 立即回收会让部分浏览器（Safari）的下载中断，稍后再回收
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }

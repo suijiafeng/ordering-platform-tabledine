@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { App, Button, Card, Checkbox, Col, Drawer, Form, Input, InputNumber, Row, Select, Space, Spin, Switch, Typography } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { createDish, getDish, updateDish } from '../../api/menu'
 import type { Category, DishSaveRequest } from '../../api/types'
 import ImageUpload from '../../components/ImageUpload'
 import { fenToYuan, yuanToFen } from '../../utils/money'
+import { ignoreShownError } from '../../utils/errors'
 
 interface SpecItemForm { name: string; priceDeltaYuan: number; isDefault: boolean }
 interface SpecGroupForm { name: string; required: boolean; items: SpecItemForm[] }
@@ -18,6 +19,8 @@ interface FormValues {
   priceYuan: number
   image?: string | null
   onShelf: boolean
+  /** 分类内排序，数字越小越靠前；留空表示不改 */
+  sort?: number | null
   specGroups: SpecGroupForm[]
   addonGroups: AddonGroupForm[]
 }
@@ -38,6 +41,10 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
   const [form] = Form.useForm<FormValues>()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // onClose 由父组件内联传入，放进下方 effect 的依赖会让表单在父组件每次重渲染时被重置；用 ref 持有最新回调
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (!open) {
@@ -63,6 +70,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
           priceYuan: fenToYuan(d.dish.price),
           image: d.dish.image,
           onShelf: d.dish.status === 1,
+          sort: d.dish.sort,
           specGroups: d.specGroups.map((g) => ({
             name: g.name,
             required: g.required,
@@ -75,7 +83,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
           })),
         })
       })
-      .catch(() => onClose())
+      .catch(() => onCloseRef.current())
       .finally(() => setLoading(false))
   }, [open, dishId, defaultCategoryId, categories, form])
 
@@ -92,6 +100,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       price: yuanToFen(v.priceYuan),
       image: v.image || null,
       status: v.onShelf ? 1 : 0,
+      sort: v.sort == null ? undefined : v.sort,
       specGroups: (v.specGroups ?? []).map((g) => ({
         name: g.name.trim(),
         required: g.required ?? true,
@@ -116,8 +125,8 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       }
       message.success('已保存')
       onSaved()
-    } catch {
-      // 保持抽屉打开供用户修改；错误提示已由 request 统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；保持抽屉打开供用户修改
     } finally {
       setSaving(false)
     }
@@ -151,13 +160,40 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="priceYuan" label="基础价（元）" rules={[{ required: true, message: '请输入价格' }]}>
+              <Form.Item
+                name="priceYuan"
+                label="基础价（元）"
+                extra="实际售价 = 基础价 + 所选规格加价 + 加料；任何一种规格组合的售价都必须大于 0"
+                rules={[
+                  { required: true, message: '请输入价格' },
+                  ({ getFieldValue }) => ({
+                    validator: (_, v: number | undefined) => {
+                      // 与后端一致：基础价 + 每个必选规格组里最便宜的一项（可选组只算负加价）≥ 0.01 元
+                      const groups = (getFieldValue('specGroups') ?? []) as { required?: boolean; items?: { priceDeltaYuan?: number }[] }[]
+                      // 按「分」整数计算：元的浮点相加会有误差（0.03 + -0.02 = 0.00999…），把 0.01 元的合法价格误判为不合法
+                      let minFen = yuanToFen(v ?? 0)
+                      for (const g of groups) {
+                        const deltas = (g?.items ?? []).map((i) => yuanToFen(i?.priceDeltaYuan ?? 0))
+                        if (deltas.length === 0) continue
+                        const d = Math.min(...deltas)
+                        minFen += g?.required === false ? Math.min(0, d) : d
+                      }
+                      return minFen >= 1 ? Promise.resolve() : Promise.reject(new Error('基础价加上最便宜的规格后必须大于 0 元'))
+                    },
+                  }),
+                ]}
+              >
                 <InputNumber min={0} max={100000} precision={2} style={{ width: '100%' }} prefix="¥" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={6}>
               <Form.Item name="onShelf" label="上架" valuePropName="checked">
                 <Switch />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="sort" label="排序" tooltip="同一分类内数字越小越靠前；留空为默认">
+                <InputNumber min={0} max={9999} precision={0} style={{ width: '100%' }} placeholder="默认" />
               </Form.Item>
             </Col>
             <Col span={24}>

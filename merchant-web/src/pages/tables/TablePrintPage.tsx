@@ -22,7 +22,7 @@ export default function TablePrintPage() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+    void (async () => {
       setLoadError(false)
       try {
         const [all, store] = await Promise.all([listTables(), fetchStore()])
@@ -33,6 +33,7 @@ export default function TablePrintPage() {
           setCards(rendered)
         }
       } catch {
+        // 首次加载（含二维码生成）：页面展示错误状态与重试入口
         if (!cancelled) {
           setLoadError(true)
         }
@@ -79,7 +80,7 @@ export default function TablePrintPage() {
               <h3>{storeName}</h3>
               <img src={qr} alt={table.code} />
               <div className="code">桌号 {table.code}</div>
-              <div className="tip">微信 / 支付宝扫码点餐</div>
+              <div className="tip">手机扫码点餐</div>
             </div>
           ))}
         </div>

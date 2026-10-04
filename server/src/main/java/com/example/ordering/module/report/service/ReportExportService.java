@@ -80,8 +80,8 @@ public class ReportExportService {
 
         StringBuilder sb = new StringBuilder("﻿");
         row(sb, "记录类型", "订单号", "下单时间", "桌号", "订单状态", "退款状态", "商品总额(元)", "实付(元)", "累计已退(元)",
-                "支付渠道", "支付时间", "商户订单号", "渠道交易号", "退款单号", "退款类型", "退款发起方", "退款金额(元)",
-                "退款单状态", "退款完成时间", "渠道退款号", "退款原因", "操作人", "备注");
+                "支付渠道", "支付时间", "商户订单号", "交易号", "退款单号", "退款类型", "退款发起方", "退款金额(元)",
+                "退款单状态", "退款完成时间", "退款流水号", "退款原因", "操作人", "备注");
         for (Map<String, Object> o : orders) {
             row(sb, "订单", o.get("order_no"), time(o.get("created_at")), o.get("table_code"),
                     ORDER_STATUS.getOrDefault(str(o.get("status")), str(o.get("status"))),
@@ -91,7 +91,9 @@ public class ReportExportService {
                     "", "", "", "", "", "", "", "", "", o.get("remark"));
             for (Map<String, Object> r : refundsByOrder.getOrDefault(o.get("id"), List.of())) {
                 String reason = str(r.get("reason"));
-                String extra = r.get("fail_reason") != null ? "；失败：" + r.get("fail_reason")
+                String status = str(r.get("status"));
+                String extra = r.get("fail_reason") != null
+                        ? ("FAILED".equals(status) ? "；失败：" : "OFFLINE".equals(status) ? "；" : "；系统提示：") + r.get("fail_reason")
                         : r.get("reject_reason") != null ? "；拒绝：" + r.get("reject_reason") : "";
                 row(sb, "退款", o.get("order_no"), time(r.get("created_at")), o.get("table_code"), "", "", "", "", "",
                         // 退款行展示该退款实际对应的支付单（重复支付的退款对应的不是订单首笔支付）
@@ -159,18 +161,38 @@ public class ReportExportService {
     }
 
     private static String platform(String p) {
-        return switch (p) { case "WECHAT" -> "微信"; case "ALIPAY" -> "支付宝"; default -> p; };
+        return switch (p) {
+            case "WECHAT" -> "微信";
+            case "H5" -> "余额";
+            case "ALIPAY" -> "支付宝";
+            default -> p;
+        };
     }
 
     private static String refundStatusOfOrder(String s) {
-        return switch (s) { case "NONE" -> "无"; case "PARTIAL" -> "部分退款"; case "FULL" -> "全额退款"; default -> s; };
+        return switch (s) {
+            case "NONE" -> "无";
+            case "PARTIAL" -> "部分退款";
+            case "FULL" -> "全额退款";
+            default -> s;
+        };
     }
 
     private static String refundType(String s) {
-        return switch (s) { case "FULL" -> "整单"; case "ITEM" -> "按菜品"; case "CUSTOM" -> "自定义金额"; default -> s; };
+        return switch (s) {
+            case "FULL" -> "整单";
+            case "ITEM" -> "按菜品";
+            case "CUSTOM" -> "自定义金额";
+            default -> s;
+        };
     }
 
     private static String initiator(String s) {
-        return switch (s) { case "CUSTOMER" -> "顾客"; case "MERCHANT" -> "商家"; case "SYSTEM" -> "系统"; default -> s; };
+        return switch (s) {
+            case "CUSTOMER" -> "顾客";
+            case "MERCHANT" -> "商家";
+            case "SYSTEM" -> "系统";
+            default -> s;
+        };
     }
 }

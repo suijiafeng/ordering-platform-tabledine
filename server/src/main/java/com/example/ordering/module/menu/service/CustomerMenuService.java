@@ -23,13 +23,16 @@ import java.util.stream.Collectors;
 @Service
 public class CustomerMenuService {
 
+    private final MerchantMenuService merchantMenuService;
+
     private final StoreService storeService;
     private final CategoryMapper categoryMapper;
     private final DishMapper dishMapper;
     private final MenuGroupLoader groupLoader;
 
     public CustomerMenuService(StoreService storeService, CategoryMapper categoryMapper,
-                               DishMapper dishMapper, MenuGroupLoader groupLoader) {
+                               DishMapper dishMapper, MenuGroupLoader groupLoader, MerchantMenuService merchantMenuService) {
+        this.merchantMenuService = merchantMenuService;
         this.storeService = storeService;
         this.categoryMapper = categoryMapper;
         this.dishMapper = dishMapper;
@@ -38,9 +41,10 @@ public class CustomerMenuService {
 
     public MenuView menu(Long storeId) {
         storeService.getRequired(storeId);
+        merchantMenuService.ensureStockFresh();  // 错过 0 点重置时，顾客看到的售罄状态也要正确
         List<Category> categories = categoryMapper.selectList(Wrappers.<Category>lambdaQuery()
                 .eq(Category::getStoreId, storeId)
-                .eq(Category::getStatus, 1)
+                .eq(Category::getStatus, Category.STATUS_ENABLED)
                 .orderByAsc(Category::getSort, Category::getId));
         List<Dish> dishes = dishMapper.selectList(Wrappers.<Dish>lambdaQuery()
                 .eq(Dish::getStoreId, storeId)

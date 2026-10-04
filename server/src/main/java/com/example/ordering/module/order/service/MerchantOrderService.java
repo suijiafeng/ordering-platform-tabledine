@@ -38,6 +38,9 @@ import java.util.List;
 @Service
 public class MerchantOrderService {
 
+    /** 退款申请多久未审核算「超时」（需求 §7.3 默认 2 小时） */
+    static final int REFUND_REVIEW_OVERDUE_HOURS = 2;
+
     private static final ZoneId CN = ZoneId.of("Asia/Shanghai");
 
     private final OrderMapper orderMapper;
@@ -85,14 +88,14 @@ public class MerchantOrderService {
     /** 后厨队列：待制作（已支付待接单）+ 制作中，按支付时间升序 */
     public List<OrderSummary> kitchenQueue() {
         List<Order> orders = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
-                .in(Order::getStatus, OrderStatus.PAID, OrderStatus.MAKING)
+                .in(Order::getStatus, OrderStatus.PAID, OrderStatus.MAKING, OrderStatus.READY)
                 .orderByAsc(Order::getPaidAt, Order::getId)
                 .last("LIMIT 200"));
         return assembler.summaries(orders);
     }
 
     public OrderDetail detail(String orderNo) {
-        return assembler.detail(orderStateService.getByNo(orderNo), false);
+        return assembler.merchantDetail(orderStateService.getByNo(orderNo));
     }
 
     /** 轮询：since 之后新支付的订单数 + 待处理数量 */
@@ -101,11 +104,18 @@ public class MerchantOrderService {
         long newPaid = since == null ? 0 : orderMapper.selectCount(Wrappers.<Order>lambdaQuery()
                 .in(Order::getStatus, OrderStatus.PAID, OrderStatus.MAKING, OrderStatus.READY, OrderStatus.DONE, OrderStatus.CANCELLED)
                 .gt(Order::getPaidAt, since));
-        long pendingAccept = orderMapper.selectCount(Wrappers.<Order>lambdaQuery().eq(Order::getStatus, OrderStatus.PAID));
+        List<String> pendingNos = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
+                        .select(Order::getOrderNo).eq(Order::getStatus, OrderStatus.PAID).orderByAsc(Order::getId).last("LIMIT 500"))
+                .stream().map(Order::getOrderNo).toList();
+        long pendingAccept = pendingNos.size();
         long making = orderMapper.selectCount(Wrappers.<Order>lambdaQuery().eq(Order::getStatus, OrderStatus.MAKING));
         long applying = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery().eq(Refund::getStatus, RefundStatus.APPLYING));
         long failed = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery().eq(Refund::getStatus, RefundStatus.FAILED));
-        return new NewOrderCount(newPaid, pendingAccept, making, applying, failed, now);
+        // 与 OrderTasks.remindApplyingRefunds 同一口径（2 小时）；这里给商家端轮询展示，定时任务只写日志
+        long overdue = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery()
+                .eq(Refund::getStatus, RefundStatus.APPLYING)
+                .lt(Refund::getCreatedAt, now.minusHours(REFUND_REVIEW_OVERDUE_HOURS)));
+        return new NewOrderCount(newPaid, pendingAccept, making, applying, failed, now, pendingNos, overdue);
     }
 
     // ==================== 履约流转 ====================
@@ -114,7 +124,7 @@ public class MerchantOrderService {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
         orderStateService.transitionOrConflict(order, OrderStatus.PAID, OrderStatus.MAKING, OperatorType.MERCHANT, staff.id(), "商家接单");
-        return assembler.detail(order, false);
+        return assembler.merchantDetail(order);
     }
 
     /** 拒单：待接单 → 已取消 + 全额退款 + 回补库存（店员可操作） */
@@ -125,22 +135,22 @@ public class MerchantOrderService {
         String remark = StringUtils.hasText(reason) ? "商家拒单：" + reason.trim() : "商家拒单";
         orderStateService.transitionOrConflict(order, OrderStatus.PAID, OrderStatus.CANCELLED, OperatorType.MERCHANT, staff.id(), remark);
         orderStateService.restoreStock(order.getId());
-        refundService.fullRefund(order, null, RefundInitiator.MERCHANT, staff.id(), remark);
-        return assembler.detail(order, false);
+        refundService.refundOrder(order, RefundInitiator.MERCHANT, staff.id(), remark);
+        return assembler.merchantDetail(order);
     }
 
     public OrderDetail ready(String orderNo) {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
         orderStateService.transitionOrConflict(order, OrderStatus.MAKING, OrderStatus.READY, OperatorType.MERCHANT, staff.id(), "出餐完成");
-        return assembler.detail(order, false);
+        return assembler.merchantDetail(order);
     }
 
     public OrderDetail deliver(String orderNo) {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
         orderStateService.transitionOrConflict(order, OrderStatus.READY, OrderStatus.DONE, OperatorType.MERCHANT, staff.id(), "已送达");
-        return assembler.detail(order, false);
+        return assembler.merchantDetail(order);
     }
 
     /** 整单取消（店主）：制作中 / 待送餐 → 已取消 + 全额退款；已开始制作不回补库存 */
@@ -160,8 +170,8 @@ public class MerchantOrderService {
             throw new BusinessException(ErrorCode.CONFLICT, "当前状态不能整单取消");
         }
         orderStateService.transitionOrConflict(order, from, OrderStatus.CANCELLED, OperatorType.MERCHANT, staff.id(), remark);
-        refundService.fullRefund(order, null, RefundInitiator.MERCHANT, staff.id(), remark);
-        return assembler.detail(order, false);
+        refundService.refundOrder(order, RefundInitiator.MERCHANT, staff.id(), remark);
+        return assembler.merchantDetail(order);
     }
 
     /** 商家主动退款 */

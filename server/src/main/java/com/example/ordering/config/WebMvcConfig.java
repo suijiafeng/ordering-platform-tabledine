@@ -11,6 +11,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
+    @jakarta.annotation.PostConstruct
+    void initTrustedProxies() {
+        com.example.ordering.ratelimit.ClientIp.setTrustedProxies(appProperties.getSecurity().getTrustedProxies());
+    }
+
     private final RateLimitInterceptor rateLimitInterceptor;
     private final AppProperties appProperties;
 

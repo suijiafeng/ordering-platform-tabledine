@@ -17,6 +17,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    com.example.ordering.security.JwtService jwtService;
+
     @Test
     void staffLoginRefreshAndMe() throws Exception {
         JsonNode data = staffLogin("admin", "admin123");
@@ -84,7 +87,7 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void loginIgnoresStaleTokenInHeader() throws Exception {
         // 浏览器里残留的旧 token（这里用顾客 token 模拟另一身份）不影响登录
-        String customer = customerToken("WECHAT", "mock:stale-" + java.util.UUID.randomUUID());
+        String customer = memberToken();
         mvc.perform(post("/api/v1/m/auth/login").header("Authorization", "Bearer " + customer)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"staff\",\"password\":\"staff123\"}"))
                 .andExpect(status().isOk());
@@ -116,22 +119,26 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void customerSilentLoginIsStableAndIsolated() throws Exception {
-        String t1 = customerToken("WECHAT", "mock:alice");
-        String t2 = customerToken("WECHAT", "mock:alice");
-        String id1 = me(t1).path("id").asText();
-        assertThat(me(t2).path("id").asText()).isEqualTo(id1);
+    void onlyMemberTokensAreAccepted() throws Exception {
+        String member = memberToken();
+        assertThat(me(member).path("member").asBoolean()).isTrue();
 
-        // 同一个 openId 在支付宝上是另一位顾客
-        String alipay = customerToken("ALIPAY", "mock:alice");
-        JsonNode alipayMe = me(alipay);
-        assertThat(alipayMe.path("id").asText()).isNotEqualTo(id1);
-        assertThat(alipayMe.path("platform").asText()).isEqualTo("ALIPAY");
+        // 已停用的小程序登录留下的非会员顾客：即使拿到签名合法的 token 也不能再访问
+        jdbc.update("INSERT INTO customer (status) VALUES (1)");
+        Long legacyId = jdbc.queryForObject("SELECT MAX(id) FROM customer WHERE phone IS NULL", Long.class);
+        String legacy = jwtService.issueCustomerToken(legacyId, 0).token();
+        mvc.perform(get("/api/v1/c/me").header("Authorization", "Bearer " + legacy))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40101));
+        // 小程序静默登录接口已移除
+        mvc.perform(post("/api/v1/c/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"platform\":\"WECHAT\",\"code\":\"x\"}"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void tokensCannotCrossAudience() throws Exception {
-        String customer = customerToken("WECHAT", "mock:bob");
+        String customer = memberToken();
         mvc.perform(get("/api/v1/m/auth/me").header("Authorization", "Bearer " + customer))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(40301));
@@ -176,8 +183,8 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void validationErrorsUseUnifiedFormat() throws Exception {
-        mvc.perform(post("/api/v1/c/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"platform\":\"WECHAT\"}"))
+        mvc.perform(post("/api/v1/c/auth/password-login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"13800000001\"}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value(42201));
     }

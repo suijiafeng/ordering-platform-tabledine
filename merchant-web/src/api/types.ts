@@ -149,7 +149,8 @@ export interface StoreUpdateRequest {
 
 export type OrderStatus = 'PENDING_PAY' | 'PAID' | 'MAKING' | 'READY' | 'DONE' | 'CLOSED' | 'CANCELLED'
 export type OrderRefundStatus = 'NONE' | 'PARTIAL' | 'FULL'
-export type Platform = 'WECHAT' | 'ALIPAY'
+/** H5 = 会员余额支付（唯一在用）；WECHAT / ALIPAY 为已停用渠道的历史数据 */
+export type Platform = 'WECHAT' | 'ALIPAY' | 'H5'
 export type RefundStatus = 'APPLYING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'REJECTED' | 'WITHDRAWN' | 'OFFLINE'
 export type RefundType = 'FULL' | 'ITEM' | 'CUSTOM'
 export type RefundInitiator = 'CUSTOMER' | 'MERCHANT' | 'SYSTEM'
@@ -276,7 +277,54 @@ export interface NewOrderCount {
   applyingRefundCount: number
   failedRefundCount: number
   serverTime: string
+  /** 当前所有待接单订单号，前端按集合去重判断新单 */
+  pendingOrderNos: string[]
+  /** 申请超过 2 小时仍未审核的退款数 */
+  overdueRefundCount: number
 }
+
+/** 任意日期区间统计，口径与今日看板一致 */
+export interface ReportSummary {
+  from: string
+  to: string
+  netIncome: number
+  paidAmount: number
+  refundedAmount: number
+  orderCount: number
+  refundCount: number
+  /** 区间会员充值金额（预收款，不计入实收） */
+  rechargeAmount: number
+  topDishes: { dishName: string; quantity: number; amount: number }[]
+  daily: { date: string; netIncome: number; orderCount: number }[]
+}
+
+/** 会员（H5 账号）：余额由商家充值，下单从余额扣费 */
+export interface MemberItem {
+  id: number
+  phone: string
+  name: string
+  /** 余额（分） */
+  balance: number
+  enabled: boolean
+  createdAt: string
+}
+
+export type WalletTransactionType = 'RECHARGE' | 'PAY' | 'REFUND'
+
+export interface WalletTransaction {
+  id: number
+  type: WalletTransactionType
+  /** true 余额增加（充值 / 退款返还），false 余额减少（下单扣费） */
+  credit: boolean
+  amount: number
+  balanceAfter: number
+  orderId: number | null
+  outTradeNo: string | null
+  refundNo: string | null
+  remark: string | null
+  createdAt: string
+}
+
 
 export interface MerchantRefundRequest {
   type: RefundType
@@ -291,6 +339,8 @@ export interface DashboardToday {
   refundedAmount: number
   orderCount: number
   refundCount: number
+  /** 今日会员充值金额（预收款，不计入实收） */
+  rechargeAmount: number
   pendingAcceptCount: number
   makingCount: number
   readyCount: number

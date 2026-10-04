@@ -1,13 +1,13 @@
 # 点餐平台（ordering-platform）
 
-个人店面堂食扫码点餐：微信 / 支付宝小程序点餐支付，商家后台接单出餐。
+个人店面堂食扫码点餐：顾客用手机浏览器（含微信 / 支付宝内置浏览器）扫桌码进入 H5 点餐，会员余额支付；商家后台接单出餐。
 
 | 目录 | 说明 |
 |---|---|
 | `server/` | 后端：Spring Boot 3.3 + MyBatis-Plus + PostgreSQL 16 + Flyway |
-| `miniapp/` | 顾客端：Taro 4 + React 18 + TS，构建为微信、支付宝小程序 |
+| `customer-web/` | 顾客端 H5：Next.js App Router（静态导出，部署在 `/h5/`）+ antd-mobile + zustand |
 | `merchant-web/` | 商家端：Vite 6 + React 18 + Ant Design 5 |
-| `deploy/` | docker-compose、Nginx、桌码落地页 |
+| `deploy/` | docker-compose、Nginx |
 | `docs/` | 需求分析 v1.2、工程化设计文档 |
 
 ## 当前进度：MVP 功能完成，进入联调 / 上线准备
@@ -30,7 +30,13 @@
 - [x] 后端严格审查 5 批修复：部署安全基线、退款资金安全、支付渠道对接、下单计价与库存、上传防护；全量 74 个测试通过
 - [x] 小程序按菜品部分退款（选份数、实时金额、全选即整单）
 - [x] 员工管理：店主新建店员 / 改名 / 重置密码 / 启用停用（停用与改密后旧会话立即失效）；所有员工可修改自己密码
-- [ ] 下一步：双端真机联调（真实商户号 0.01 元）、提审上线清单
+- [x] 顾客端体验补齐：菜品搜索、规格弹层显示菜品描述、待支付实时倒计时（详情与列表）、订单进度时间线、退款记录显示菜品明细与申请时间、列表显示实付与已退金额、待支付订单「去支付」入口
+- [x] 商家端：新订单弹窗通知（点击直达该订单详情）、菜品排序字段、上下架 / 沽清 / 分类排序失败时的提示与回滚
+- [x] 数据看板区间统计（`GET /m/reports/summary`，任意日期区间最多 92 天：实收、订单数、日均、退款、每日曲线、菜品排行，与导出共用区间）；退款申请超过 2 小时未审核在商家端弹窗与工作台提醒（`new-count` 返回 `overdueRefundCount`）
+- [x] **会员点餐、余额支付（不再接微信 / 支付宝支付）**：H5 与微信 / 支付宝小程序同一套流程——扫桌码随意浏览菜单，只在下单时登录会员账号（手机号 + 密码，由商家开通），从账户余额扣费；商家端「会员充值」开户 / 充值 / 流水 / 重置密码 / 停用；退款自动返还余额；流水与看板统计充值
+- [x] 顾客端改为 `customer-web`（Next.js H5），停用并移除 Taro 小程序 `miniapp/`；桌码链接 `/q/<token>` 不变，Nginx 跳转到 `/h5/?token=<token>`
+- [x] 后端清理：移除微信 / 支付宝支付渠道、支付回调、小程序静默登录、Mock 登录 / 支付与渠道对账（V8 删除 `payment.close_confirmed`），只保留余额支付；测试改为真实会员登录 + 余额支付，故障场景用 spy 注入
+- [ ] 下一步：H5 真机验证（iOS Safari / 安卓微信、支付宝内置浏览器）、上线清单
 
 ## 本地开发
 
@@ -39,7 +45,6 @@
 - JDK 17 或 21、Maven 3.9+
 - Node.js 20+
 - Docker（运行 PostgreSQL 和集成测试）
-- 微信开发者工具、支付宝小程序开发者工具
 
 ### 1. 启动数据库
 
@@ -51,7 +56,7 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 
 ```bash
 cd server
-mvn spring-boot:run          # 默认 dev profile：自动建表 + 种子数据 + 模拟小程序登录
+mvn spring-boot:run          # 默认 dev profile：自动建表 + 种子数据
 ```
 
 - 接口文档：http://localhost:8080/swagger-ui.html
@@ -72,34 +77,51 @@ mvn verify -DargLine="-Dapi.version=1.44"
 cd merchant-web
 npm install
 npm run dev                  # http://localhost:5173，/api 代理到 8080
+PORT=5174 npm run dev        # 端口被占用时换端口；代理会去掉 Origin 头，不受后端 CORS 白名单限制
 ```
 
-### 4. 启动小程序
+### 4. 启动顾客 H5（customer-web）
 
 ```bash
-cd miniapp
+cd customer-web
 npm install
-npm run dev:weapp            # 微信开发者工具导入 miniapp/dist/weapp
-npm run dev:alipay           # 支付宝开发者工具导入 miniapp/dist/alipay
+npm run dev                  # http://127.0.0.1:3000/h5/?token=dev-table-a1，/api、/uploads 代理到 8080（API_PROXY_TARGET 可改）
 ```
 
-- 开发者工具中勾选「不校验合法域名」
-- 模拟扫码：在编译模式里给首页加启动参数 `token=dev-table-a1`，或 `q=https%3A%2F%2Fexample.com%2Fq%2Fdev-table-a1`（微信）/ `qrCode=https://example.com/q/dev-table-a1`（支付宝）
-- 开发环境登录走 Mock：开发者工具里拿到的任何 code 都映射为同一个开发顾客
-- 真机预览：把 `miniapp/.env.development` 中的地址改成电脑的局域网 IP
+- 本地商家后台生成的桌码会直达 `customer-web`：`http://127.0.0.1:3000/h5/?token=<桌码token>`。手机真机扫码时，启动后端前设置 `QR_BASE_URL=http://<电脑局域网IP>:3000/h5/?token=`，例如 `QR_BASE_URL=http://192.168.1.10:3000/h5/?token= mvn spring-boot:run`。
+
+- 开发种子会员：手机号 `13800000001`、密码 `staff123`；商家端「会员充值」可开户、充值
+- 构建：`STATIC_EXPORT=true npm run build` → `out/`，docker-compose 挂载到 Nginx 的 `/h5/`
+- 页面与约定见 [customer-web/README.md](customer-web/README.md)
 
 ## 关键约定
+
+### H5 会员点餐与余额支付
+
+- 桌码链接仍是 `/q/{qrToken}`，无需更换已张贴的二维码：Nginx 302 跳转到 `/h5/?token={qrToken}`，相机、微信、支付宝扫码都在浏览器里打开 H5 点餐（`customer-web`）。
+- 顾客端只有 H5 一端，不调起微信 / 支付宝支付，也不用 openid 静默登录：顾客浏览菜单、加购不需要登录，**提交订单时**登录会员账号（`POST /api/v1/c/auth/password-login`），发起支付即从账户余额扣费并直接入账（`Platform.H5` → `BalancePayChannel`），余额不足返回 `42203`。
+- 会员账号由商家在「会员充值」开户（手机号 + 初始密码），余额由店主线下收款后登记充值（`POST /api/v1/m/members/{id}/recharge`，仅店主）。取消订单 / 退款按退款单号幂等返还余额。
+- 余额与流水：`customer.balance` 只能通过条件更新变动（扣费 `balance >= 金额`），每次变动写 `wallet_transaction`（充值 / 扣费 / 返还，含变动后余额），对账以流水为准。看板「会员充值」单独统计，属于预收款，不计入实收。
+- 会员 token 带 `token_version`：重置密码、修改密码、停用后旧登录立即失效。
+- 只有余额支付：扣费在发起支付的同一事务里完成，没有回调、关单、查单补偿；退款在事务提交后返还余额，返还出错时退款保持「处理中」，由补偿任务按钱包流水重试（同一退款单号幂等）。
+- 顾客 token 只发给会员，必须带 `token_version`；已停用的小程序登录留下的非会员顾客无法再访问。`Platform.WECHAT / ALIPAY` 只为读取历史订单保留，这类历史支付单不能线上退款，退款会直接记为失败，由店主登记线下退款。
+- 小程序 `miniapp/` 已停用并从仓库移除（需要时可从 git 历史找回）。若之前在微信 / 支付宝后台配置过「扫普通链接二维码打开小程序」，需删除该规则，否则扫码仍会进小程序。
+
+### 后端与协作约定
+
+编码规范见 [docs/编码规范.md](docs/编码规范.md)；提交前运行 `mvn verify`（含 Checkstyle）与 merchant-web、customer-web 的 `npm run lint`。
+
 
 - **金额**：全部以「分」为单位的整数（`BIGINT`）
 - **错误码**：见 `server/.../common/ErrorCode.java`（与需求文档 §11.1 一致）
 - **数据库变更**：只通过 Flyway 新增 `V{n}__xxx.sql`，不改已执行的脚本，不手改生产库
-- **门店隔离**：商家端请求由 JWT 注入门店上下文，多租户插件自动对 `staff / category / dish / dining_table / orders / refund` 追加 `store_id` 条件；顾客端、定时任务、支付回调没有门店上下文，需要在代码中显式按 `store_id` 过滤
+- **门店隔离**：商家端请求由 JWT 注入门店上下文，多租户插件自动对 `staff / category / dish / dining_table / orders / refund` 追加 `store_id` 条件；顾客端、定时任务没有门店上下文，需要在代码中显式按 `store_id` 过滤
 - **分支**：`main`（可发布）← `develop` ← `feature/*`；提交信息 `feat|fix|refactor|docs|test|chore: 描述`
 
 ## 生产部署（概要）
 
 1. 服务器安装 Docker，域名解析到服务器，完成 ICP 备案
-2. `cp deploy/.env.example deploy/.env` 并填写（`JWT_SECRET` 用 `openssl rand -base64 48` 生成；支付参数见 [docs/上线清单.md](docs/上线清单.md)）
+2. `cp deploy/.env.example deploy/.env` 并填写（`JWT_SECRET` 用 `openssl rand -base64 48` 生成；逐项说明见 [docs/上线清单.md](docs/上线清单.md)）
 3. 替换 `deploy/nginx/conf.d/ordering.conf` 中的域名
 4. 首次签发证书（nginx 启动前）：
    ```bash
@@ -107,10 +129,10 @@ npm run dev:alipay           # 支付宝开发者工具导入 miniapp/dist/alipa
      certonly --standalone -d <你的域名> --agree-tos -m <邮箱> --non-interactive
    ```
    卷名前缀取决于 compose 项目名（默认是 deploy 目录名，可用 `docker volume ls` 确认）
-5. 构建商家端：`cd merchant-web && npm ci && npm run build`
+5. 构建商家端与顾客 H5：`cd merchant-web && npm ci && npm run build`；`cd customer-web && npm ci && STATIC_EXPORT=true npm run build`
 6. `cd deploy && docker compose up -d --build`
 7. 首次启动会按 `BOOTSTRAP_*` 创建门店和店主账号，确认后把 `BOOTSTRAP_ENABLED` 改为 `false`
-8. 把微信、支付宝的普通二维码校验文件放到 `deploy/nginx/html/` 根目录
+8. 手机打开 `https://<你的域名>/q/<桌码token>`，确认跳转到 `/h5/?token=…` 并显示店铺与桌号
 
 ## 与工程化设计文档的差异
 

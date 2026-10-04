@@ -31,7 +31,7 @@ export async function downloadTableCard(storeName: string, code: string, url: st
   ctx.fillText(`桌号 ${code}`, width / 2, 660)
   ctx.font = '28px "PingFang SC", "Microsoft YaHei", sans-serif'
   ctx.fillStyle = '#666'
-  ctx.fillText('微信 / 支付宝扫码点餐', width / 2, 730)
+  ctx.fillText('手机扫码点餐', width / 2, 730)
 
   const a = document.createElement('a')
   a.href = canvas.toDataURL('image/png')

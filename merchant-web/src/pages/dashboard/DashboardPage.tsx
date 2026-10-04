@@ -47,18 +47,24 @@ export default function DashboardPage() {
   const making = counts?.makingCount ?? stats?.makingCount ?? 0
   const applying = counts?.applyingRefundCount ?? stats?.applyingRefundCount ?? 0
   const failed = counts?.failedRefundCount ?? stats?.failedRefundCount ?? 0
+  const overdue = counts?.overdueRefundCount ?? 0
 
   return (
     <Row gutter={[16, 16]}>
       {(pendingAccept > 0 || applying > 0 || failed > 0) && (
         <Col span={24}>
           <Alert
-            type={pendingAccept > 0 ? 'warning' : 'info'}
+            type={pendingAccept > 0 || overdue > 0 ? 'warning' : 'info'}
             showIcon
             message={
               <Space size="large" wrap>
                 {pendingAccept > 0 && <span>有 <b>{pendingAccept}</b> 单待接单 <Button type="link" size="small" onClick={() => navigate('/orders?status=PAID')}>去处理 <ArrowRightOutlined /></Button></span>}
-                {applying > 0 && isOwner && <span>有 <b>{applying}</b> 笔退款待审核 <Button type="link" size="small" onClick={() => navigate('/refunds?status=APPLYING')}>去审核 <ArrowRightOutlined /></Button></span>}
+                {applying > 0 && isOwner && (
+                  <span>
+                    有 <b>{applying}</b> 笔退款待审核{overdue > 0 && <>，其中 <b>{overdue}</b> 笔已超过 2 小时</>}
+                    <Button type="link" size="small" onClick={() => navigate('/refunds?status=APPLYING')}>去审核 <ArrowRightOutlined /></Button>
+                  </span>
+                )}
                 {failed > 0 && isOwner && <span><b>{failed}</b> 笔退款失败需处理 <Button type="link" size="small" onClick={() => navigate('/refunds?status=FAILED')}>查看 <ArrowRightOutlined /></Button></span>}
               </Space>
             }

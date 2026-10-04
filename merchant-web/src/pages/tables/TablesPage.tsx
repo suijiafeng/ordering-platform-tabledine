@@ -8,11 +8,13 @@ import { fetchStore } from '../../api/store'
 import type { TableItem } from '../../api/types'
 import { downloadTableCard, qrDataUrl } from '../../utils/qrcode'
 import { useIsOwner } from '../../utils/auth'
+import { ignoreShownError } from '../../utils/errors'
 
 function QrThumb({ url }: { url: string }) {
   const [src, setSrc] = useState<string>()
   useEffect(() => {
-    qrDataUrl(url, 240).then(setSrc)
+    // 二维码生成失败只是缩略图不显示，不影响列表
+    qrDataUrl(url, 240).then(setSrc).catch(() => setSrc(undefined))
   }, [url])
   return src ? <Image src={src} width={56} height={56} /> : null
 }
@@ -39,8 +41,8 @@ export default function TablesPage() {
       setTables(list)
       // 删除 / 重置后清理已不存在的选中项，避免「打印选中（N）」计数虚高
       setSelected((prev) => prev.filter((id) => list.some((t) => t.id === id)))
-    } catch {
-      // 错误提示已由 request 统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setLoading(false)
     }
@@ -67,8 +69,8 @@ export default function TablesPage() {
       }
       setEditing(null)
       void load()
-    } catch {
-      // 保持弹窗打开让用户修改；错误提示已统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；保持弹窗打开让用户修改
     } finally {
       setSaving(false)
     }
@@ -85,8 +87,8 @@ export default function TablesPage() {
       message.success(`已新建 ${created.length} 张桌台（已存在的桌号自动跳过）`)
       setBatchOpen(false)
       void load()
-    } catch {
-      // 同上
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setSaving(false)
     }
@@ -114,11 +116,26 @@ export default function TablesPage() {
               <Popconfirm
                 title="重置桌码？"
                 description="旧桌码会立即失效，需要重新打印张贴。"
-                onConfirm={async () => { await resetTableQr(r.id); message.success('已重置，请重新打印'); load() }}
+                onConfirm={async () => {
+                  try {
+                    await resetTableQr(r.id)
+                    message.success('已重置，请重新打印')
+                    void load()
+                  } catch (e) {
+                    ignoreShownError(e)  // 请求层已提示
+                  }
+                }}
               >
                 <Button type="link" size="small">重置</Button>
               </Popconfirm>
-              <Popconfirm title={`删除桌台 ${r.code}？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteTable(r.id); load() }}>
+              <Popconfirm title={`删除桌台 ${r.code}？`} okButtonProps={{ danger: true }} onConfirm={async () => {
+                try {
+                  await deleteTable(r.id)
+                  void load()
+                } catch (e) {
+                  ignoreShownError(e)  // 请求层已提示
+                }
+              }}>
                 <Button type="link" size="small" danger>删除</Button>
               </Popconfirm>
             </>
@@ -182,7 +199,22 @@ export default function TablesPage() {
           <Form.Item name="from" label="从" rules={[{ required: true }]}>
             <InputNumber min={1} max={999} />
           </Form.Item>
-          <Form.Item name="to" label="到" rules={[{ required: true }]}>
+          <Form.Item
+            name="to"
+            label="到"
+            dependencies={['from']}
+            rules={[
+              { required: true },
+              ({ getFieldValue }) => ({
+                validator: (_, to: number) => {
+                  const from = getFieldValue('from') as number
+                  if (to < from) return Promise.reject(new Error('结束序号不能小于起始序号'))
+                  if (to - from >= 200) return Promise.reject(new Error('一次最多 200 张'))
+                  return Promise.resolve()
+                },
+              }),
+            ]}
+          >
             <InputNumber min={1} max={999} />
           </Form.Item>
         </Form>

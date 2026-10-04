@@ -46,11 +46,14 @@ public class StoreService {
         return getRequired(storeId);
     }
 
+    /** 只改营业状态：整行 updateById 会覆盖同时保存的店铺设置 */
     public Store updateBusinessStatus(Long storeId, boolean open) {
-        Store store = getRequired(storeId);
-        store.setBusinessStatus(open ? Store.STATUS_OPEN : Store.STATUS_CLOSED);
-        storeMapper.updateById(store);
-        return store;
+        getRequired(storeId);
+        storeMapper.update(null, Wrappers.<Store>lambdaUpdate()
+                .set(Store::getBusinessStatus, open ? Store.STATUS_OPEN : Store.STATUS_CLOSED)
+                .set(Store::getUpdatedAt, OffsetDateTime.now())
+                .eq(Store::getId, storeId));
+        return getRequired(storeId);
     }
 
     private static String blankToNull(String s) {

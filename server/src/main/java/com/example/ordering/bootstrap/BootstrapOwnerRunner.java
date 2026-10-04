@@ -49,6 +49,10 @@ public class BootstrapOwnerRunner implements ApplicationRunner {
                 || !StringUtils.hasText(props.getOwnerPassword()) || props.getOwnerPassword().length() < 8) {
             throw new IllegalStateException("初始化门店需要配置门店名、店主账号和不少于 8 位的店主密码");
         }
+        // .env.example 里的占位文字长度够 8 位：照抄示例文件上线会得到一个仓库里公开的店主密码
+        if (props.getOwnerPassword().contains("请改") || props.getOwnerPassword().contains("change")) {
+            throw new IllegalStateException("BOOTSTRAP_OWNER_PASSWORD 仍是示例占位值，请改成自己的强密码");
+        }
         Store store = new Store();
         store.setName(props.getStoreName());
         store.setBusinessStatus(Store.STATUS_CLOSED);

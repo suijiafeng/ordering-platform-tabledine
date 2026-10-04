@@ -27,7 +27,7 @@ import java.util.List;
  * 不含任何渠道调用，供 OrderService / MerchantOrderService / PayService / RefundService / 定时任务复用。
  * <p>
  * 注意：商家端请求带门店上下文，多租户插件会给 orders 的更新自动追加 store_id 条件；
- * 顾客端 / 定时任务 / 回调无门店上下文，调用方须自行校验归属。
+ * 顾客端 / 定时任务无门店上下文，调用方须自行校验归属。
  */
 @Slf4j
 @Service
@@ -117,11 +117,23 @@ public class OrderStateService {
         order.setStatus(to);
         order.setUpdatedAt(now);
         switch (to) {
-            case PAID -> { if (order.getPaidAt() == null) { order.setPaidAt(now); } }
-            case MAKING -> { order.setAcceptedAt(now); if (order.getPaidAt() == null) { order.setPaidAt(now); } }
+            case PAID -> {
+                if (order.getPaidAt() == null) {
+                    order.setPaidAt(now);
+                }
+            }
+            case MAKING -> {
+                order.setAcceptedAt(now);
+                if (order.getPaidAt() == null) {
+                    order.setPaidAt(now);
+                }
+            }
             case READY -> order.setReadyAt(now);
             case DONE -> order.setDoneAt(now);
-            case CLOSED, CANCELLED -> { order.setCancelledAt(now); order.setCancelReason(remark); }
+            case CLOSED, CANCELLED -> {
+                order.setCancelledAt(now);
+                order.setCancelReason(remark);
+            }
             default -> { }
         }
         return true;
@@ -163,13 +175,21 @@ public class OrderStateService {
         return dish != null && dish.getStockQuantity() == null;
     }
 
-    /** 回补库存：未支付关闭、待接单阶段取消时调用；已开始制作后的退款不回补 */
+    /**
+     * 回补库存：未支付关闭、待接单阶段取消时调用；已开始制作后的退款不回补。
+     * 只回补到订单所属业务日期的库存：昨天的订单今天取消，占用的是昨天的限量，不能把今天的剩余加回去。
+     */
     public void restoreStock(Long orderId) {
+        Order order = getById(orderId);
+        if (order == null || order.getCreatedAt() == null) {
+            return;
+        }
+        java.time.LocalDate orderDay = order.getCreatedAt().atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
         for (OrderItem item : items(orderId)) {
-            // 不超过每日限量：跨天的旧订单关单 / 取消时，今日剩余已在 0 点重置，回补会超出限量
             dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
                     .setSql("stock_quantity = LEAST(stock_quantity + " + item.getQuantity() + ", daily_stock)")
                     .eq(Dish::getId, item.getDishId())
+                    .eq(Dish::getStockDate, orderDay)
                     .isNotNull(Dish::getStockQuantity)
                     .isNotNull(Dish::getDailyStock));
         }

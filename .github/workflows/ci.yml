@@ -18,7 +18,7 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
-      # 集成测试使用 Testcontainers，GitHub 托管的 ubuntu runner 自带 Docker
+      # verify 包含 Checkstyle（validate 阶段）与测试；集成测试使用 Testcontainers，GitHub 托管的 ubuntu runner 自带 Docker
       - run: mvn -B verify
       # 验证生产镜像能构建（不推送；推送与部署按设计文档 §5.4 后续接入镜像仓库）
       - run: docker build -t ordering-server:ci .
@@ -36,25 +36,29 @@ jobs:
           cache: npm
           cache-dependency-path: merchant-web/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: merchant-web-dist
           path: merchant-web/dist
 
-  miniapp:
+  customer-web:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: miniapp
+        working-directory: customer-web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: miniapp/package-lock.json
+          cache-dependency-path: customer-web/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run typecheck
-      - run: npm run build:weapp
-      - run: npm run build:alipay
+      # 与生产部署一致：静态导出，产物与后端 API 同域部署
+      - run: npm run build
+        env:
+          STATIC_EXPORT: 'true'

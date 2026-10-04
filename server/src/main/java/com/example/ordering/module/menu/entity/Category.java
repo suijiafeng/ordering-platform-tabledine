@@ -14,6 +14,8 @@ import java.time.OffsetDateTime;
 @TableName("category")
 public class Category {
 
+    public static final int STATUS_ENABLED = 1;
+
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long storeId;
@@ -27,4 +29,9 @@ public class Category {
     private OffsetDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private OffsetDateTime updatedAt;
+
+    /** 停用的分类在顾客菜单中隐藏，其中的菜品也不能下单 */
+    public boolean isEnabled() {
+        return status != null && status == STATUS_ENABLED;
+    }
 }

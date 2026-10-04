@@ -9,8 +9,8 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/html:/usr/share/nginx/html:ro          # 桌码落地页、平台校验文件
       - ../merchant-web/dist:/usr/share/nginx/merchant:ro  # 商家端构建产物（CI 构建后同步）
+      - ../customer-web/out:/usr/share/nginx/h5:ro         # 顾客 H5 点餐（STATIC_EXPORT=true npm run build）
       - uploads:/data/uploads:ro                        # 菜品图片
       - certbot-conf:/etc/letsencrypt:ro
       - certbot-www:/var/www/certbot:ro
@@ -36,19 +36,6 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
-      WECHAT_APP_ID: ${WECHAT_APP_ID:-}
-      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
-      ALIPAY_APP_ID: ${ALIPAY_APP_ID:-}
-      ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:-}
-      ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
-      # 支付：渠道异步通知的公网地址 + 微信支付商户参数（APIv3）；为空时后端启动正常但发起支付会报「未配置微信支付」
-      PAY_NOTIFY_BASE_URL: ${PAY_NOTIFY_BASE_URL}
-      WECHAT_PAY_MCH_ID: ${WECHAT_PAY_MCH_ID:-}
-      WECHAT_PAY_SERIAL_NO: ${WECHAT_PAY_SERIAL_NO:-}
-      WECHAT_PAY_PRIVATE_KEY: ${WECHAT_PAY_PRIVATE_KEY:-}
-      WECHAT_PAY_API_V3_KEY: ${WECHAT_PAY_API_V3_KEY:-}
-      WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID:-}
-      WECHAT_PAY_PLATFORM_PUBLIC_KEY: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       QR_BASE_URL: ${QR_BASE_URL}
       BOOTSTRAP_ENABLED: ${BOOTSTRAP_ENABLED:-false}
