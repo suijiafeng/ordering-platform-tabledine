@@ -34,7 +34,8 @@ public class TableService {
         this.tableMapper = tableMapper;
         this.storeService = storeService;
         String base = appProperties.getQr().getBaseUrl();
-        this.qrBaseUrl = base.endsWith("/") ? base : base + "/";
+        // /q 是路径前缀，需要补斜杠；customer-web 使用 ?token= 作为查询参数前缀，不能补成 ?token=/。
+        this.qrBaseUrl = base.endsWith("/") || base.endsWith("=") ? base : base + "/";
     }
 
     // ==================== 顾客端 ====================
@@ -107,18 +108,21 @@ public class TableService {
         return created;
     }
 
+    /** 只更新桌号 / 状态：整行 updateById 会把并发「重置桌码」写回旧 token，让旧码继续有效 */
     public TableView update(Long id, TableRequest req) {
-        DiningTable t = require(id);
-        t.setCode(req.code().trim());
+        require(id);
+        var w = Wrappers.<DiningTable>lambdaUpdate()
+                .set(DiningTable::getCode, req.code().trim())
+                .eq(DiningTable::getId, id);
         if (req.status() != null) {
-            t.setStatus(req.status());
+            w.set(DiningTable::getStatus, req.status());
         }
         try {
-            tableMapper.updateById(t);
+            tableMapper.update(null, w);
         } catch (DuplicateKeyException e) {
             throw new BusinessException(ErrorCode.CONFLICT, "桌号已存在");
         }
-        return TableView.of(t, qrBaseUrl);
+        return TableView.of(require(id), qrBaseUrl);
     }
 
     /** 删除桌台。历史订单保存了桌号快照，不受影响 */
@@ -129,10 +133,11 @@ public class TableService {
 
     /** 重置桌码：旧码立即失效，需要重新打印 */
     public TableView resetQr(Long id) {
-        DiningTable t = require(id);
-        t.setQrToken(QrTokenGenerator.next());
-        tableMapper.updateById(t);
-        return TableView.of(t, qrBaseUrl);
+        require(id);
+        tableMapper.update(null, Wrappers.<DiningTable>lambdaUpdate()
+                .set(DiningTable::getQrToken, QrTokenGenerator.next())
+                .eq(DiningTable::getId, id));
+        return TableView.of(require(id), qrBaseUrl);
     }
 
     private void insertOrConflict(DiningTable t) {

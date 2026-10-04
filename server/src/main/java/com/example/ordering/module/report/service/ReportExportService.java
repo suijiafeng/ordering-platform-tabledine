@@ -80,8 +80,8 @@ public class ReportExportService {
 
         StringBuilder sb = new StringBuilder("﻿");
         row(sb, "记录类型", "订单号", "下单时间", "桌号", "订单状态", "退款状态", "商品总额(元)", "实付(元)", "累计已退(元)",
-                "支付渠道", "支付时间", "商户订单号", "渠道交易号", "退款单号", "退款类型", "退款发起方", "退款金额(元)",
-                "退款单状态", "退款完成时间", "渠道退款号", "退款原因", "操作人", "备注");
+                "支付渠道", "支付时间", "商户订单号", "交易号", "退款单号", "退款类型", "退款发起方", "退款金额(元)",
+                "退款单状态", "退款完成时间", "退款流水号", "退款原因", "操作人", "备注");
         for (Map<String, Object> o : orders) {
             row(sb, "订单", o.get("order_no"), time(o.get("created_at")), o.get("table_code"),
                     ORDER_STATUS.getOrDefault(str(o.get("status")), str(o.get("status"))),

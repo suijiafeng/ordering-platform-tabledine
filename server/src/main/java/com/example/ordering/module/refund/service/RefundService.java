@@ -201,8 +201,8 @@ public class RefundService {
     }
 
     /**
-     * 商家主动退款：FULL / ITEM 任意员工可对 制作中 / 待送餐 / 已完成 订单操作；
-     * CUSTOM 仅店主。直接进入 PROCESSING 并返还余额。
+     * 商家主动退款（仅店主，控制器 @PreAuthorize 限制）：FULL / ITEM / CUSTOM，
+     * 订单须为 制作中 / 待送餐 / 已完成。直接进入 PROCESSING 并返还余额。
      * <p>事务：数据库事务建退款单；返还余额在事务提交之后
      */
     @Transactional

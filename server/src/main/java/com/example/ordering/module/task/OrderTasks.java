@@ -72,9 +72,13 @@ public class OrderTasks {
     /** 未接单自动退款：每分钟。手动接单模式下，已支付超过店铺配置时长未接单 → 取消 + 全额退款 */
     @Scheduled(fixedDelay = 60_000, initialDelay = 45_000)
     public void autoRefundUnaccepted() {
+        // 超时判断放在 SQL 里（按各店的接单时限）：只取前 200 单再在内存里过滤，
+        // 会被时限较长门店的订单占满名额，导致其他门店早已超时的订单一直轮不到
         List<Order> paid = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
                 .eq(Order::getStatus, OrderStatus.PAID)
-                .lt(Order::getPaidAt, OffsetDateTime.now().minusMinutes(1))
+                .isNotNull(Order::getPaidAt)
+                .apply("paid_at < now() - make_interval(mins => COALESCE("
+                        + "(SELECT s.accept_timeout_min FROM store s WHERE s.id = orders.store_id), 10))")
                 .orderByAsc(Order::getId)
                 .last("LIMIT 200"));
         Map<Long, Store> stores = new HashMap<>();

@@ -17,7 +17,7 @@ spring:
   task:
     scheduling:
       pool:
-        # 渠道调用是同步且有超时，单线程时一个任务卡住会拖住其他所有定时任务
+        # 关单、自动退款、退款补偿、每日限量重置各自独立：单线程时一个任务变慢会拖住其他所有定时任务
         size: 4
   jackson:
     default-property-inclusion: always
