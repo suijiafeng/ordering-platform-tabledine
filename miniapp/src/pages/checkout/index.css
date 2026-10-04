@@ -17,7 +17,7 @@
 
 .co-table {
   font-size: 26px;
-  color: #ff7a00;
+  color: var(--brand);
 }
 
 .co-row {
@@ -38,12 +38,12 @@
 
 .co-row-desc {
   font-size: 24px;
-  color: #999;
+  color: var(--text-3);
   margin-top: 4px;
 }
 
 .co-row-qty {
-  color: #999;
+  color: var(--text-3);
   margin: 0 24px;
 }
 
@@ -54,12 +54,12 @@
 .co-sum {
   text-align: right;
   padding-top: 16px;
-  border-top: 1px solid #f2f2f2;
+  border-top: 1px solid var(--border);
   font-size: 28px;
 }
 
 .co-sum-price {
-  color: #ff4d00;
+  color: var(--price);
   font-size: 34px;
   font-weight: 600;
 }
@@ -81,7 +81,7 @@
   margin-left: 32px;
   height: 120px;
   font-size: 28px;
-  background: #f7f7f7;
+  background: var(--bg-muted);
   border-radius: 8px;
   padding: 12px;
 }
@@ -102,12 +102,12 @@
 
 .co-bar-total {
   font-size: 40px;
-  color: #ff4d00;
+  color: var(--price);
   font-weight: 600;
 }
 
 .co-submit {
-  background: #ff7a00;
+  background: var(--brand);
   color: #fff;
   padding: 20px 64px;
   border-radius: 40px;
@@ -116,7 +116,7 @@
 }
 
 .co-submit.disabled {
-  background: #ccc;
+  background: var(--disabled);
 }
 
 .co-empty {
@@ -124,10 +124,10 @@
   flex-direction: column;
   align-items: center;
   padding-top: 240px;
-  color: #999;
+  color: var(--text-3);
 }
 
 .co-link {
   margin-top: 24px;
-  color: #1677ff;
+  color: var(--brand);
 }

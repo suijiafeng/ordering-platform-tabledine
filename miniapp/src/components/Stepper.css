@@ -15,13 +15,13 @@
 }
 
 .stepper-btn.minus {
-  border: 2px solid #ff7a00;
-  color: #ff7a00;
+  border: 2px solid var(--brand);
+  color: var(--brand);
   box-sizing: border-box;
 }
 
 .stepper-btn.plus {
-  background: #ff7a00;
+  background: var(--brand);
   color: #fff;
 }
 

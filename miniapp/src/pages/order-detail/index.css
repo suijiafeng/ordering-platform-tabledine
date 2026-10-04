@@ -1,35 +1,35 @@
-.od-page { padding: 24px 24px 48px; background: #f5f5f5; min-height: 100vh; box-sizing: border-box; }
-.od-loading { padding: 96px; text-align: center; color: #999; }
+.od-page { padding: 24px 24px 48px; background: var(--bg-page); min-height: 100vh; box-sizing: border-box; }
+.od-loading { padding: 96px; text-align: center; color: var(--text-3); }
 .od-status { padding: 32px 8px; }
-.od-status-text { display: block; font-size: 40px; font-weight: 700; color: #333; }
-.od-sub { display: block; font-size: 24px; color: #999; margin-top: 12px; }
+.od-status-text { display: block; font-size: 40px; font-weight: 700; color: var(--text); }
+.od-sub { display: block; font-size: 24px; color: var(--text-3); margin-top: 12px; }
 .od-card { background: #fff; border-radius: 16px; padding: 24px; margin-bottom: 20px; }
 .od-store { display: block; font-size: 30px; font-weight: 600; margin-bottom: 16px; }
 .od-row { display: flex; align-items: flex-start; padding: 12px 0; }
 .od-row-info { flex: 1; }
-.od-row-name { display: block; font-size: 28px; color: #333; }
-.od-row-desc { display: block; font-size: 22px; color: #999; margin-top: 4px; }
-.od-row-qty { width: 80px; text-align: center; font-size: 26px; color: #666; }
+.od-row-name { display: block; font-size: 28px; color: var(--text); }
+.od-row-desc { display: block; font-size: 22px; color: var(--text-3); margin-top: 4px; }
+.od-row-qty { width: 80px; text-align: center; font-size: 26px; color: var(--text-2); }
 .od-row-price { width: 140px; text-align: right; font-size: 28px; }
-.od-sum { text-align: right; margin-top: 16px; border-top: 1px solid #f0f0f0; padding-top: 16px; font-size: 26px; }
+.od-sum { text-align: right; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; font-size: 26px; }
 .od-sum-price { font-size: 34px; font-weight: 700; }
-.od-refunded { display: block; text-align: right; font-size: 24px; color: #ff6a00; margin-top: 8px; }
-.od-line { display: block; font-size: 26px; color: #666; line-height: 1.9; }
-.od-refund { padding: 12px 0; border-top: 1px solid #f5f5f5; }
+.od-refunded { display: block; text-align: right; font-size: 24px; color: var(--brand); margin-top: 8px; }
+.od-line { display: block; font-size: 26px; color: var(--text-2); line-height: 1.9; }
+.od-refund { padding: 12px 0; border-top: 1px solid var(--border); }
 .od-refund-head { display: flex; justify-content: space-between; font-size: 28px; }
-.od-refund-status { color: #ff6a00; font-size: 26px; }
-.od-countdown { color: #ff6a00; font-weight: 700; font-family: Menlo, Consolas, monospace; }
+.od-refund-status { color: var(--brand); font-size: 26px; }
+.od-countdown { color: var(--brand); font-weight: 700; font-family: Menlo, Consolas, monospace; }
 .od-timeline { padding-left: 8px; }
 .od-step { position: relative; display: flex; padding: 0 0 24px 32px; }
-.od-step::before { content: ''; position: absolute; left: 7px; top: 20px; bottom: 0; width: 2px; background: #eee; }
+.od-step::before { content: ''; position: absolute; left: 7px; top: 20px; bottom: 0; width: 2px; background: var(--border); }
 .od-step:last-child::before { display: none; }
-.od-step-dot { position: absolute; left: 0; top: 8px; width: 16px; height: 16px; border-radius: 8px; background: #ddd; }
-.od-step.current .od-step-dot { background: #ff6a00; box-shadow: 0 0 0 6px #fff1e6; }
+.od-step-dot { position: absolute; left: 0; top: 8px; width: 16px; height: 16px; border-radius: 8px; background: var(--border-strong); }
+.od-step.current .od-step-dot { background: var(--brand); box-shadow: 0 0 0 6px var(--brand-bg); }
 .od-step-body { flex: 1; }
-.od-step-title { display: block; font-size: 26px; color: #999; }
-.od-step.current .od-step-title { color: #333; font-weight: 600; }
-.od-step-time { display: block; font-size: 22px; color: #bbb; margin-top: 4px; }
+.od-step-title { display: block; font-size: 26px; color: var(--text-3); }
+.od-step.current .od-step-title { color: var(--text); font-weight: 600; }
+.od-step-time { display: block; font-size: 22px; color: var(--text-4); margin-top: 4px; }
 .od-actions { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 32px; }
-.od-btn { flex: 1 1 40%; text-align: center; padding: 24px 0; border-radius: 48px; border: 1px solid #ddd; background: #fff; font-size: 28px; color: #333; }
-.od-btn.primary { flex-basis: 100%; background: #ff6a00; border-color: #ff6a00; color: #fff; font-weight: 600; }
-.od-link { display: block; margin-top: 24px; color: #ff6a00; font-size: 28px; }
+.od-btn { flex: 1 1 40%; text-align: center; padding: 24px 0; border-radius: 48px; border: 1px solid var(--border-strong); background: #fff; font-size: 28px; color: var(--text); }
+.od-btn.primary { flex-basis: 100%; background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.od-link { display: block; margin-top: 24px; color: var(--brand); font-size: 28px; }
