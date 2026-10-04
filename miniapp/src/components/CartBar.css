@@ -10,7 +10,7 @@
   align-items: center;
   justify-content: space-between;
   z-index: 90;
-  overflow: hidden;
+  /* 不裁剪：购物车图标上的角标会探出条形之外；右侧按钮自己带圆角，视觉上仍是完整的胶囊 */
 }
 
 .cart-left {
@@ -47,6 +47,7 @@
 .cart-submit {
   height: 100%;
   padding: 0 48px;
+  border-radius: 0 50px 50px 0;
   background: var(--brand);
   color: #fff;
   font-size: 30px;
