@@ -29,6 +29,8 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WalletService walletService;
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager txManager;
 
     private static String randomPhone() {
         return "138" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000));
@@ -110,7 +112,9 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
         assertThat(balance(member)).isEqualTo(4200);
         String refundNo = detail.path("refunds").get(0).path("refundNo").asText();
         // 同一退款单号重复返还：幂等，不再加钱
-        assertThat(walletService.refund(refundNo, orderNo, 3800)).isFalse();
+        Boolean refundedAgain = new org.springframework.transaction.support.TransactionTemplate(txManager)
+                .execute(st -> walletService.refund(refundNo, orderNo, 3800));
+        assertThat(refundedAgain).isFalse();
         assertThat(balance(member)).isEqualTo(4200);
         JsonNode myTxns = getData("/api/v1/c/wallet/transactions", member);
         assertThat(myTxns.path("list").get(0).path("type").asText()).isEqualTo("REFUND");

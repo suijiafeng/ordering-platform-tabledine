@@ -8,6 +8,7 @@ import com.example.ordering.module.order.dto.PayInitResult;
 import com.example.ordering.module.order.entity.OperatorType;
 import com.example.ordering.module.order.entity.Order;
 import com.example.ordering.module.order.entity.OrderStatus;
+import com.example.ordering.module.order.mapper.OrderMapper;
 import com.example.ordering.module.order.service.OrderStateService;
 import com.example.ordering.module.pay.entity.Payment;
 import com.example.ordering.module.pay.entity.PaymentStatus;
@@ -43,14 +44,16 @@ import java.util.Map;
 public class PayService {
 
     private final PaymentMapper paymentMapper;
+    private final OrderMapper orderMapper;
     private final OrderStateService orderStateService;
     private final RefundService refundService;
     private final StoreService storeService;
     private final WalletService walletService;
 
-    public PayService(PaymentMapper paymentMapper, OrderStateService orderStateService, RefundService refundService,
+    public PayService(PaymentMapper paymentMapper, OrderMapper orderMapper, OrderStateService orderStateService, RefundService refundService,
                       StoreService storeService, WalletService walletService) {
         this.paymentMapper = paymentMapper;
+        this.orderMapper = orderMapper;
         this.orderStateService = orderStateService;
         this.refundService = refundService;
         this.storeService = storeService;
@@ -65,7 +68,9 @@ public class PayService {
      */
     @Transactional
     public PayInitResult initiate(Order order) {
-        if (order.getStatus() != OrderStatus.PENDING_PAY) {
+        // 锁住订单行并以锁内状态为准：并发的两次支付（双击、重试）串行执行，第二次看到已支付直接拒绝，不会二次扣费
+        Order locked = orderMapper.selectOne(Wrappers.<Order>lambdaQuery().eq(Order::getId, order.getId()).last("FOR UPDATE"));
+        if (locked == null || locked.getStatus() != OrderStatus.PENDING_PAY) {
             throw new BusinessException(ErrorCode.CONFLICT, "订单当前不可支付");
         }
         if (order.getPayExpireAt().isBefore(OffsetDateTime.now())) {

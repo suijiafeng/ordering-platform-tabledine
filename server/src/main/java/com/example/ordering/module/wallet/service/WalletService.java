@@ -28,8 +28,8 @@ import java.time.OffsetDateTime;
  *       扣费在余额不足时影响 0 行，并发下不会扣成负数</li>
  *   <li>扣费按商户订单号幂等、返还按退款单号幂等（部分唯一索引兜底）：支付 / 退款链路的重试不会重复扣款或重复返还</li>
  * </ul>
- * 事务边界：三个写方法都是数据库事务（@Transactional），由支付 / 退款 / 会员服务在各自事务中调用，
- * 或作为渠道的 afterCommit 调用独立提交。
+ * 事务边界：充值、扣费是数据库事务（@Transactional），加入调用方事务；
+ * 退款返还必须在调用方的事务里执行（RefundService 锁住退款单后调用），见 {@link #refund}。
  */
 @Slf4j
 @Service
@@ -86,28 +86,42 @@ public class WalletService {
 
     /**
      * 退款返还：按退款单号幂等。返回 true 表示本次新返还，false 表示该退款单之前已返还过。
-     * 原支付必须是余额扣费（按商户订单号找到 PAY 流水），否则抛状态冲突。
-     * 独立新事务：由退款单事务的 afterCommit 钩子调用，此时线程上仍绑定着已提交事务的连接，必须另开事务。
+     * <ul>
+     *   <li>原支付必须是余额扣费（按商户订单号找到 PAY 流水），否则抛状态冲突</li>
+     *   <li>同一笔支付累计返还不能超过扣费金额（锁住扣费流水后求和），否则抛退款超额——
+     *       这是余额层面的最后一道防线，即使上层的订单可退余额校验因并发失效也不会多退</li>
+     * </ul>
+     * 事务：必须在调用方事务内执行（MANDATORY）。出错时抛异常，由调用方回滚整个事务；
+     * 校验都在写之前完成，不会留下半笔返还。
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = BusinessException.class)
     public boolean refund(String refundNo, String outTradeNo, long amountInCents) {
         if (findByRefundNo(refundNo) != null) {
             return false;
         }
-        WalletTransaction paid = findByOutTradeNo(outTradeNo);
+        WalletTransaction paid = transactionMapper.selectOne(Wrappers.<WalletTransaction>lambdaQuery()
+                .eq(WalletTransaction::getType, WalletTransactionType.PAY)
+                .eq(WalletTransaction::getOutTradeNo, outTradeNo)
+                .last("LIMIT 1 FOR UPDATE"));
         if (paid == null) {
             throw new BusinessException(ErrorCode.CONFLICT, "该支付不是余额支付，无法原路返还");
+        }
+        long refunded = transactionMapper.selectList(Wrappers.<WalletTransaction>lambdaQuery()
+                        .eq(WalletTransaction::getType, WalletTransactionType.REFUND)
+                        .eq(WalletTransaction::getOutTradeNo, outTradeNo))
+                .stream().mapToLong(WalletTransaction::getAmount).sum();
+        if (refunded + amountInCents > paid.getAmount()) {
+            log.error("退款 {} 返还 {} 分将超过支付 {} 的扣费 {} 分（已返还 {} 分），拒绝返还",
+                    refundNo, amountInCents, outTradeNo, paid.getAmount(), refunded);
+            throw new BusinessException(ErrorCode.REFUND_AMOUNT_EXCEEDED, "累计退款将超过该笔支付金额");
         }
         Long after = customerMapper.creditBalance(paid.getCustomerId(), amountInCents);
         WalletTransaction txn = newTransaction(paid.getStoreId(), paid.getCustomerId(), WalletTransactionType.REFUND, amountInCents, after);
         txn.setOrderId(paid.getOrderId());
         txn.setOutTradeNo(outTradeNo);
         txn.setRefundNo(refundNo);
-        try {
-            transactionMapper.insert(txn);
-        } catch (DuplicateKeyException e) {
-            return false;  // 并发重复返还：唯一索引拦下，本事务回滚
-        }
+        // 同一退款单的并发返还已由调用方的退款单行锁串行化；万一仍撞唯一索引，异常向上抛出，整个事务回滚
+        transactionMapper.insert(txn);
         log.info("退款 {} 已返还会员 {} 余额 {} 分，余额 {} 分", refundNo, paid.getCustomerId(), amountInCents, after);
         return true;
     }

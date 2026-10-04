@@ -72,7 +72,7 @@ import java.util.stream.Collectors;
 @Service
 public class RefundService {
 
-    static final String LEGACY_CHANNEL_REASON = "该笔支付来自已停用的微信 / 支付宝渠道，无法线上退款，请登记线下退款";
+    static final String LEGACY_CHANNEL_REASON = "该笔支付来自已停用的微信 / 支付宝渠道，系统无法线上退款：请先到原商户平台核对是否已退款，确认未退再登记线下退款";
 
     private final RefundMapper refundMapper;
     private final RefundItemMapper refundItemMapper;
@@ -276,11 +276,9 @@ public class RefundService {
     public RefundView retry(String refundNo, Long operatorId) {
         Refund refund = getByNo(refundNo);
         if (refund.getStatus() == RefundStatus.PROCESSING) {
-            RefundResult confirmed = confirmNotRefunded(refund);
-            if (confirmed != null) {
-                return confirmed.state() == RefundResult.State.SUCCESS
-                        ? view(refundMapper.selectById(refund.getId()), orderStateService.getById(refund.getOrderId()))
-                        : null;
+            if (confirmNotRefunded(refund) != null) {
+                // 其实已返还：已回写为成功
+                return view(refundMapper.selectById(refund.getId()), orderStateService.getById(refund.getOrderId()));
             }
             // 确认没有返还：直接重新提交（状态不变）
             refundMapper.update(null, Wrappers.<Refund>lambdaUpdate()
@@ -331,6 +329,15 @@ public class RefundService {
             return view(fresh, orderStateService.getById(fresh.getOrderId()));
         }
         return requiresNewTx.execute(st -> {
+            Refund locked = lockRefund(refund.getId());
+            if (locked == null || locked.getStatus() != from) {
+                throw new BusinessException(ErrorCode.CONFLICT, "退款单状态已变化，请刷新后重试");
+            }
+            // 锁内再确认一次：补偿任务可能刚好在确认之后返还了余额
+            if (payment(refund).getChannel().isBalance()
+                    && balanceChannel.queryRefund(refund.getRefundNo()).state() == RefundResult.State.SUCCESS) {
+                throw new BusinessException(ErrorCode.CONFLICT, "该退款已返还到会员余额，请刷新查看");
+            }
             Order order = orderStateService.getById(refund.getOrderId());
             updateStatusOrConflict(refund, from, RefundStatus.OFFLINE,
                     w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
@@ -397,7 +404,14 @@ public class RefundService {
         }
         RefundResult result;
         try {
-            result = balanceChannel.refund(refund.getRefundNo(), payment.getOutTradeNo(), refund.getAmount());
+            // 锁住退款单再返还：与店主「登记线下退款」串行，避免一边返还余额、一边线下又退一次
+            result = requiresNewTx.execute(st -> {
+                Refund locked = lockRefund(refund.getId());
+                if (locked == null || locked.getStatus() != RefundStatus.PROCESSING) {
+                    return null;  // 已被线下登记 / 已有结果，不再返还
+                }
+                return balanceChannel.refund(refund.getRefundNo(), payment.getOutTradeNo(), refund.getAmount());
+            });
         } catch (RuntimeException e) {
             // 返还出错（如数据库短暂不可用）：可能已经提交，不能判为失败（否则店主可能再线下退一次）。
             // 保持处理中，由补偿任务按钱包流水查询：已返还就回写，查无流水再用同一单号重新提交（幂等）。
@@ -405,7 +419,11 @@ public class RefundService {
             touch(refund, "退款处理出错，系统将自动重试");
             return;
         }
-        applyResult(refund, result);
+        if (result != null && result.state() == RefundResult.State.UNKNOWN) {
+            touch(refund, "退款结果未确认，系统将自动查询");
+        } else if (result != null) {
+            applyResult(refund, result);
+        }
     }
 
     /**
@@ -448,6 +466,19 @@ public class RefundService {
         }
     }
 
+    /** 在当前事务里锁住退款单行（SELECT ... FOR UPDATE） */
+    private Refund lockRefund(Long refundId) {
+        return refundMapper.selectOne(Wrappers.<Refund>lambdaQuery().eq(Refund::getId, refundId).last("FOR UPDATE"));
+    }
+
+    private Payment payment(Refund refund) {
+        Payment p = ledger.paymentOf(refund, orderStateService.getById(refund.getOrderId()));
+        if (p == null) {
+            throw new BusinessException(ErrorCode.CONFLICT, "找不到该退款对应的支付记录");
+        }
+        return p;
+    }
+
     /** 刷新处理中退款单的 updated_at（补偿任务按它轮转），可选记录提示 */
     private void touch(Refund refund, String note) {
         var w = Wrappers.<Refund>lambdaUpdate()
@@ -458,19 +489,6 @@ public class RefundService {
             w.set(Refund::getFailReason, note);
         }
         refundMapper.update(null, w);
-    }
-
-    /**
-     * 微信退款结果通知
-     * <p>事务：无；结果回写走 applyResult 的独立新事务
-     */
-    public void onRefundNotify(String refundNo, RefundResult result) {
-        Refund refund = refundMapper.selectOne(Wrappers.<Refund>lambdaQuery().eq(Refund::getRefundNo, refundNo));
-        if (refund == null) {
-            log.warn("收到未知退款单的通知: {}", refundNo);
-            return;
-        }
-        applyResult(refund, result);
     }
 
     /**
@@ -566,7 +584,10 @@ public class RefundService {
         }
         // 重复支付 / 迟到支付的退款只针对那笔多余的支付单，不占用订单可退余额，也不占订单的进行中退款名额
         boolean orderScoped = ledger.countsForOrder(order, payment);
-        if (orderScoped && amount > order.refundableAmount()) {
+        // 锁住订单行并重新读取可退余额：调用方拿到的订单可能是事务开始前读的，
+        // 并发的另一笔退款可能刚刚成功入账（双击「全额退款」等），用旧值会超退
+        Order current = orderMapper.selectOne(Wrappers.<Order>lambdaQuery().eq(Order::getId, order.getId()).last("FOR UPDATE"));
+        if (orderScoped && amount > current.refundableAmount()) {
             throw new BusinessException(ErrorCode.REFUND_AMOUNT_EXCEEDED);
         }
         if (orderScoped && hasActiveRefund(order.getId())) {

@@ -32,6 +32,8 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
     PayService payService;
     @Autowired
     WalletService walletService;
+    @Autowired
+    org.springframework.transaction.PlatformTransactionManager txManager;
 
     @Test
     void merchantRefundOnUnacceptedOrderIsRejected() throws Exception {
@@ -184,6 +186,23 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void walletNeverRefundsMoreThanThePaymentEvenIfOrderChecksAreBypassed() throws Exception {
+        String orderNo = acceptedOrder();
+        String outTradeNo = jdbc.queryForObject(
+                "SELECT out_trade_no FROM payment WHERE order_id = (SELECT id FROM orders WHERE order_no = ?)", String.class, orderNo);
+        org.springframework.transaction.support.TransactionTemplate tx = new org.springframework.transaction.support.TransactionTemplate(txManager);
+        // 第一笔退 3000：成功
+        tx.executeWithoutResult(s -> walletService.refund("CAP-1-" + orderNo, outTradeNo, 3000));
+        // 第二笔再退 3000（累计 6000 > 实付 3800）：余额层直接拒绝
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> tx.executeWithoutResult(s -> walletService.refund("CAP-2-" + orderNo, outTradeNo, 3000)))
+                .isInstanceOf(com.example.ordering.common.BusinessException.class)
+                .hasMessageContaining("超过");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wallet_transaction WHERE out_trade_no = ? AND type = 'REFUND'",
+                Integer.class, outTradeNo)).isEqualTo(1);
+    }
+
+    @Test
     void staffCannotInitiateMerchantRefund() throws Exception {
         String orderNo = acceptedOrder();
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), staffToken())
@@ -284,11 +303,11 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
                 .when(balanceChannel).refund(anyString(), anyString(), anyLong());
     }
 
-    /** 下一次返还余额已经成功，但随后出错、结果没回写 */
+    /** 下一次返还余额已经提交，但结果没能回写到退款单（返回结果未知，退款单仍是处理中） */
     private void failNextRefundAfterApplying() {
         org.mockito.Mockito.doAnswer(invocation -> {
             invocation.callRealMethod();
-            throw new IllegalStateException("模拟结果丢失");
+            return com.example.ordering.module.pay.channel.RefundResult.unknown();
         }).doCallRealMethod().when(balanceChannel).refund(anyString(), anyString(), anyLong());
     }
 

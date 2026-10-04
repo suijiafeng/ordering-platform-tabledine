@@ -1,5 +1,6 @@
 package com.example.ordering.module.pay.channel;
 
+import com.example.ordering.common.BusinessException;
 import com.example.ordering.module.wallet.service.WalletService;
 import org.springframework.stereotype.Component;
 
@@ -28,9 +29,16 @@ public class BalancePayChannel {
         return TRANSACTION_PREFIX + outTradeNo;
     }
 
-    /** 退款到余额；同一退款单号重复调用只返还一次 */
+    /**
+     * 退款到余额；同一退款单号重复调用只返还一次。
+     * 原支付不是余额扣费（找不到扣费流水）是确定的失败；其他异常（如数据库不可用）原样抛出，由调用方按「结果未知」处理。
+     */
     public RefundResult refund(String refundNo, String outTradeNo, long amountInCents) {
-        walletService.refund(refundNo, outTradeNo, amountInCents);
+        try {
+            walletService.refund(refundNo, outTradeNo, amountInCents);
+        } catch (BusinessException e) {
+            return RefundResult.failed(e.getMessage());
+        }
         return RefundResult.success(REFUND_PREFIX + refundNo);
     }
 
