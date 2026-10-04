@@ -26,6 +26,7 @@ import com.example.ordering.module.store.service.StoreService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
@@ -53,17 +54,19 @@ public class PayService {
     private final RefundService refundService;
     private final StoreService storeService;
     private final PayChannelRegistry channels;
+    private final TransactionTemplate tx;
     private final String notifyBaseUrl;
 
     public PayService(PaymentMapper paymentMapper, CustomerAuthMapper customerAuthMapper,
                       OrderStateService orderStateService, RefundService refundService, StoreService storeService,
-                      PayChannelRegistry channels, AppProperties appProperties) {
+                      PayChannelRegistry channels, TransactionTemplate tx, AppProperties appProperties) {
         this.paymentMapper = paymentMapper;
         this.customerAuthMapper = customerAuthMapper;
         this.orderStateService = orderStateService;
         this.refundService = refundService;
         this.storeService = storeService;
         this.channels = channels;
+        this.tx = tx;
         this.notifyBaseUrl = appProperties.getPay().getNotifyBaseUrl();
     }
 
@@ -209,7 +212,9 @@ public class PayService {
                 PayQueryResult r = channels.get(p.getChannel()).queryPayment(p.getOutTradeNo());
                 if (r.state() == PayQueryResult.State.SUCCESS) {
                     long amount = r.amount() == null ? p.getAmount() : r.amount();
-                    onPaySuccess(p.getOutTradeNo(), r.transactionNo(), amount, r.paidAt());
+                    // 自调用不经过代理，@Transactional 不生效：显式开事务，保证支付单 SUCCESS 与订单流转同时提交，
+                    // 否则中途异常会留下「支付单已成功、订单仍待支付」并被随后的关单任务关掉
+                    tx.executeWithoutResult(s -> onPaySuccess(p.getOutTradeNo(), r.transactionNo(), amount, r.paidAt()));
                     found = true;
                 } else if (r.state() == PayQueryResult.State.CLOSED && p.getStatus() == PaymentStatus.PENDING) {
                     paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()

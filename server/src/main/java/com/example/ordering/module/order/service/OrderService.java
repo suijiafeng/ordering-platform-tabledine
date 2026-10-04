@@ -248,7 +248,8 @@ public class OrderService {
     public PayInitResult pay(String orderNo) {
         Order order = ownOrder(orderNo);
         if (order.getStatus() == OrderStatus.PENDING_PAY && order.getPayExpireAt().isBefore(OffsetDateTime.now())) {
-            closeExpired(order, "支付超时自动关闭");
+            // 自调用不经过代理，用模板显式开事务
+            tx.executeWithoutResult(s -> closeExpired(order, "支付超时自动关闭"));
             throw new BusinessException(ErrorCode.CONFLICT, "订单已超时，请重新下单");
         }
         return payService.initiate(order);

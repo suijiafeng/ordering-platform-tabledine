@@ -31,6 +31,9 @@ public class ReportExportService {
             "APPLYING", "待审核", "PROCESSING", "处理中", "SUCCESS", "成功", "FAILED", "失败",
             "REJECTED", "已拒绝", "WITHDRAWN", "已撤回", "OFFLINE", "线下退款");
 
+    /** 形如 -12.50 的金额不是公式，不加前缀 */
+    private static final java.util.regex.Pattern NUMERIC = java.util.regex.Pattern.compile("[+-]?\\d+(\\.\\d+)?");
+
     private final JdbcTemplate jdbc;
 
     public ReportExportService(JdbcTemplate jdbc) {
@@ -53,7 +56,10 @@ public class ReportExportService {
                        o.refunded_amount, o.platform, o.paid_at, o.people_count, o.remark,
                        p.out_trade_no, p.transaction_no
                 FROM orders o
-                LEFT JOIN payment p ON p.order_id = o.id AND p.status = 'SUCCESS'
+                LEFT JOIN LATERAL (
+                    SELECT out_trade_no, transaction_no FROM payment
+                    WHERE order_id = o.id AND status = 'SUCCESS' ORDER BY id LIMIT 1
+                ) p ON TRUE
                 WHERE o.store_id = ? AND o.created_at >= ? AND o.created_at < ?
                 ORDER BY o.id
                 """, storeId, start, end);
@@ -113,6 +119,9 @@ public class ReportExportService {
         // 防止 Excel 把长数字串当数字（订单号 20 位会丢精度）：以制表符前缀强制文本
         if (s.length() >= 15 && s.chars().allMatch(Character::isDigit)) {
             s = "\t" + s;
+        } else if (!s.isEmpty() && "=+-@\t\r".indexOf(s.charAt(0)) >= 0 && !NUMERIC.matcher(s).matches()) {
+            // 顾客备注 / 退款原因是用户输入：以 = + - @ 开头会被 Excel / WPS 当公式执行（CSV 注入），加单引号前缀
+            s = "'" + s;
         }
         if (s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
             s = "\"" + s.replace("\"", "\"\"") + "\"";

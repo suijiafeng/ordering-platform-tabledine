@@ -20,6 +20,19 @@ public class DashboardService {
 
     private static final ZoneId CN = ZoneId.of("Asia/Shanghai");
 
+    /**
+     * 计入收入口径的退款：排除已关闭订单的迟到支付退款、重复支付的退款 ——
+     * 这些款项从未计入实收（paid_at 为空或不是订单入账的那笔支付），扣减会让净收入偏低。
+     */
+    private static final String REFUND_WHERE = """
+            FROM refund r JOIN orders o ON o.id = r.order_id
+            WHERE r.store_id=? AND r.status IN ('SUCCESS','OFFLINE') AND r.success_at>=? AND r.success_at<?
+              AND o.status<>'CLOSED'
+              AND (r.payment_id IS NULL OR r.payment_id = (SELECT MIN(p.id) FROM payment p WHERE p.order_id=o.id AND p.status='SUCCESS'))
+            """;
+    private static final String REFUND_SUM = "SELECT COALESCE(SUM(r.amount),0) " + REFUND_WHERE;
+    private static final String REFUND_COUNT = "SELECT COUNT(*) " + REFUND_WHERE;
+
     private final JdbcTemplate jdbc;
 
     public DashboardService(JdbcTemplate jdbc) {
@@ -34,8 +47,8 @@ public class DashboardService {
 
         long paidAmount = sum("SELECT COALESCE(SUM(pay_amount),0) FROM orders WHERE store_id=? AND paid_at>=? AND paid_at<? AND status<>'PENDING_PAY' AND status<>'CLOSED'", storeId, start, end);
         long orderCount = sum("SELECT COUNT(*) FROM orders WHERE store_id=? AND paid_at>=? AND paid_at<? AND status<>'PENDING_PAY' AND status<>'CLOSED'", storeId, start, end);
-        long refundedAmount = sum("SELECT COALESCE(SUM(amount),0) FROM refund WHERE store_id=? AND status IN ('SUCCESS','OFFLINE') AND success_at>=? AND success_at<?", storeId, start, end);
-        long refundCount = sum("SELECT COUNT(*) FROM refund WHERE store_id=? AND status IN ('SUCCESS','OFFLINE') AND success_at>=? AND success_at<?", storeId, start, end);
+        long refundedAmount = sum(REFUND_SUM, storeId, start, end);
+        long refundCount = sum(REFUND_COUNT, storeId, start, end);
         long pendingAccept = count("SELECT COUNT(*) FROM orders WHERE store_id=? AND status='PAID'", storeId);
         long making = count("SELECT COUNT(*) FROM orders WHERE store_id=? AND status='MAKING'", storeId);
         long ready = count("SELECT COUNT(*) FROM orders WHERE store_id=? AND status='READY'", storeId);
@@ -56,7 +69,7 @@ public class DashboardService {
             OffsetDateTime s = day.atStartOfDay(CN).toOffsetDateTime();
             OffsetDateTime e = s.plusDays(1);
             long paid = sum("SELECT COALESCE(SUM(pay_amount),0) FROM orders WHERE store_id=? AND paid_at>=? AND paid_at<? AND status<>'PENDING_PAY' AND status<>'CLOSED'", storeId, s, e);
-            long refunded = sum("SELECT COALESCE(SUM(amount),0) FROM refund WHERE store_id=? AND status IN ('SUCCESS','OFFLINE') AND success_at>=? AND success_at<?", storeId, s, e);
+            long refunded = sum(REFUND_SUM, storeId, s, e);
             long cnt = sum("SELECT COUNT(*) FROM orders WHERE store_id=? AND paid_at>=? AND paid_at<? AND status<>'PENDING_PAY' AND status<>'CLOSED'", storeId, s, e);
             daily.add(new DashboardToday.DailyPoint(day.toString(), paid - refunded, cnt));
         }

@@ -12,7 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 开发环境模拟渠道：不产生任何真实资金往来。
  * <ul>
  *   <li>下单返回 {@code {mock:true, outTradeNo}}，小程序 / 测试通过 {@code POST /api/v1/c/orders/{orderNo}/mock-pay} 模拟支付成功</li>
- *   <li>退款：原因含 {@code mock-fail} 时返回失败，含 {@code mock-pending} 时返回处理中（之后查询返回成功），否则立即成功</li>
+ *   <li>退款：原因含 {@code mock-fail} 时返回失败，含 {@code mock-throw} 时抛异常（模拟超时），
+ *       含 {@code mock-pending} 时返回处理中（之后查询返回成功），否则立即成功</li>
  * </ul>
  */
 @Slf4j
@@ -68,6 +69,9 @@ public class MockPayChannel implements PayChannel {
     @Override
     public RefundResult refund(RefundChannelRequest req) {
         String reason = req.reason() == null ? "" : req.reason();
+        if (reason.contains("mock-throw")) {
+            throw new RuntimeException("模拟渠道：连接超时");
+        }
         if (reason.contains("mock-fail")) {
             return RefundResult.failed("模拟渠道：余额不足");
         }
