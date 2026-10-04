@@ -23,10 +23,6 @@ public class Dish {
     private Long storeId;
     private Long categoryId;
     private String name;
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     /** 允许更新为 null（商家端清空描述） */
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private String description;
@@ -34,14 +30,6 @@ public class Dish {
     private Long price;
     /** 允许更新为 null（商家端删除图片） */
     @TableField(updateStrategy = FieldStrategy.IGNORED)
-<<<<<<< HEAD
-=======
-    private String description;
-    /** 基础价（分） */
-    private Long price;
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     private String image;
     private Integer sort;
     /** 1 上架 0 下架 */

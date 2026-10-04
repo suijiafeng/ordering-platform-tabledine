@@ -1,14 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { Button, Result, Space, Spin } from 'antd'
-=======
-import { Button, Space, Spin } from 'antd'
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-import { Button, Result, Space, Spin } from 'antd'
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 import { listTables } from '../../api/table'
 import { fetchStore } from '../../api/store'
 import type { TableItem } from '../../api/types'
@@ -26,8 +18,6 @@ export default function TablePrintPage() {
   const ids = (location.state as { ids?: number[] } | null)?.ids
   const [cards, setCards] = useState<Card[] | null>(null)
   const [storeName, setStoreName] = useState('')
-<<<<<<< HEAD
-<<<<<<< HEAD
   const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
@@ -51,36 +41,6 @@ export default function TablePrintPage() {
     return () => {
       cancelled = true
     }
-=======
-=======
-  const [loadError, setLoadError] = useState(false)
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoadError(false)
-      try {
-        const [all, store] = await Promise.all([listTables(), fetchStore()])
-        const list = ids?.length ? all.filter((t) => ids.includes(t.id)) : all
-        const rendered = await Promise.all(list.map(async (t) => ({ table: t, qr: await qrDataUrl(t.qrUrl, 480) })))
-        if (!cancelled) {
-          setStoreName(store.name)
-          setCards(rendered)
-        }
-      } catch {
-        if (!cancelled) {
-          setLoadError(true)
-        }
-      }
-    })()
-<<<<<<< HEAD
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-    return () => {
-      cancelled = true
-    }
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   }, [ids])
 
   return (
@@ -95,49 +55,22 @@ export default function TablePrintPage() {
         .print-card .code { font-size: 32px; font-weight: 700; margin-top: 4px; }
         .print-card .tip { color: #666; font-size: 14px; }
         @media print {
-<<<<<<< HEAD
-<<<<<<< HEAD
           /* A4 高 297mm，上下边距各 10mm，可用 277mm：3 行 × 84mm + 2 × 8mm 间距 = 268mm */
-=======
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-          /* A4 高 297mm，上下边距各 10mm，可用 277mm：3 行 × 84mm + 2 × 8mm 间距 = 268mm */
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
           @page { size: A4; margin: 10mm; }
           .print-root { padding: 0; background: #fff; }
           .print-toolbar { display: none; }
           .print-grid { gap: 8mm; max-width: none; }
-<<<<<<< HEAD
-<<<<<<< HEAD
           .print-card { box-sizing: border-box; height: 84mm; padding: 4mm; border-radius: 0; }
           .print-card img { width: auto; height: 50mm; }
-=======
-          .print-card { height: 88mm; padding: 4mm; }
-          .print-card img { width: auto; height: 55mm; }
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-          .print-card { box-sizing: border-box; height: 84mm; padding: 4mm; border-radius: 0; }
-          .print-card img { width: auto; height: 50mm; }
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
         }
       `}</style>
       <Space className="print-toolbar">
         <Button onClick={() => navigate('/tables')}>返回</Button>
         <Button type="primary" disabled={!cards?.length} onClick={() => window.print()}>打印</Button>
       </Space>
-<<<<<<< HEAD
-<<<<<<< HEAD
       {loadError ? (
         <Result status="error" title="桌码加载失败" extra={<Button type="primary" onClick={() => navigate('/tables')}>返回桌台管理</Button>} />
       ) : !cards ? (
-=======
-      {!cards ? (
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-      {loadError ? (
-        <Result status="error" title="桌码加载失败" extra={<Button type="primary" onClick={() => navigate('/tables')}>返回桌台管理</Button>} />
-      ) : !cards ? (
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
         <Spin />
       ) : (
         <div className="print-grid">

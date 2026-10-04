@@ -40,16 +40,8 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
       }
       setEditing(null)
       onChanged()
-<<<<<<< HEAD
-<<<<<<< HEAD
     } catch {
       // 错误提示已由 request 统一弹出
-=======
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-    } catch {
-      // 错误提示已由 request 统一弹出
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     } finally {
       setSaving(false)
     }

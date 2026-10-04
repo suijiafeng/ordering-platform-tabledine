@@ -63,10 +63,6 @@ export interface MenuView {
   storeId: number
   categories: MenuCategory[]
 }
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 
 export type OrderStatus = 'PENDING_PAY' | 'PAID' | 'MAKING' | 'READY' | 'DONE' | 'CLOSED' | 'CANCELLED'
 export type RefundStatus = 'APPLYING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'REJECTED' | 'WITHDRAWN' | 'OFFLINE'
@@ -145,8 +141,3 @@ export interface PageResult<T> {
   page: number
   pageSize: number
 }
-<<<<<<< HEAD
-=======
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)

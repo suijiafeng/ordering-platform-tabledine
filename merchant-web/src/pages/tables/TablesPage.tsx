@@ -28,61 +28,32 @@ export default function TablesPage() {
   const [selected, setSelected] = useState<number[]>([])
   const [editing, setEditing] = useState<TableItem | 'new' | null>(null)
   const [batchOpen, setBatchOpen] = useState(false)
-<<<<<<< HEAD
-<<<<<<< HEAD
   const [saving, setSaving] = useState(false)
-=======
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-  const [saving, setSaving] = useState(false)
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   const [editForm] = Form.useForm<{ code: string; enabled: boolean }>()
   const [batchForm] = Form.useForm<{ prefix: string; from: number; to: number }>()
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
       const list = await listTables()
       setTables(list)
       // 删除 / 重置后清理已不存在的选中项，避免「打印选中（N）」计数虚高
       setSelected((prev) => prev.filter((id) => list.some((t) => t.id === id)))
     } catch {
       // 错误提示已由 request 统一弹出
-<<<<<<< HEAD
-=======
-      setTables(await listTables())
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-<<<<<<< HEAD
-<<<<<<< HEAD
     void load()
-=======
-    load()
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-    void load()
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     fetchStore().then((s) => setStoreName(s.name)).catch(() => {})
   }, [load])
 
   const openEdit = (t: TableItem | 'new') => setEditing(t)
 
   const saveEdit = async () => {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     const v = await editForm.validateFields().catch(() => null)
     if (!v) {
       return
@@ -100,7 +71,6 @@ export default function TablesPage() {
       // 保持弹窗打开让用户修改；错误提示已统一弹出
     } finally {
       setSaving(false)
-<<<<<<< HEAD
     }
   }
 
@@ -120,42 +90,6 @@ export default function TablesPage() {
     } finally {
       setSaving(false)
     }
-=======
-    const v = await editForm.validateFields()
-    if (editing === 'new') {
-      await createTable(v.code.trim())
-    } else if (editing) {
-      await updateTable(editing.id, { code: v.code.trim(), status: v.enabled ? 1 : 0 })
-=======
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
-    }
-  }
-
-  const saveBatch = async () => {
-<<<<<<< HEAD
-    const v = await batchForm.validateFields()
-    const created = await createTablesBatch({ prefix: v.prefix?.trim() ?? '', from: v.from, to: v.to })
-    message.success(`已新建 ${created.length} 张桌台（已存在的桌号自动跳过）`)
-    setBatchOpen(false)
-    load()
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-    const v = await batchForm.validateFields().catch(() => null)
-    if (!v) {
-      return
-    }
-    setSaving(true)
-    try {
-      const created = await createTablesBatch({ prefix: v.prefix?.trim() ?? '', from: v.from, to: v.to })
-      message.success(`已新建 ${created.length} 张桌台（已存在的桌号自动跳过）`)
-      setBatchOpen(false)
-      void load()
-    } catch {
-      // 同上
-    } finally {
-      setSaving(false)
-    }
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   }
 
   const columns: ColumnsType<TableItem> = [
@@ -220,15 +154,7 @@ export default function TablesPage() {
         rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) }}
       />
 
-<<<<<<< HEAD
-<<<<<<< HEAD
       <Modal title={editing === 'new' ? '新建桌台' : '编辑桌台'} open={editing !== null} onOk={saveEdit} confirmLoading={saving} onCancel={() => setEditing(null)} destroyOnHidden>
-=======
-      <Modal title={editing === 'new' ? '新建桌台' : '编辑桌台'} open={editing !== null} onOk={saveEdit} onCancel={() => setEditing(null)} destroyOnHidden>
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-      <Modal title={editing === 'new' ? '新建桌台' : '编辑桌台'} open={editing !== null} onOk={saveEdit} confirmLoading={saving} onCancel={() => setEditing(null)} destroyOnHidden>
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
         {/* Modal 关闭时销毁内容，初始值通过 initialValues 传入（打开前 setFieldsValue 会因表单未挂载而丢失） */}
         <Form
           form={editForm}
@@ -247,15 +173,7 @@ export default function TablesPage() {
         </Form>
       </Modal>
 
-<<<<<<< HEAD
-<<<<<<< HEAD
       <Modal title="批量新建桌台" open={batchOpen} onOk={saveBatch} confirmLoading={saving} onCancel={() => setBatchOpen(false)} destroyOnHidden>
-=======
-      <Modal title="批量新建桌台" open={batchOpen} onOk={saveBatch} onCancel={() => setBatchOpen(false)} destroyOnHidden>
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-      <Modal title="批量新建桌台" open={batchOpen} onOk={saveBatch} confirmLoading={saving} onCancel={() => setBatchOpen(false)} destroyOnHidden>
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
         <Form form={batchForm} layout="inline" preserve={false} initialValues={{ prefix: 'A', from: 1, to: 10 }}>
           <Form.Item name="prefix" label="前缀">
             <Input maxLength={8} style={{ width: 80 }} />

@@ -8,18 +8,9 @@ app:
   auth:
     mock-enabled: true
     max-login-failures: 3
-<<<<<<< HEAD
-<<<<<<< HEAD
   pay:
     mock-enabled: true
     notify-base-url: http://localhost:8080
-=======
->>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
-=======
-  pay:
-    mock-enabled: true
-    notify-base-url: http://localhost:8080
->>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   rate-limit:
     enabled: false
   storage:
