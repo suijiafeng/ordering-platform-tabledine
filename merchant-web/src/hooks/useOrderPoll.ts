@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { newOrderCount } from '../api/order'
 import type { NewOrderCount } from '../api/types'
+import { onLogout } from '../store/auth'
 
 const SOUND_KEY = 'merchant_sound_enabled'
 const REMIND_KEY = 'merchant_remind_interval'
@@ -26,6 +27,10 @@ interface PollState {
   lastArrival: { seq: number; orderNos: string[] } | null
   /** 未接单持续提醒间隔（毫秒），0 关闭 */
   remindIntervalMs: number
+  /** 提示音被浏览器自动播放策略拦截（需要用户点一下页面） */
+  soundBlocked: boolean
+  /** 已提醒过的「超时未审核退款」数量（跨布局重新挂载保留，避免重复提醒） */
+  overdueNotified: number
   setCounts: (c: NewOrderCount) => void
   setSoundEnabled: (v: boolean) => void
   setRemindInterval: (ms: number) => void
@@ -48,6 +53,8 @@ export const usePollStore = create<PollState>((set) => ({
   initialPending: 0,
   lastArrival: null,
   remindIntervalMs: loadRemind(),
+  soundBlocked: false,
+  overdueNotified: 0,
   setCounts: (counts) => set({ counts }),
   setRemindInterval: (ms) => {
     try {
@@ -69,11 +76,54 @@ export const usePollStore = create<PollState>((set) => ({
   consumeNew: () => set({ newArrived: 0 }),
 }))
 
-/** 提示音：Web Audio 合成一声短提示，不依赖音频文件 */
+/**
+ * 轮询的记忆放在模块级而不是组件 ref：布局重新挂载（如从打印页返回）时不会把已有订单当成「首次打开」再提醒一遍。
+ * 退出登录时由 resetOrderPollMemory 清空，换账号后重新建立基线。
+ */
+let seenOrderNos: Set<string> | null = null
+let lastRemindAt = 0
+
+export function resetOrderPollMemory() {
+  seenOrderNos = null
+  lastRemindAt = 0
+  usePollStore.setState({ counts: null, newArrived: 0, initialPending: 0, lastArrival: null, soundBlocked: false })
+}
+
+onLogout(resetOrderPollMemory)
+
+let audioCtx: AudioContext | null = null
+
+/** 复用同一个 AudioContext；浏览器自动播放策略下它可能处于 suspended，需要用户点一下页面才能恢复 */
+function audioContext(): AudioContext {
+  if (!audioCtx) {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    audioCtx = new Ctx()
+  }
+  return audioCtx
+}
+
+/** 用户任意一次点击 / 按键后尝试恢复音频（浏览器只允许在用户手势里恢复） */
+export function unlockSound() {
+  try {
+    const ctx = audioContext()
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => usePollStore.setState({ soundBlocked: false })).catch(() => {})
+    } else {
+      usePollStore.setState({ soundBlocked: false })
+    }
+  } catch {
+    // 浏览器不支持 Web Audio
+  }
+}
+
+/** 提示音：Web Audio 合成一声短提示，不依赖音频文件。被自动播放策略拦截时标记 soundBlocked，页面提示用户点一下启用 */
 export function playNewOrderSound() {
   try {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    const ctx = new Ctx()
+    const ctx = audioContext()
+    if (ctx.state === 'suspended') {
+      usePollStore.setState({ soundBlocked: true })
+      void ctx.resume().catch(() => {})
+    }
     const beep = (freq: number, start: number, dur: number) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
@@ -87,7 +137,6 @@ export function playNewOrderSound() {
       osc.stop(ctx.currentTime + start + dur + 0.05)
     }
     beep(1046, 0, 0.35)
-    setTimeout(() => ctx.close().catch(() => {}), 700)
   } catch {
     // 浏览器不支持或被自动播放策略拦截
   }
@@ -99,10 +148,8 @@ export function playNewOrderSound() {
  */
 export function useOrderPoll(intervalMs = 5000) {
   const { counts, setCounts, soundEnabled } = usePollStore()
-  // 已经提醒过的待接单订单号。按「当前待接单集合」去重判断新单，而不是按支付时间游标：
-  // 顾客 12:00 付款、回调 12:02 才到时，游标已过 12:01，按时间会漏掉提示音
-  const seenRef = useRef<Set<string> | null>(null)
-  const lastRemindRef = useRef(0)
+  // 已经提醒过的待接单订单号（模块级 seenOrderNos）。按「当前待接单集合」去重判断新单，而不是按支付时间游标，
+  // 不受时钟和并发影响
   // 后端慢于轮询间隔时，不让两次请求重叠
   const inFlight = useRef(false)
   const [error, setError] = useState(false)
@@ -116,14 +163,14 @@ export function useOrderPoll(intervalMs = 5000) {
       const c = await newOrderCount(null)
       setError(false)
       const pending = c.pendingOrderNos ?? []
-      if (seenRef.current === null) {
+      if (seenOrderNos === null) {
         // 首次打开后台：不播放新单音，但明确告知已有待处理订单
-        seenRef.current = new Set(pending)
+        seenOrderNos = new Set(pending)
         if (pending.length > 0) {
           usePollStore.setState({ initialPending: pending.length })
         }
       } else {
-        const seen = seenRef.current
+        const seen = seenOrderNos
         const fresh = pending.filter((no) => !seen.has(no))
         if (fresh.length > 0) {
           fresh.forEach((no) => seen.add(no))
@@ -133,7 +180,7 @@ export function useOrderPoll(intervalMs = 5000) {
           }))
           if (usePollStore.getState().soundEnabled) {
             playNewOrderSound()
-            lastRemindRef.current = Date.now()
+            lastRemindAt = Date.now()
           }
         }
         // 集合只保留仍在待接单的订单，已接单的从记忆中移除（订单号不会复用，去掉只是防止无限增长）
@@ -142,9 +189,9 @@ export function useOrderPoll(intervalMs = 5000) {
         }
         // 未接单持续提醒：仍有待接单且距上次提醒超过间隔，再响一次
         const remind = usePollStore.getState().remindIntervalMs
-        if (pending.length > 0 && remind > 0 && usePollStore.getState().soundEnabled && Date.now() - lastRemindRef.current >= remind) {
+        if (pending.length > 0 && remind > 0 && usePollStore.getState().soundEnabled && Date.now() - lastRemindAt >= remind) {
           playNewOrderSound()
-          lastRemindRef.current = Date.now()
+          lastRemindAt = Date.now()
         }
       }
       setCounts(c)
@@ -157,11 +204,8 @@ export function useOrderPoll(intervalMs = 5000) {
 
   useEffect(() => {
     void tick()
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void tick()
-      }
-    }, intervalMs)
+    // 页面在后台也继续轮询：商家切到别的标签页时仍要能听到新订单提示（浏览器会把后台定时器放慢，但不会停）
+    const timer = window.setInterval(() => { void tick() }, intervalMs)
     return () => window.clearInterval(timer)
   }, [tick, intervalMs])
 

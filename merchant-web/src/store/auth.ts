@@ -40,6 +40,13 @@ function save(value: PersistedAuth | null) {
 
 const initial = load()
 
+/** 退出登录时需要清理的本地状态（消息中心、新订单提醒记忆等）。由各模块注册，避免 auth 反向依赖它们 */
+const logoutListeners: Array<() => void> = []
+
+export function onLogout(listener: () => void) {
+  logoutListeners.push(listener)
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   accessToken: initial?.accessToken ?? null,
   refreshToken: initial?.refreshToken ?? null,
@@ -51,5 +58,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     save(null)
     set({ accessToken: null, refreshToken: null, staff: null })
+    logoutListeners.forEach((listener) => listener())
   },
 }))

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Drawer, Layout, Menu, Space, notification, theme as antdTheme } from 'antd'
+import { Alert, Badge, Button, Drawer, Layout, Menu, Space, notification, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
@@ -20,7 +20,7 @@ import UserMenu from '../components/UserMenu'
 import BrandLogo from '../components/BrandLogo'
 import ThemeToggle from '../components/ThemeToggle'
 import NotificationBell from '../components/NotificationBell'
-import { useOrderPoll, usePollStore } from '../hooks/useOrderPoll'
+import { unlockSound, useOrderPoll, usePollStore } from '../hooks/useOrderPoll'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useNotificationStore } from '../store/notifications'
 
@@ -61,11 +61,29 @@ export default function MainLayout() {
   const initialPending = usePollStore((s) => s.initialPending)
   const consumeInitial = usePollStore((s) => s.consumeInitial)
   const lastArrival = usePollStore((s) => s.lastArrival)
+  const soundBlocked = usePollStore((s) => s.soundBlocked && s.soundEnabled)
+  // 浏览器只允许在用户手势里启用声音：页面上任意一次点击 / 按键都尝试解锁（重载后无人操作时提示音会被静音）
+  useEffect(() => {
+    unlockSound()
+    window.addEventListener('pointerdown', unlockSound)
+    window.addEventListener('keydown', unlockSound)
+    return () => {
+      window.removeEventListener('pointerdown', unlockSound)
+      window.removeEventListener('keydown', unlockSound)
+    }
+  }, [])
+  const soundBanner = soundBlocked ? (
+    <Alert type="warning" showIcon banner style={{ marginBottom: 12, cursor: 'pointer' }} onClick={unlockSound}
+      message="浏览器暂停了新订单提示音，点击这里（或页面任意位置）启用" />
+  ) : null
+  // 挂载前已经提醒过的那一批不再重复弹出（从打印页返回等情况会重新挂载布局）
+  const handledArrivalSeq = useRef(usePollStore.getState().lastArrival?.seq ?? 0)
   // 新订单进入消息中心，并显示 5 秒通知；点击通知或铃铛中的记录可打开订单
   useEffect(() => {
-    if (!lastArrival) {
+    if (!lastArrival || lastArrival.seq <= handledArrivalSeq.current) {
       return
     }
+    handledArrivalSeq.current = lastArrival.seq
     const { orderNos } = lastArrival
     const first = orderNos[0]
     const title = orderNos.length === 1 ? '新订单，请接单' : `${orderNos.length} 个新订单，请接单`
@@ -86,17 +104,18 @@ export default function MainLayout() {
 
   // 退款申请超过 2 小时未审核（需求 §7.3：再次提醒店主，不自动同意）。数量增加时提醒一次；处理完清零后再出现会再次提醒
   const overdueRefunds = counts?.overdueRefundCount ?? 0
-  const overdueNotifiedRef = useRef(0)
   useEffect(() => {
     if (!isOwner) {
       return
     }
+    // 已提醒数量放在全局 store：布局重新挂载时不会把同一批超时退款再提醒一遍
+    const notified = usePollStore.getState().overdueNotified
     if (overdueRefunds === 0) {
-      overdueNotifiedRef.current = 0
+      if (notified !== 0) usePollStore.setState({ overdueNotified: 0 })
       return
     }
-    if (overdueRefunds > overdueNotifiedRef.current) {
-      overdueNotifiedRef.current = overdueRefunds
+    if (overdueRefunds > notified) {
+      usePollStore.setState({ overdueNotified: overdueRefunds })
       const title = `${overdueRefunds} 笔退款申请超过 2 小时未审核`
       const description = '顾客正在等待结果，请尽快同意或拒绝。'
       addMessage({ kind: 'REFUND', title, description, link: '/refunds?status=APPLYING' })
@@ -191,6 +210,7 @@ export default function MainLayout() {
           {menu}
         </Drawer>
         <Layout.Content style={{ padding: 12 }}>
+          {soundBanner}
           <Outlet />
         </Layout.Content>
       </Layout>
@@ -225,6 +245,7 @@ export default function MainLayout() {
           </Space>
         </Layout.Header>
         <Layout.Content style={{ padding: 24 }}>
+          {soundBanner}
           <Outlet />
         </Layout.Content>
       </Layout>
