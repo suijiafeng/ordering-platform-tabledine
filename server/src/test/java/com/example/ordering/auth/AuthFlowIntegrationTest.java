@@ -1,20 +1,10 @@
 package com.example.ordering.auth;
 
+import com.example.ordering.support.AbstractIntegrationTest;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,25 +13,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 认证闭环集成测试（需要本机 Docker；没有 Docker 时自动跳过）。
- * 覆盖需求 v1.2 验收标准 US-5，以及扫码解析 US-1 AC3。
+ * 认证闭环集成测试。覆盖需求 v1.2 验收标准 US-5，以及扫码解析 US-1 AC3。
  */
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
-@Testcontainers(disabledWithoutDocker = true)
-class AuthFlowIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @Autowired
-    MockMvc mvc;
-    @Autowired
-    ObjectMapper objectMapper;
-    @Autowired
-    JdbcTemplate jdbc;
+class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void staffLoginRefreshAndMe() throws Exception {
@@ -72,15 +46,18 @@ class AuthFlowIntegrationTest {
 
     @Test
     void wrongPasswordAndLockout() throws Exception {
+        // 使用独立账号，避免锁定状态影响其他测试（登录锁定记录在内存中，测试类之间共享）
+        jdbc.update("INSERT INTO staff (store_id, username, password_hash, name, role) "
+                + "SELECT 1, 'lock_user', password_hash, '锁定测试', 'STAFF' FROM staff WHERE username = 'staff'");
         for (int i = 0; i < 3; i++) {
             mvc.perform(post("/api/v1/m/auth/login").contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"username\":\"staff\",\"password\":\"wrong\"}"))
+                            .content("{\"username\":\"lock_user\",\"password\":\"wrong\"}"))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.code").value(40102));
         }
         // 达到失败上限后，即使密码正确也被锁定
         mvc.perform(post("/api/v1/m/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"staff\",\"password\":\"staff123\"}"))
+                        .content("{\"username\":\"lock_user\",\"password\":\"staff123\"}"))
                 .andExpect(jsonPath("$.code").value(40103));
     }
 
@@ -96,13 +73,13 @@ class AuthFlowIntegrationTest {
 
     @Test
     void customerSilentLoginIsStableAndIsolated() throws Exception {
-        String t1 = customerLogin("WECHAT", "mock:alice");
-        String t2 = customerLogin("WECHAT", "mock:alice");
+        String t1 = customerToken("WECHAT", "mock:alice");
+        String t2 = customerToken("WECHAT", "mock:alice");
         String id1 = me(t1).path("id").asText();
         assertThat(me(t2).path("id").asText()).isEqualTo(id1);
 
         // 同一个 openId 在支付宝上是另一位顾客
-        String alipay = customerLogin("ALIPAY", "mock:alice");
+        String alipay = customerToken("ALIPAY", "mock:alice");
         JsonNode alipayMe = me(alipay);
         assertThat(alipayMe.path("id").asText()).isNotEqualTo(id1);
         assertThat(alipayMe.path("platform").asText()).isEqualTo("ALIPAY");
@@ -110,7 +87,7 @@ class AuthFlowIntegrationTest {
 
     @Test
     void tokensCannotCrossAudience() throws Exception {
-        String customer = customerLogin("WECHAT", "mock:bob");
+        String customer = customerToken("WECHAT", "mock:bob");
         mvc.perform(get("/api/v1/m/auth/me").header("Authorization", "Bearer " + customer))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(40301));
@@ -159,22 +136,6 @@ class AuthFlowIntegrationTest {
                         .content("{\"platform\":\"WECHAT\"}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value(42201));
-    }
-
-    private JsonNode staffLogin(String username, String password) throws Exception {
-        MvcResult r = mvc.perform(post("/api/v1/m/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return objectMapper.readTree(r.getResponse().getContentAsString()).path("data");
-    }
-
-    private String customerLogin(String platform, String code) throws Exception {
-        MvcResult r = mvc.perform(post("/api/v1/c/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"platform\":\"" + platform + "\",\"code\":\"" + code + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("token").asText();
     }
 
     private JsonNode me(String token) throws Exception {

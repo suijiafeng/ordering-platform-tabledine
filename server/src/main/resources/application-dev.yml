@@ -15,6 +15,11 @@ app:
     secret: ${JWT_SECRET:dev-only-secret-please-change-0123456789abcdef}
   auth:
     mock-enabled: ${AUTH_MOCK_ENABLED:true}
+  qr:
+    base-url: https://example.com/q/
+  storage:
+    local-dir: ./uploads
+    serve-local: true
   cors:
     allowed-origins: http://localhost:5173
 

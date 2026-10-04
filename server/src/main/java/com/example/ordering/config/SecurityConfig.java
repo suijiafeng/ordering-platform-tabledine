@@ -35,6 +35,7 @@ public class SecurityConfig {
             "/api/v1/m/auth/refresh",
             "/api/v1/pay/notify/**",
             "/actuator/health",
+            "/uploads/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html",

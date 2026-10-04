@@ -1,0 +1,32 @@
+.stepper {
+  display: flex;
+  align-items: center;
+}
+
+.stepper-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.stepper-btn.minus {
+  border: 2px solid #ff7a00;
+  color: #ff7a00;
+  box-sizing: border-box;
+}
+
+.stepper-btn.plus {
+  background: #ff7a00;
+  color: #fff;
+}
+
+.stepper-value {
+  min-width: 56px;
+  text-align: center;
+  font-size: 28px;
+}

@@ -67,6 +67,14 @@ app:
     alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  qr:
+    base-url: ${QR_BASE_URL:https://ordering.example.com/q/}
+  storage:
+    local-dir: ${STORAGE_LOCAL_DIR:/data/uploads}
+    public-path: /uploads/
+    serve-local: false
+  rate-limit:
+    enabled: true
   bootstrap:
     enabled: ${BOOTSTRAP_ENABLED:false}
     store-name: ${BOOTSTRAP_STORE_NAME:}
