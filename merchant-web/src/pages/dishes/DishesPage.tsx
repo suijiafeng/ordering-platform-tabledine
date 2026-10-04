@@ -3,6 +3,7 @@ import { App, Button, Card, Col, Image, Input, InputNumber, Popconfirm, Row, Spa
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined } from '@ant-design/icons'
 import { deleteDish, listCategories, listDishes, setDishSoldOut, setDishStatus, setDishStock } from '../../api/menu'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
 import type { Category, DishItem } from '../../api/types'
 import { formatYuan } from '../../utils/money'
 import { useIsOwner } from '../../utils/auth'
@@ -23,24 +24,38 @@ export default function DishesPage() {
   const [loading, setLoading] = useState(false)
   const [drawer, setDrawer] = useState<{ open: boolean; dishId: number | null }>({ open: false, dishId: null })
 
-  const loadCategories = useCallback(() => listCategories().then(setCategories), [])
+  // 错误提示均由 request 统一弹出，这里吞掉 rejection 避免 Unhandled promise rejection
+  const loadCategories = useCallback(() => listCategories().then(setCategories).catch(() => {}), [])
+
+  const beginLoad = useLatestRequest()
+  // 限量输入框是非受控的：保存失败时递增该值强制重建，让显示值回到服务端的旧值
+  const [stockReset, setStockReset] = useState(0)
 
   const loadDishes = useCallback(async () => {
+    const isLatest = beginLoad()
     setLoading(true)
     try {
       const res = await listDishes({ categoryId: categoryId ?? undefined, keyword: keyword || undefined, page, pageSize: PAGE_SIZE })
+      if (!isLatest()) return
       setData({ list: res.list, total: res.total })
+      // 删除当前页最后一条后页码越界：回退到最后一页
+      const lastPage = Math.max(1, Math.ceil(res.total / PAGE_SIZE))
+      if (page > lastPage) {
+        setPage(lastPage)
+      }
+    } catch {
+      // 已统一提示
     } finally {
-      setLoading(false)
+      if (isLatest()) setLoading(false)
     }
-  }, [categoryId, keyword, page])
+  }, [categoryId, keyword, page, beginLoad])
 
   useEffect(() => {
-    loadCategories()
+    void loadCategories()
   }, [loadCategories])
 
   useEffect(() => {
-    loadDishes()
+    void loadDishes()
   }, [loadDishes])
 
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? '-'
@@ -54,7 +69,7 @@ export default function DishesPage() {
       dataIndex: 'image',
       width: 72,
       render: (src: string | null) =>
-        src ? <Image src={src} width={48} height={48} style={{ objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 48, height: 48, background: '#f5f5f5', borderRadius: 6 }} />,
+        src ? <Image src={src} width={48} height={48} style={{ objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 48, height: 48, background: 'rgba(128,128,128,0.12)', borderRadius: 6 }} />,
     },
     {
       title: '名称',
@@ -99,29 +114,43 @@ export default function DishesPage() {
       ),
     },
     {
-      title: '今日限量',
-      dataIndex: 'stockQuantity',
-      width: 140,
-      render: (v: number | null, r) =>
-        isOwner ? (
-          <InputNumber
-            key={`${r.id}-${v ?? 'none'}`}
-            size="small"
-            min={0}
-            max={100000}
-            placeholder="不限"
-            defaultValue={v ?? undefined}
-            style={{ width: 100 }}
-            onBlur={async (e) => {
-              const raw = e.target.value.trim()
-              const next = raw === '' ? null : Number(raw)
-              if (next !== v && (next === null || Number.isInteger(next))) {
-                await setDishStock(r.id, next)
-                patchLocal(r.id, { stockQuantity: next })
-              }
-            }}
-          />
-        ) : (v ?? '不限'),
+      title: '每日限量',
+      dataIndex: 'dailyStock',
+      width: 150,
+      render: (v: number | null, r) => {
+        // 输入框是店主设置的每日限量；下方是今日剩余（下单扣减，每天 0 点重置）
+        const remaining = v != null ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>今日剩余 {r.stockQuantity ?? 0}</Typography.Text> : null
+        if (!isOwner) {
+          return v == null ? '不限' : <Space direction="vertical" size={0}><span>{v}</span>{remaining}</Space>
+        }
+        return (
+          <Space direction="vertical" size={0}>
+            <InputNumber
+              key={`${r.id}-${v ?? 'none'}-${stockReset}`}
+              size="small"
+              min={0}
+              max={100000}
+              placeholder="不限"
+              defaultValue={v ?? undefined}
+              style={{ width: 100 }}
+              onBlur={async (e) => {
+                const raw = e.target.value.trim()
+                const next = raw === '' ? null : Number(raw)
+                if (next !== v && (next === null || Number.isInteger(next))) {
+                  try {
+                    await setDishStock(r.id, next)
+                    // 设置限量同时把今日剩余重置为该值
+                    patchLocal(r.id, { dailyStock: next, stockQuantity: next })
+                  } catch {
+                    setStockReset((t) => t + 1)  // 已统一提示；回滚显示值
+                  }
+                }
+              }}
+            />
+            {remaining}
+          </Space>
+        )
+      },
     },
     ...(isOwner
       ? [{
@@ -141,7 +170,7 @@ export default function DishesPage() {
 
   return (
     <Row gutter={16}>
-      <Col xs={24} md={7} lg={6}>
+      <Col xs={24} lg={7} xl={6}>
         <CategoryPanel
           categories={categories}
           selectedId={categoryId}
@@ -150,7 +179,7 @@ export default function DishesPage() {
           onChanged={loadCategories}
         />
       </Col>
-      <Col xs={24} md={17} lg={18}>
+      <Col xs={24} lg={17} xl={18}>
         <Card
           title={categoryId === null ? '全部菜品' : categoryName(categoryId)}
           extra={
@@ -171,6 +200,7 @@ export default function DishesPage() {
           }
         >
           <Table<DishItem>
+            scroll={{ x: 'max-content' }}
             rowKey="id"
             size="middle"
             loading={loading}

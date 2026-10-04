@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
@@ -18,7 +19,7 @@ public record DishSaveRequest(
         @NotBlank(message = "请输入菜品名称") @Size(max = 64, message = "菜品名称最多 64 个字") String name,
         @Size(max = 255, message = "描述最多 255 个字") String description,
         @NotNull(message = "请输入价格") @Min(value = 0, message = "价格不能为负") @Max(value = 10_000_000, message = "价格过大") Long price,
-        @Size(max = 255) String image,
+        @Size(max = 255) @Pattern(regexp = "^(/uploads/[A-Za-z0-9_./-]+)?$", message = "图片必须通过上传接口获得") String image,
         Integer sort,
         @Min(0) @Max(1) Integer status,
         @Valid @Size(max = 10, message = "规格组最多 10 个") List<SpecGroupInput> specGroups,

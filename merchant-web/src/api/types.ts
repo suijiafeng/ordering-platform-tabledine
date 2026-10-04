@@ -12,6 +12,15 @@ export interface StaffProfile {
   role: 'OWNER' | 'STAFF'
 }
 
+export interface StaffItem {
+  id: number
+  username: string
+  name: string
+  role: 'OWNER' | 'STAFF'
+  enabled: boolean
+  createdAt: string
+}
+
 export interface StaffTokenResponse {
   accessToken: string
   expiresIn: number
@@ -58,7 +67,10 @@ export interface DishItem {
   sort: number
   status: number
   soldOut: boolean
+  /** 今日剩余（每天 0 点重置为 dailyStock） */
   stockQuantity: number | null
+  /** 每日限量，null 不限量 */
+  dailyStock: number | null
 }
 
 export interface SpecItem {
@@ -131,4 +143,159 @@ export interface StoreUpdateRequest {
   payTimeoutMin: number
   acceptTimeoutMin: number
   afterSaleHours: number
+}
+
+// ==================== 订单 / 支付 / 退款 ====================
+
+export type OrderStatus = 'PENDING_PAY' | 'PAID' | 'MAKING' | 'READY' | 'DONE' | 'CLOSED' | 'CANCELLED'
+export type OrderRefundStatus = 'NONE' | 'PARTIAL' | 'FULL'
+export type Platform = 'WECHAT' | 'ALIPAY'
+export type RefundStatus = 'APPLYING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'REJECTED' | 'WITHDRAWN' | 'OFFLINE'
+export type RefundType = 'FULL' | 'ITEM' | 'CUSTOM'
+export type RefundInitiator = 'CUSTOMER' | 'MERCHANT' | 'SYSTEM'
+export type OperatorType = 'CUSTOMER' | 'MERCHANT' | 'SYSTEM' | 'PAY_CHANNEL'
+
+export interface OrderItemView {
+  id: number
+  dishId: number
+  dishName: string
+  dishImage: string | null
+  specDesc: string | null
+  addonDesc: string | null
+  unitPrice: number
+  quantity: number
+  totalPrice: number
+  refundedQty: number
+}
+
+export interface OrderSummary {
+  id: number
+  orderNo: string
+  status: OrderStatus
+  refundStatus: OrderRefundStatus
+  tableCode: string | null
+  platform: Platform
+  totalAmount: number
+  payAmount: number
+  refundedAmount: number
+  peopleCount: number
+  remark: string | null
+  itemCount: number
+  items: OrderItemView[]
+  createdAt: string
+  payExpireAt: string | null
+  paidAt: string | null
+  acceptedAt: string | null
+  readyAt: string | null
+}
+
+export interface PaymentView {
+  outTradeNo: string
+  channel: Platform
+  status: 'PENDING' | 'SUCCESS' | 'CLOSED'
+  transactionNo: string | null
+  amount: number
+  refundedAmount: number
+  paidAt: string | null
+}
+
+export interface RefundItemView {
+  orderItemId: number
+  dishName: string
+  specDesc: string | null
+  quantity: number
+  amount: number
+}
+
+export interface RefundView {
+  id: number
+  refundNo: string
+  orderNo: string | null
+  tableCode: string | null
+  type: RefundType
+  initiator: RefundInitiator
+  amount: number
+  reason: string | null
+  rejectReason: string | null
+  status: RefundStatus
+  failReason: string | null
+  channelRefundNo: string | null
+  operatorId: number | null
+  operatorName: string | null
+  createdAt: string
+  successAt: string | null
+  items: RefundItemView[]
+}
+
+export interface OrderStatusLogView {
+  fromStatus: OrderStatus | null
+  toStatus: OrderStatus
+  operatorType: OperatorType
+  operatorId: number | null
+  operatorName: string | null
+  remark: string | null
+  createdAt: string
+}
+
+export interface OrderDetail {
+  id: number
+  orderNo: string
+  status: OrderStatus
+  refundStatus: OrderRefundStatus
+  storeId: number
+  storeName: string
+  tableId: number | null
+  tableCode: string | null
+  platform: Platform
+  totalAmount: number
+  payAmount: number
+  refundedAmount: number
+  refundableAmount: number
+  peopleCount: number
+  remark: string | null
+  payExpireAt: string | null
+  paidAt: string | null
+  acceptedAt: string | null
+  readyAt: string | null
+  doneAt: string | null
+  cancelledAt: string | null
+  cancelReason: string | null
+  createdAt: string
+  items: OrderItemView[]
+  payment: PaymentView | null
+  refunds: RefundView[]
+  logs: OrderStatusLogView[]
+  canCancel: boolean
+  canApplyRefund: boolean
+}
+
+export interface NewOrderCount {
+  newPaidCount: number
+  pendingAcceptCount: number
+  makingCount: number
+  applyingRefundCount: number
+  failedRefundCount: number
+  serverTime: string
+}
+
+export interface MerchantRefundRequest {
+  type: RefundType
+  reason: string
+  items?: { orderItemId: number; quantity: number }[]
+  amount?: number
+}
+
+export interface DashboardToday {
+  netIncome: number
+  paidAmount: number
+  refundedAmount: number
+  orderCount: number
+  refundCount: number
+  pendingAcceptCount: number
+  makingCount: number
+  readyCount: number
+  applyingRefundCount: number
+  failedRefundCount: number
+  topDishes: { dishName: string; quantity: number; amount: number }[]
+  daily: { date: string; netIncome: number; orderCount: number }[]
 }

@@ -1,5 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
-import { message } from 'antd'
+import { getMessage } from './antdStatic'
 import type { ApiResult, StaffTokenResponse } from '../api/types'
 import { useAuthStore } from '../store/auth'
 
@@ -32,7 +32,12 @@ function refreshAccessToken(): Promise<string> {
         throw new ApiError(UNAUTHORIZED, '登录已失效')
       }
       try {
-        const res = await axios.post<ApiResult<StaffTokenResponse>>('/api/v1/m/auth/refresh', { refreshToken })
+        // 续期请求也要有超时，否则所有等待续期的请求会一起无限悬挂
+        const res = await axios.post<ApiResult<StaffTokenResponse>>(
+          '/api/v1/m/auth/refresh',
+          { refreshToken },
+          { timeout: 15000 },
+        )
         if (res.data.code !== 0) {
           throw new ApiError(res.data.code, res.data.message)
         }
@@ -62,29 +67,58 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
   const { silent, ...config } = options
   try {
     const res = await http.request<ApiResult<T>>(config)
+    if (config.responseType === 'blob') {
+      // 文件下载：成功时直接返回 Blob；后端出错时响应体是 JSON，转成 ApiError
+      const blob = res.data as unknown as Blob
+      if (blob.type.includes('json')) {
+        const body = JSON.parse(await blob.text()) as ApiResult<unknown>
+        throw new ApiError(body.code, body.message, res.status)
+      }
+      return blob as unknown as T
+    }
     if (res.data.code !== 0) {
       throw new ApiError(res.data.code, res.data.message, res.status)
     }
     return res.data.data
   } catch (e) {
-    const err = normalize(e)
+    let err = normalize(e)
+    if (config.responseType === 'blob' && e instanceof AxiosError && e.response?.data instanceof Blob) {
+      // 非 2xx 时 axios 仍按 blob 解析响应体，后端的 JSON 错误（含 40101）要从 Blob 里读出来
+      err = (await blobToApiError(e.response.data, e.response.status)) ?? err
+    }
     const isAuthCall = String(config.url ?? '').includes('/auth/')
     if (err.code === UNAUTHORIZED && !retried && !isAuthCall) {
       try {
         await refreshAccessToken()
       } catch {
+        // 续期失败只提示一次：多个并发 401 共用同一次刷新，避免弹出多条重复提示
         if (!silent) {
-          message.warning('登录已失效，请重新登录')
+          getMessage()?.warning({ content: '登录已失效，请重新登录', key: 'session-expired' })
         }
         throw err
       }
       return request<T>(options, true)
     }
     if (!silent) {
-      message.error(err.message)
+      getMessage()?.error(err.message)
     }
     throw err
   }
+}
+
+async function blobToApiError(blob: Blob, status: number): Promise<ApiError | null> {
+  if (!blob.type.includes('json')) {
+    return null
+  }
+  try {
+    const body = JSON.parse(await blob.text()) as Partial<ApiResult<unknown>>
+    if (typeof body.code === 'number') {
+      return new ApiError(body.code, body.message || '请求失败', status)
+    }
+  } catch {
+    // 不是合法 JSON，走通用错误
+  }
+  return null
 }
 
 function normalize(e: unknown): ApiError {
@@ -96,7 +130,12 @@ function normalize(e: unknown): ApiError {
     if (body && typeof body.code === 'number') {
       return new ApiError(body.code, body.message || '请求失败', e.response?.status)
     }
-    return new ApiError(-1, e.response ? `请求失败（${e.response.status}）` : '网络异常，请稍后重试', e.response?.status)
+    const status = e.response?.status
+    if (status && status >= 500) {
+      // 后端未启动 / 代理 502 等：响应体不是统一结构，给用户可理解的提示
+      return new ApiError(-1, '服务暂不可用，请稍后重试', status)
+    }
+    return new ApiError(-1, status ? `请求失败（${status}）` : '网络异常，请稍后重试', status)
   }
   return new ApiError(-1, '请求失败')
 }

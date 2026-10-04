@@ -147,6 +147,10 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <!-- 仅 mvn spring-boot:run（本地开发）使用 dev；打包后的 jar 不带默认 profile，见 StartupSafetyCheck -->
+                    <profiles>
+                        <profile>dev</profile>
+                    </profiles>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>

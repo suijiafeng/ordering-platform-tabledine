@@ -5,6 +5,8 @@ import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { login } from '../../api/auth'
 import { useAuthStore } from '../../store/auth'
 import { ApiError } from '../../utils/request'
+import BrandLogo from '../../components/BrandLogo'
+import { BRAND } from '../../config/brand'
 
 interface LoginForm {
   username: string
@@ -38,9 +40,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
-      <Card style={{ width: 360 }}>
-        <Typography.Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>点餐商家后台</Typography.Title>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Card style={{ width: '100%', maxWidth: 360, margin: '0 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 28 }}>
+          <BrandLogo size={48} showSubtitle />
+          <Typography.Text type="secondary" style={{ fontSize: 13 }}>{BRAND.slogan}</Typography.Text>
+        </div>
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
         <Form<LoginForm> onFinish={onFinish} size="large" autoComplete="off">
           <Form.Item name="username" rules={[{ required: true, message: '请输入账号' }]}>

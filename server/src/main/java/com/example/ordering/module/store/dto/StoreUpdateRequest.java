@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
 /** 店铺信息与业务参数（店主） */
 public record StoreUpdateRequest(
         @NotBlank(message = "请输入店铺名称") @Size(max = 64) String name,
-        @Size(max = 255) String logo,
+        @Size(max = 255) @jakarta.validation.constraints.Pattern(regexp = "^(/uploads/[A-Za-z0-9_./-]+)?$", message = "Logo 必须通过上传接口获得") String logo,
         @Size(max = 20) String phone,
         @Size(max = 255) String address,
         @Size(max = 64) String businessHours,

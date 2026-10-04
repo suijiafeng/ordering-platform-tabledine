@@ -62,6 +62,50 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void lockoutIsPerIpSoAttackerCannotLockOutRealOwner() throws Exception {
+        jdbc.update("INSERT INTO staff (store_id, username, password_hash, name, role) "
+                + "SELECT 1, 'ip_lock_user', password_hash, 'IP锁定测试', 'STAFF' FROM staff WHERE username = 'staff' "
+                + "ON CONFLICT (username) DO NOTHING");
+        // 攻击者 IP 连错 3 次（测试配置 max-login-failures=3）→ 该 IP 被锁
+        for (int i = 0; i < 3; i++) {
+            mvc.perform(post("/api/v1/m/auth/login").header("X-Real-IP", "203.0.113.9").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"username\":\"ip_lock_user\",\"password\":\"wrong\"}"));
+        }
+        mvc.perform(post("/api/v1/m/auth/login").header("X-Real-IP", "203.0.113.9").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"ip_lock_user\",\"password\":\"staff123\"}"))
+                .andExpect(jsonPath("$.code").value(40103));
+        // 真正的员工从另一个 IP 用正确密码仍能登录
+        mvc.perform(post("/api/v1/m/auth/login").header("X-Real-IP", "198.51.100.7").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"ip_lock_user\",\"password\":\"staff123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+    }
+
+    @Test
+    void loginIgnoresStaleTokenInHeader() throws Exception {
+        // 浏览器里残留的旧 token（这里用顾客 token 模拟另一身份）不影响登录
+        String customer = customerToken("WECHAT", "mock:stale-" + java.util.UUID.randomUUID());
+        mvc.perform(post("/api/v1/m/auth/login").header("Authorization", "Bearer " + customer)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"staff\",\"password\":\"staff123\"}"))
+                .andExpect(status().isOk());
+        String owner = ownerToken();
+        mvc.perform(post("/api/v1/m/auth/login").header("Authorization", "Bearer " + owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"staff\",\"password\":\"staff123\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void clientErrorsAreNot500() throws Exception {
+        String owner = ownerToken();
+        mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/m/auth/me"), owner))
+                .andExpect(status().isMethodNotAllowed());
+        mvc.perform(authed(get("/api/v1/m/orders?date=2026-1-5"), owner))
+                .andExpect(status().isUnprocessableEntity());
+        mvc.perform(post("/api/v1/m/auth/login").contentType(MediaType.TEXT_PLAIN).content("x"))
+                .andExpect(status().isUnsupportedMediaType());
+    }
+
+    @Test
     void unauthenticatedRequestsGet401() throws Exception {
         mvc.perform(get("/api/v1/m/auth/me"))
                 .andExpect(status().isUnauthorized())

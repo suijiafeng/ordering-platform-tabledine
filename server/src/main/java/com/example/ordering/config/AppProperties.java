@@ -23,6 +23,37 @@ public class AppProperties {
     private Qr qr = new Qr();
     private Storage storage = new Storage();
     private RateLimit rateLimit = new RateLimit();
+    private Pay pay = new Pay();
+    private WechatPay wechatPay = new WechatPay();
+
+    /** 支付通用配置 */
+    @Data
+    public static class Pay {
+        /** 开发环境：不调用真实渠道，支付 / 退款由 Mock 渠道模拟 */
+        private boolean mockEnabled = false;
+        /** 对外公网地址（不带结尾斜杠），用于拼接渠道异步通知 URL，如 https://ordering.example.com */
+        private String notifyBaseUrl = "";
+        /** 退款单处理中超过该时长仍无结果时，定时任务主动向渠道查询 */
+        private Duration refundQueryAfter = Duration.ofMinutes(3);
+        /** 待支付订单创建超过该时长且仍未收到回调时，定时任务主动查单 */
+        private Duration payQueryAfter = Duration.ofMinutes(2);
+    }
+
+    /** 微信支付 APIv3（JSAPI，小程序 appId 复用 app.wechat.app-id） */
+    @Data
+    public static class WechatPay {
+        private String mchId;
+        /** 商户 API 证书序列号 */
+        private String serialNo;
+        /** 商户 API 私钥（PKCS8，Base64，无头尾） */
+        private String privateKey;
+        /** APIv3 密钥（32 字节），用于解密回调 */
+        private String apiV3Key;
+        /** 微信支付公钥 ID（PUB_KEY_ID_xxx）与公钥（Base64，无头尾），用于回调验签 */
+        private String platformPublicKeyId;
+        private String platformPublicKey;
+        private String apiBase = "https://api.mch.weixin.qq.com";
+    }
 
     @Data
     public static class Qr {

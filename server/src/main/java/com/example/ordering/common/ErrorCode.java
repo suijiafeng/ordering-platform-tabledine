@@ -26,6 +26,9 @@ public enum ErrorCode {
     CONFLICT(40901, "状态冲突", HttpStatus.CONFLICT),
     REFUND_IN_PROGRESS(40902, "该订单已有退款在处理中", HttpStatus.CONFLICT),
 
+    METHOD_NOT_ALLOWED(40501, "请求方法不支持", HttpStatus.METHOD_NOT_ALLOWED),
+    UNSUPPORTED_MEDIA_TYPE(41501, "不支持的请求格式", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
+
     PARAM_INVALID(42201, "参数不合法", HttpStatus.UNPROCESSABLE_ENTITY),
     REFUND_AMOUNT_EXCEEDED(42202, "退款金额超过可退余额", HttpStatus.UNPROCESSABLE_ENTITY),
 

@@ -40,21 +40,21 @@ public class StaffAuthService {
         this.attemptGuard = attemptGuard;
     }
 
-    public StaffTokenResponse login(StaffLoginRequest req) {
+    public StaffTokenResponse login(StaffLoginRequest req, String clientIp) {
         String username = req.username().trim();
-        if (attemptGuard.isLocked(username)) {
+        if (attemptGuard.isLocked(username, clientIp)) {
             throw new BusinessException(ErrorCode.ACCOUNT_DISABLED, "登录失败次数过多，请稍后再试");
         }
         Staff staff = staffMapper.selectOne(Wrappers.<Staff>lambdaQuery().eq(Staff::getUsername, username));
         boolean matched = passwordEncoder.matches(req.password(), staff != null ? staff.getPasswordHash() : DUMMY_HASH);
         if (staff == null || !matched) {
-            attemptGuard.onFailure(username);
+            attemptGuard.onFailure(username, clientIp);
             throw new BusinessException(ErrorCode.BAD_CREDENTIALS);
         }
         if (!staff.isEnabled()) {
             throw new BusinessException(ErrorCode.ACCOUNT_DISABLED);
         }
-        attemptGuard.onSuccess(username);
+        attemptGuard.onSuccess(username, clientIp);
         return issue(staff);
     }
 

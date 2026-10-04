@@ -60,6 +60,34 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void clearingDescriptionAndImagePersists() throws Exception {
+        String owner = ownerToken();
+        long categoryId = createCategory(owner, "清空测试-" + System.nanoTime());
+
+        Map<String, Object> dish = dishBody(categoryId, "带描述的菜", 1500L);
+        dish.put("description", "很好吃");
+        dish.put("image", "/uploads/test.jpg");
+        MvcResult r = mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dish)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dish.description").value("很好吃"))
+                .andReturn();
+        long dishId = data(r).path("dish").path("id").asLong();
+
+        // 清空描述与图片后保存，再次读取应为 null 而不是残留旧值
+        Map<String, Object> cleared = dishBody(categoryId, "带描述的菜", 1500L);
+        cleared.put("description", null);
+        cleared.put("image", null);
+        mvc.perform(authed(put("/api/v1/m/dishes/" + dishId), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(cleared)))
+                .andExpect(status().isOk());
+        mvc.perform(authed(get("/api/v1/m/dishes/" + dishId), owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dish.description").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.dish.image").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
     void staffCanToggleSoldOutButCannotEditMenu() throws Exception {
         String staff = staffToken();
         // 种子菜品 1：红烧肉
@@ -124,6 +152,30 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(delete("/api/v1/m/categories/" + categoryId), owner))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(40901));
+    }
+
+    @Test
+    void priceMustStayPositiveForEverySelection() throws Exception {
+        String owner = ownerToken();
+        long categoryId = createCategory(owner, "价格校验-" + System.nanoTime());
+        // 0 元菜品（渠道不受理 0 元支付）
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dishBody(categoryId, "零元", 0L))))
+                .andExpect(status().isUnprocessableEntity());
+        // 必选规格把单价减成负数：300 + (-500)
+        Map<String, Object> neg = dishBody(categoryId, "负规格", 300L);
+        neg.put("specGroups", List.of(Map.of("name", "份量", "required", true,
+                "items", List.of(Map.of("name", "小份", "priceDelta", -500), Map.of("name", "大份", "priceDelta", 0)))));
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(neg)))
+                .andExpect(status().isUnprocessableEntity());
+        // 基础价 0 + 必选规格全为正价：允许（按规格定价）
+        Map<String, Object> bySize = dishBody(categoryId, "按杯型定价", 0L);
+        bySize.put("specGroups", List.of(Map.of("name", "杯型", "required", true,
+                "items", List.of(Map.of("name", "中杯", "priceDelta", 1200), Map.of("name", "大杯", "priceDelta", 1500)))));
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(bySize)))
+                .andExpect(status().isOk());
     }
 
     @Test
