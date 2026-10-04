@@ -2,6 +2,7 @@ import Taro from '@tarojs/taro'
 import { ApiError, UNAUTHORIZED, httpErrorToResponse } from './apiError'
 import { clearToken, ensureLogin } from './auth'
 import { toast } from './toast'
+import { apiBaseUrl } from './platform'
 
 export interface ApiResult<T> {
   code: number
@@ -37,7 +38,7 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
   let res: { statusCode: number; data: ApiResult<T> }
   try {
     res = await Taro.request<ApiResult<T>>({
-      url: `${process.env.TARO_APP_API_BASE}${url}`,
+      url: `${apiBaseUrl}${url}`,
       method,
       data: data as Taro.request.Option['data'],
       header,

@@ -1,13 +1,13 @@
 # 点餐平台（ordering-platform）
 
-个人店面堂食扫码点餐：微信 / 支付宝小程序点餐支付，商家后台接单出餐。
+个人店面堂食扫码点餐：微信 / 支付宝小程序点餐支付，商家后台接单出餐；普通浏览器扫码可匿名查看菜单。
 
 | 目录 | 说明 |
 |---|---|
 | `server/` | 后端：Spring Boot 3.3 + MyBatis-Plus + PostgreSQL 16 + Flyway |
 | `miniapp/` | 顾客端：Taro 4 + React 18 + TS，构建为微信、支付宝小程序 |
 | `merchant-web/` | 商家端：Vite 6 + React 18 + Ant Design 5 |
-| `deploy/` | docker-compose、Nginx、桌码落地页 |
+| `deploy/` | docker-compose、Nginx、浏览器匿名菜单页 |
 | `docs/` | 需求分析 v1.2、工程化设计文档 |
 
 ## 当前进度：MVP 功能完成，进入联调 / 上线准备
@@ -32,6 +32,7 @@
 - [x] 员工管理：店主新建店员 / 改名 / 重置密码 / 启用停用（停用与改密后旧会话立即失效）；所有员工可修改自己密码
 - [x] 顾客端体验补齐：菜品搜索、规格弹层显示菜品描述、待支付实时倒计时（详情与列表）、订单进度时间线、退款记录显示菜品明细与申请时间、列表显示实付与已退金额、待支付订单「去支付」入口
 - [x] 商家端：新订单弹窗通知（点击直达该订单详情）、菜品排序字段、上下架 / 沽清 / 分类排序失败时的提示与回滚
+- [x] 数据看板区间统计（`GET /m/reports/summary`，任意日期区间最多 92 天：实收、订单数、日均、退款、每日曲线、菜品排行，与导出共用区间）；退款申请超过 2 小时未审核在商家端弹窗与工作台提醒（`new-count` 返回 `overdueRefundCount`）
 - [ ] 下一步：双端真机联调（真实商户号 0.01 元）、提审上线清单
 
 ## 本地开发
@@ -91,7 +92,30 @@ npm run dev:alipay           # 支付宝开发者工具导入 miniapp/dist/alipa
 - 开发环境登录走 Mock：开发者工具里拿到的任何 code 都映射为同一个开发顾客
 - 真机预览：把 `miniapp/.env.development` 中的地址改成电脑的局域网 IP
 
+### 5. Taro 浏览器预览（H5）
+
+```bash
+cd miniapp
+npm run dev:h5
+```
+
+- 打开 `http://127.0.0.1:10086/#/pages/index/index?token=dev-table-a1`（端口被占用时以终端输出为准）。无桌码时显示引导页，开发环境可点击「打开开发桌台 A1」。需要后端及开发种子数据已启动。
+- H5 只注册菜单页，跳过小程序登录；支持浏览菜单、搜索和规格价格预览，下单支付继续使用小程序。
+- `/api` 与 `/uploads` 经开发服务器代理到 `TARO_APP_API_BASE`（默认本地 8080），避免浏览器跨域。
+- `npm run build:h5` 输出 `miniapp/dist/h5/index.html` 及资源。生产需通过 HTTP 服务托管，并配置同源 `/api`、`/uploads` 代理，不能直接双击 HTML。
+- 现有生产桌码 `/q/{token}` 仍由下述轻量匿名菜单页承接；Taro H5 预览不会自动替换该部署入口。
+
 ## 关键约定
+
+### 浏览器扫码看菜单
+
+- 继续使用桌码链接 `/q/{qrToken}`，无需更换已张贴的二维码。普通浏览器显示店铺、桌号、营业状态、分类、菜品搜索、价格、规格与加料；下单支付引导用户用微信 / 支付宝重新扫描桌码进入小程序。
+- 页面位于 `deploy/nginx/html/q/`，采用原生 HTML / CSS / JavaScript，无额外依赖和构建步骤；不属于 Taro 的 H5 交易端，不提供登录、购物车、下单或支付。
+- 复用匿名接口：`GET /api/v1/c/qr/{qrToken}`、`GET /api/v1/c/stores/{storeId}`、`GET /api/v1/c/stores/{storeId}/menu`。页面和接口同域，不需要额外 CORS 配置。
+- 部署时同步整个 `deploy/nginx/html/q/` 目录和 Nginx 配置并重载 Nginx。`/q/assets/` 必须按静态文件返回，缺失资源返回 404，不能回退到 HTML。
+- 验收：访问有效桌码，检查分类、搜索、规格和售罄状态；打烊仍可看菜单；重置后的桌码提示失效；断网显示错误并可重试。正式验收需运行真实后端，纯静态文件服务无法提供菜单 API。
+
+### 后端与协作约定
 
 编码规范见 [docs/编码规范.md](docs/编码规范.md)；提交前运行 `mvn verify`（含 Checkstyle）与两端 `npm run lint`。
 

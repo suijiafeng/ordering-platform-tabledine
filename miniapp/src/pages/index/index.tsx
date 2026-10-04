@@ -14,6 +14,7 @@ import { defaultSelection, hasOptions } from '../../utils/price'
 import { extractQrToken, parseTokenFromLink } from '../../utils/scene'
 import './index.css'
 import { toast } from '../../utils/toast'
+import { isH5 } from '../../utils/platform'
 
 /**
  * 点餐首页：扫码解析桌台 → 加载菜单 → 左侧分类 / 右侧菜品 → 规格弹层 → 购物车。
@@ -47,7 +48,7 @@ export default function Index() {
     const m = await fetchMenu(storeId)
     setMenu(m)
     setActiveCat((c) => c ?? m.categories[0]?.id ?? null)
-    const removed = reconcile(m)
+    const removed = isH5 ? [] : reconcile(m)
     if (removed.length) {
       toast(`${removed.join('、')} 已售罄或已变更，已移出购物车`, 2500)
     }
@@ -82,7 +83,7 @@ export default function Index() {
   useEffect(() => {
     if (current) {
       void Taro.setNavigationBarTitle({ title: current.storeName })
-      bindStore(current.storeId)
+      if (!isH5) bindStore(current.storeId)
       loadMenu(current.storeId).then(() => setError(null)).catch(() => setError('菜单加载失败，点击重试'))
     }
   }, [current, bindStore, loadMenu])
@@ -130,6 +131,8 @@ export default function Index() {
           <Text className='dish-price'>¥{formatYuan(d.price)}{hasOptions(d) ? '起' : ''}</Text>
           {d.soldOut ? (
             <Text className='muted'>已售罄</Text>
+          ) : isH5 ? (
+            hasOptions(d) && <View className='spec-btn' onClick={() => setSpecDish(d)}><Text>查看规格</Text></View>
           ) : hasOptions(d) ? (
             <View className='spec-btn' onClick={() => tapAdd(d)}>
               <Text>选规格</Text>
@@ -153,10 +156,24 @@ export default function Index() {
   if (!current) {
     return (
       <View className='empty-page'>
-        <Text className='empty-title'>请扫描桌上的二维码点餐</Text>
+        <Text className='empty-title'>{isH5 ? '扫码看菜单' : '请扫描桌上的二维码点餐'}</Text>
         {error && <Text className='warn'>{error}</Text>}
-        <Button className='scan-btn' onClick={handleScan} loading={loadingTable}>扫一扫</Button>
-        <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
+        {isH5 ? (
+          <>
+            <Text className='h5-intro'>请通过桌上的二维码链接打开菜单。下单支付请使用微信或支付宝扫一扫。</Text>
+            {loadingTable && <Text className='muted'>正在加载桌台…</Text>}
+            {error && <Button onClick={() => {
+              const token = extractQrToken(router.params as Record<string, unknown>)
+              if (token) void loadTable(token)
+            }}>重试</Button>}
+            {process.env.NODE_ENV === 'development' && <Button className='scan-btn' onClick={() => loadTable('dev-table-a1')} loading={loadingTable}>打开开发桌台 A1</Button>}
+          </>
+        ) : (
+          <>
+            <Button className='scan-btn' onClick={handleScan} loading={loadingTable}>扫一扫</Button>
+            <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
+          </>
+        )}
       </View>
     )
   }
@@ -168,7 +185,7 @@ export default function Index() {
           <Text className='store-name'>{current.storeName}</Text>
           <Text className='table-tag'>桌号 {current.tableCode}</Text>
         </View>
-        <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
+        {!isH5 && <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>}
       </View>
       {!current.storeOpen && <View className='closed-tip'><Text>店铺已打烊，暂不能下单</Text></View>}
       {error && (
@@ -201,7 +218,7 @@ export default function Index() {
         <View className='menu'>
           <ScrollView scrollY className='cats'>
             {menu?.categories.map((c) => {
-              const qty = c.dishes.reduce((s, d) => s + dishQty(items, d.id), 0)
+              const qty = isH5 ? 0 : c.dishes.reduce((s, d) => s + dishQty(items, d.id), 0)
               return (
                 <View
                   key={c.id}
@@ -228,12 +245,20 @@ export default function Index() {
         </View>
       )}
 
-      <CartBar
-        disabled={!current.storeOpen}
-        disabledText='已打烊'
-        onCheckout={() => Taro.navigateTo({ url: '/pages/checkout/index' })}
-      />
+      {isH5 ? (
+        <View className='h5-order-guide'>
+          <Text>当前为菜单浏览模式</Text>
+          <Text>请使用微信或支付宝扫一扫，扫描桌码下单支付</Text>
+        </View>
+      ) : (
+        <CartBar
+          disabled={!current.storeOpen}
+          disabledText='已打烊'
+          onCheckout={() => Taro.navigateTo({ url: '/pages/checkout/index' })}
+        />
+      )}
       <SpecPopup
+        mode={isH5 ? 'preview' : 'order'}
         dish={specDish}
         onClose={() => setSpecDish(null)}
         onConfirm={(dish, sel, qty) => { add(dish, sel, qty); setSpecDish(null) }}

@@ -4,6 +4,7 @@ import { ensureLogin } from './utils/auth'
 import { extractQrToken } from './utils/scene'
 import { useTableStore } from './store/table'
 import './app.css'
+import { isH5 } from './utils/platform'
 
 /**
  * 启动 / 切回前台时：
@@ -20,6 +21,7 @@ function App({ children }: PropsWithChildren) {
 
   useLaunch((options) => {
     captureScan(options)
+    if (isH5) return // 浏览器只看菜单，不调用小程序登录。
     ensureLogin().catch(() => {
       // 登录失败不阻塞启动，首次调用业务接口时会再次尝试
     })

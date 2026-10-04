@@ -11,10 +11,11 @@ interface Props {
   dish: MenuDish | null
   onClose: () => void
   onConfirm: (dish: MenuDish, sel: Selection, quantity: number) => void
+  mode?: 'order' | 'preview'
 }
 
 /** 规格 / 加料选择弹层：规格组单选，加料组多选（受 maxCount 限制） */
-export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
+export default function SpecPopup({ dish, onClose, onConfirm, mode = 'order' }: Props) {
   const [sel, setSel] = useState<Selection>({ specItemIds: [], addonItemIds: [] })
   const [qty, setQty] = useState(1)
 
@@ -124,10 +125,16 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
         </ScrollView>
 
         <View className='popup-foot'>
-          <Stepper value={qty} compact={false} onMinus={() => setQty((q) => Math.max(1, q - 1))} onPlus={() => setQty((q) => Math.min(99, q + 1))} />
-          <View className='popup-confirm' onClick={confirm}>
-            <Text>加入购物车 ¥{formatYuan(unitPrice * qty)}</Text>
-          </View>
+          {mode === 'preview' ? (
+            <Text>仅预览规格价格，请使用微信或支付宝扫码下单</Text>
+          ) : (
+            <>
+              <Stepper value={qty} compact={false} onMinus={() => setQty((q) => Math.max(1, q - 1))} onPlus={() => setQty((q) => Math.min(99, q + 1))} />
+              <View className='popup-confirm' onClick={confirm}>
+                <Text>加入购物车 ¥{formatYuan(unitPrice * qty)}</Text>
+              </View>
+            </>
+          )}
         </View>
       </View>
     </View>

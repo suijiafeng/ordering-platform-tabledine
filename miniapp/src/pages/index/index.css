@@ -242,3 +242,23 @@
   background: var(--brand);
   color: #fff;
 }
+
+.h5-intro {
+  margin: 32px;
+  color: var(--text-2);
+  line-height: 1.8;
+  text-align: center;
+}
+
+.h5-order-guide {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 32px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  background: var(--brand-bg);
+  color: var(--text-2);
+  font-size: 24px;
+  text-align: center;
+}

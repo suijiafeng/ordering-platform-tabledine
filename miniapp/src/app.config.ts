@@ -1,5 +1,5 @@
 export default defineAppConfig({
-  pages: [
+  pages: process.env.TARO_ENV === 'h5' ? ['pages/index/index'] : [
     'pages/index/index',
     'pages/checkout/index',
     'pages/order-list/index',

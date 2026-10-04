@@ -1,3 +1,5 @@
+import { apiBaseUrl } from './platform'
+
 /** 金额：后端以「分」为单位 */
 export function formatYuan(fen: number): string {
   const yuan = fen / 100
@@ -9,5 +11,5 @@ export function imageUrl(path: string | null | undefined): string {
   if (!path) {
     return ''
   }
-  return path.startsWith('/') ? `${process.env.TARO_APP_API_BASE}${path}` : path
+  return path.startsWith('/') ? `${apiBaseUrl}${path}` : path
 }

@@ -15,7 +15,7 @@ export default defineConfig<'webpack5'>(async (merge) => {
       828: 1.81 / 2,
     },
     sourceRoot: 'src',
-    // 两端分别输出，互不覆盖：dist/weapp、dist/alipay
+    // 各端分别输出，互不覆盖：dist/weapp、dist/alipay、dist/h5
     outputRoot: `dist/${process.env.TARO_ENV}`,
     plugins: [],
     defineConstants: {},
@@ -27,6 +27,10 @@ export default defineConfig<'webpack5'>(async (merge) => {
     compiler: 'webpack5',
     cache: {
       enable: false,
+    },
+    h5: {
+      publicPath: '/',
+      router: { mode: 'hash' },
     },
     mini: {
       postcss: {
