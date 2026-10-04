@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Drawer, Layout, Menu, Space, Typography, theme as antdTheme } from 'antd'
+import { Badge, Button, Drawer, Layout, Menu, Space, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import UserMenu from '../components/UserMenu'
+import BrandLogo from '../components/BrandLogo'
 import ThemeToggle from '../components/ThemeToggle'
 import { useOrderPoll } from '../hooks/useOrderPoll'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -47,6 +48,8 @@ export default function MainLayout() {
   const isOwner = staff?.role === 'OWNER'
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
+  // 侧栏在 lg 以下自动折叠为图标栏，折叠时只显示 Logo
+  const [collapsed, setCollapsed] = useState(false)
   const { token } = antdTheme.useToken()
   // 全局新订单轮询（提示音 + 菜单角标）
   const { counts } = useOrderPoll()
@@ -104,14 +107,14 @@ export default function MainLayout() {
         >
           <Space>
             <Button type="text" icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} aria-label="打开菜单" />
-            <Typography.Text strong>点餐后台</Typography.Text>
+            <BrandLogo size={24} />
           </Space>
           <Space size={4}>
             <ThemeToggle size="small" />
             <UserMenu compact />
           </Space>
         </Layout.Header>
-        <Drawer placement="left" open={menuOpen} onClose={() => setMenuOpen(false)} width={240} styles={{ body: { padding: 0 } }} title="点餐后台">
+        <Drawer placement="left" open={menuOpen} onClose={() => setMenuOpen(false)} width={240} styles={{ body: { padding: 0 } }} title={<BrandLogo size={24} showSubtitle />}>
           {menu}
         </Drawer>
         <Layout.Content style={{ padding: 12 }}>
@@ -123,14 +126,25 @@ export default function MainLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Sider theme="light" width={200} breakpoint="lg" collapsedWidth={64} style={{ minHeight: '100vh', borderInlineEnd: `1px solid ${token.colorSplit}` }}>
-        <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
-          点餐后台
+      {/* 侧栏固定在视口内（sticky），菜单过长时侧栏自身滚动；右侧内容随页面滚动 */}
+      <Layout.Sider
+        theme="light"
+        width={200}
+        breakpoint="lg"
+        collapsedWidth={64}
+        onCollapse={setCollapsed}
+        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto', borderInlineEnd: `1px solid ${token.colorSplit}`, zIndex: 11 }}
+      >
+        <div
+          style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', paddingInline: collapsed ? 0 : 20, cursor: 'pointer' }}
+          onClick={() => navigate('/')}
+        >
+          <BrandLogo size={30} showName={!collapsed} showSubtitle />
         </div>
         {menu}
       </Layout.Sider>
       <Layout>
-        <Layout.Header style={{ background: token.colorBgContainer, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingInline: 24, boxShadow: `0 1px 0 ${token.colorSplit}` }}>
+        <Layout.Header style={{ background: token.colorBgContainer, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingInline: 24, boxShadow: `0 1px 0 ${token.colorSplit}`, position: 'sticky', top: 0, zIndex: 10 }}>
           <Space size={8}>
             <ThemeToggle />
             <UserMenu />

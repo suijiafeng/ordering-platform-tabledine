@@ -1,3 +1,9 @@
+/* 全局：antd v5 不带 CSS reset，去掉浏览器默认外边距，否则 sticky 侧栏 / 顶栏会错位 8px */
+html,
+body {
+  margin: 0;
+}
+
 /* 窄屏适配：antd 组件默认按桌面排版，这里只做最小必要的覆盖 */
 @media (max-width: 767.98px) {
   /* Card 标题 + 右侧工具栏（搜索 / 按钮）换行堆叠，而不是把标题挤成竖排 */
