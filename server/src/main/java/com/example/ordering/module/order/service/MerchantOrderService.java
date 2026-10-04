@@ -38,6 +38,9 @@ import java.util.List;
 @Service
 public class MerchantOrderService {
 
+    /** 退款申请多久未审核算「超时」（需求 §7.3 默认 2 小时） */
+    static final int REFUND_REVIEW_OVERDUE_HOURS = 2;
+
     private static final ZoneId CN = ZoneId.of("Asia/Shanghai");
 
     private final OrderMapper orderMapper;
@@ -108,7 +111,11 @@ public class MerchantOrderService {
         long making = orderMapper.selectCount(Wrappers.<Order>lambdaQuery().eq(Order::getStatus, OrderStatus.MAKING));
         long applying = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery().eq(Refund::getStatus, RefundStatus.APPLYING));
         long failed = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery().eq(Refund::getStatus, RefundStatus.FAILED));
-        return new NewOrderCount(newPaid, pendingAccept, making, applying, failed, now, pendingNos);
+        // 与 OrderTasks.remindApplyingRefunds 同一口径（2 小时）；这里给商家端轮询展示，定时任务只写日志
+        long overdue = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery()
+                .eq(Refund::getStatus, RefundStatus.APPLYING)
+                .lt(Refund::getCreatedAt, now.minusHours(REFUND_REVIEW_OVERDUE_HOURS)));
+        return new NewOrderCount(newPaid, pendingAccept, making, applying, failed, now, pendingNos, overdue);
     }
 
     // ==================== 履约流转 ====================

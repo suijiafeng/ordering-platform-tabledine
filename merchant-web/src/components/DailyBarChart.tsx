@@ -12,8 +12,8 @@ interface Point {
  * 近 7 天实收柱状图（单一序列，无需图例）：细柱、顶部 4px 圆角、悬停提示、最高值直接标注。
  * 同页提供表格视图作为无障碍 / 数据查看入口。
  */
-/** width 是 viewBox 逻辑宽度：窄屏传小一点，缩放后文字才不会太小 */
-export default function DailyBarChart({ data, height = 180, width = 640 }: { data: Point[]; height?: number; width?: number }) {
+/** width 是 viewBox 逻辑宽度：窄屏传小一点，缩放后文字才不会太小；label 用于无障碍描述 */
+export default function DailyBarChart({ data, height = 180, width = 640, label = '每日实收' }: { data: Point[]; height?: number; width?: number; label?: string }) {
   const [hover, setHover] = useState<number | null>(null)
   const { token } = antdTheme.useToken()
   const padL = 56
@@ -30,10 +30,12 @@ export default function DailyBarChart({ data, height = 180, width = 640 }: { dat
   const y = (v: number) => padT + plotH - (v / niceMax) * plotH
   const ticks = [0, niceMax / 2, niceMax]
   const maxIdx = data.reduce((best, d, i) => (d.netIncome > (data[best]?.netIncome ?? -1) ? i : best), 0)
+  // 区间长（如 3 个月）时横轴日期按步长抽样显示，避免互相重叠；悬停时仍显示该柱的日期
+  const labelStep = Math.max(1, Math.ceil(data.length / Math.max(1, Math.floor(plotW / 48))))
 
   return (
     <div style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label="近 7 天每日实收">
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label={label}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke={token.colorSplit} />
@@ -59,7 +61,9 @@ export default function DailyBarChart({ data, height = 180, width = 640 }: { dat
               {(i === maxIdx && d.netIncome > 0) && !active && (
                 <text x={cx} y={top - 6} textAnchor="middle" fontSize={11} fill={token.colorTextSecondary}>{formatYuan(d.netIncome)}</text>
               )}
-              <text x={cx} y={height - 8} textAnchor="middle" fontSize={11} fill={active ? token.colorText : token.colorTextTertiary}>{d.date.slice(5)}</text>
+              {(active || i % labelStep === 0) && (
+                <text x={cx} y={height - 8} textAnchor="middle" fontSize={11} fill={active ? token.colorText : token.colorTextTertiary}>{d.date.slice(5)}</text>
+              )}
             </g>
           )
         })}

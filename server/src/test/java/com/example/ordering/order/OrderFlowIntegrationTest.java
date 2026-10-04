@@ -459,6 +459,29 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.daily.length()").value(7));
 
         String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();
+        String weekAgo = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).minusDays(6).toString();
+
+        // 区间统计：仅店主；每一天都有数据点（无订单的日期为 0）；今日那一点与今日看板口径一致
+        mvc.perform(authed(get("/api/v1/m/reports/summary?from=" + weekAgo + "&to=" + today), staff)).andExpect(status().isForbidden());
+        mvc.perform(authed(get("/api/v1/m/reports/summary?from=" + weekAgo + "&to=" + today), owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.from").value(weekAgo))
+                .andExpect(jsonPath("$.data.to").value(today))
+                .andExpect(jsonPath("$.data.orderCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.paidAmount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(3800)))
+                .andExpect(jsonPath("$.data.daily.length()").value(7))
+                .andExpect(jsonPath("$.data.daily[6].date").value(today))
+                .andExpect(jsonPath("$.data.daily[6].orderCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.topDishes[0].dishName").isNotEmpty());
+        // 参数校验：开始晚于结束、超过 92 天 → 42201
+        mvc.perform(authed(get("/api/v1/m/reports/summary?from=" + today + "&to=" + weekAgo), owner))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value(42201));
+        String tooEarly = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).minusDays(92).toString();
+        mvc.perform(authed(get("/api/v1/m/reports/summary?from=" + tooEarly + "&to=" + today), owner))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value(42201));
+
         mvc.perform(authed(get("/api/v1/m/reports/export?from=" + today + "&to=" + today), staff))
                 .andExpect(status().isForbidden());
         MvcResult r = mvc.perform(authed(get("/api/v1/m/reports/export?from=" + today + "&to=" + today), owner))

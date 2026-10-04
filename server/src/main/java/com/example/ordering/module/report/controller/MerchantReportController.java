@@ -2,6 +2,7 @@ package com.example.ordering.module.report.controller;
 
 import com.example.ordering.common.Result;
 import com.example.ordering.module.report.dto.DashboardToday;
+import com.example.ordering.module.report.dto.ReportSummary;
 import com.example.ordering.module.report.service.DashboardService;
 import com.example.ordering.module.report.service.ReportExportService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,6 +38,14 @@ public class MerchantReportController {
     @GetMapping("/dashboard/today")
     public Result<DashboardToday> today() {
         return Result.ok(dashboardService.today());
+    }
+
+    @Operation(summary = "区间统计（店主）：from / to = yyyy-MM-dd，最多 92 天；实收、订单量、退款、每日曲线、菜品排行")
+    @PreAuthorize("hasRole('OWNER')")
+    @GetMapping("/reports/summary")
+    public Result<ReportSummary> summary(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return Result.ok(dashboardService.summary(from, to));
     }
 
     @Operation(summary = "流水导出 CSV（店主）：from / to = yyyy-MM-dd，按下单日期")

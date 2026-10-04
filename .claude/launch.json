@@ -11,6 +11,20 @@
       "cwd": "merchant-web",
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "merchant-web-alt-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "merchant-web",
+      "port": 5173,
+      "autoPort": true,
+      "env": {
+        "API_PROXY_TARGET": "http://localhost:8081"
+      }
     }
   ]
 }

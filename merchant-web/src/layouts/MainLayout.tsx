@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { App, Badge, Button, Drawer, Layout, Menu, Space, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
@@ -88,6 +88,33 @@ export default function MainLayout() {
       consumeInitial()
     }
   }, [initialPending, consumeInitial, notification, navigate])
+
+  // 退款申请超过 2 小时未审核（需求 §7.3：再次提醒店主，不自动同意）。数量增加时提醒一次；处理完清零后再出现会再次提醒
+  const overdueRefunds = counts?.overdueRefundCount ?? 0
+  const overdueNotifiedRef = useRef(0)
+  useEffect(() => {
+    if (!isOwner) {
+      return
+    }
+    if (overdueRefunds === 0) {
+      overdueNotifiedRef.current = 0
+      notification.destroy('overdue-refund')
+      return
+    }
+    if (overdueRefunds > overdueNotifiedRef.current) {
+      overdueNotifiedRef.current = overdueRefunds
+      notification.warning({
+        key: 'overdue-refund',
+        message: `${overdueRefunds} 笔退款申请超过 2 小时未审核`,
+        description: '顾客正在等待结果，请尽快同意或拒绝（拒绝需填写理由）。',
+        duration: 0,
+        onClick: () => {
+          notification.destroy('overdue-refund')
+          navigate('/refunds?status=APPLYING')
+        },
+      })
+    }
+  }, [overdueRefunds, isOwner, notification, navigate])
 
   const badgeFor = (key: string): number => {
     if (!counts) {

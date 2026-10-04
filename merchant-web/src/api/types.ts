@@ -278,6 +278,21 @@ export interface NewOrderCount {
   serverTime: string
   /** 当前所有待接单订单号，前端按集合去重判断新单 */
   pendingOrderNos: string[]
+  /** 申请超过 2 小时仍未审核的退款数 */
+  overdueRefundCount: number
+}
+
+/** 任意日期区间统计，口径与今日看板一致 */
+export interface ReportSummary {
+  from: string
+  to: string
+  netIncome: number
+  paidAmount: number
+  refundedAmount: number
+  orderCount: number
+  refundCount: number
+  topDishes: { dishName: string; quantity: number; amount: number }[]
+  daily: { date: string; netIncome: number; orderCount: number }[]
 }
 
 export interface UnconfirmedPayment {

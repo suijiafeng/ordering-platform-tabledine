@@ -1,7 +1,11 @@
 import { request } from '../utils/request'
-import type { DashboardToday, UnconfirmedPayment } from './types'
+import type { DashboardToday, ReportSummary, UnconfirmedPayment } from './types'
 
 export const fetchDashboard = () => request<DashboardToday>({ url: '/api/v1/m/dashboard/today' })
+
+/** 区间统计：from / to 为 yyyy-MM-dd，最多 92 天 */
+export const fetchReportSummary = (from: string, to: string) =>
+  request<ReportSummary>({ url: '/api/v1/m/reports/summary', params: { from, to } })
 
 /** 本地已关闭、渠道超过 1 天无法确认的支付单（需人工到渠道商户平台核对） */
 export const fetchUnconfirmedPayments = () => request<UnconfirmedPayment[]>({ url: '/api/v1/m/payments/unconfirmed', silent: true })

@@ -5,6 +5,9 @@ const stripOrigin: ProxyOptions['configure'] = (proxy) => {
   proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'))
 }
 
+/** 本地后端地址；需要联调另一个端口的后端时用 API_PROXY_TARGET 覆盖 */
+const apiTarget = process.env.API_PROXY_TARGET || 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -13,8 +16,8 @@ export default defineConfig({
     // 开发时代理到本地后端，和生产环境 Nginx 同域部署保持一致。
     // 对浏览器而言是同源请求，不需要 CORS；去掉代理转发的 Origin 头，换端口预览时后端也不会按 CORS 白名单拒绝
     proxy: {
-      '/api': { target: 'http://localhost:8080', configure: stripOrigin },
-      '/uploads': { target: 'http://localhost:8080', configure: stripOrigin },
+      '/api': { target: apiTarget, configure: stripOrigin },
+      '/uploads': { target: apiTarget, configure: stripOrigin },
     },
   },
 })

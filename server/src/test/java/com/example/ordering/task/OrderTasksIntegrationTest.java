@@ -193,6 +193,30 @@ class OrderTasksIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void newCountReportsRefundApplicationsOverdueForReview() throws Exception {
+        String customer = customerToken("WECHAT", "mock:overdue-" + UUID.randomUUID());
+        String owner = ownerToken();
+        String orderNo = createOrder(customer);
+        payMock(customer, orderNo);
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
+        MvcResult r = mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/refunds"), customer)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(toJson(java.util.Map.of("reason", "不想要了"))))
+                .andExpect(status().isOk()).andReturn();
+        String refundNo = data(r).path("refundNo").asText();
+
+        // 刚申请：不算超时
+        long overdueBefore = getData("/api/v1/m/orders/new-count", owner).path("overdueRefundCount").asLong();
+        // 申请时间回拨 3 小时 → 超过 2 小时未审核，计入提醒
+        jdbc.update("UPDATE refund SET created_at = now() - interval '3 hours' WHERE refund_no = ?", refundNo);
+        long overdueAfter = getData("/api/v1/m/orders/new-count", owner).path("overdueRefundCount").asLong();
+        assertThat(overdueAfter).isEqualTo(overdueBefore + 1);
+        // 定时任务对同一批数据只记日志，不抛异常、不改状态
+        tasks.remindApplyingRefunds();
+        assertThat(jdbc.queryForObject("SELECT status FROM refund WHERE refund_no = ?", String.class, refundNo)).isEqualTo("APPLYING");
+    }
+
+    @Test
     void remindAndCompensatePaymentsDoNotThrowOnEmptyOrStaleData() throws Exception {
         String customer = customerToken("WECHAT", "mock:misc-" + UUID.randomUUID());
         String orderNo = createOrder(customer);

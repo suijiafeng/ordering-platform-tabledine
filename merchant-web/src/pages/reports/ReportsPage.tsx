@@ -3,14 +3,28 @@ import { Alert, App, Button, Card, Col, DatePicker, Result, Row, Space, Statisti
 import type { ColumnsType } from 'antd/es/table'
 import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
-import { exportReport, fetchDashboard, fetchUnconfirmedPayments } from '../../api/report'
-import type { DashboardToday, UnconfirmedPayment } from '../../api/types'
+import { exportReport, fetchDashboard, fetchReportSummary, fetchUnconfirmedPayments } from '../../api/report'
+import type { DashboardToday, ReportSummary, UnconfirmedPayment } from '../../api/types'
 import { fenToYuan, formatYuan } from '../../utils/money'
 import DailyBarChart from '../../components/DailyBarChart'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
 import { ignoreShownError } from '../../utils/errors'
 
-/** 数据看板 + 流水导出（店主） */
+/** 区间统计与导出共用的最大天数（与后端一致） */
+const MAX_RANGE_DAYS = 92
+
+const RANGE_PRESETS = [
+  { label: '今天', value: [dayjs(), dayjs()] as [Dayjs, Dayjs] },
+  { label: '昨天', value: [dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')] as [Dayjs, Dayjs] },
+  { label: '近 7 天', value: [dayjs().subtract(6, 'day'), dayjs()] as [Dayjs, Dayjs] },
+  { label: '近 30 天', value: [dayjs().subtract(29, 'day'), dayjs()] as [Dayjs, Dayjs] },
+  { label: '本周', value: [dayjs().startOf('week'), dayjs()] as [Dayjs, Dayjs] },
+  { label: '本月', value: [dayjs().startOf('month'), dayjs()] as [Dayjs, Dayjs] },
+  { label: '上月', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] as [Dayjs, Dayjs] },
+]
+
+/** 数据看板（今日概览 + 任意区间统计）+ 流水导出（店主）。区间选择同时作用于统计与导出 */
 export default function ReportsPage() {
   const isMobile = useIsMobile()
   const [unconfirmed, setUnconfirmed] = useState<UnconfirmedPayment[]>([])
@@ -21,8 +35,13 @@ export default function ReportsPage() {
   const [data, setData] = useState<DashboardToday | null>(null)
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()])
+  const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, 'day'), dayjs()])
+  const [summary, setSummary] = useState<ReportSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState(false)
   const [exporting, setExporting] = useState(false)
+  // 快速切换区间时只采纳最后一次请求的结果
+  const beginSummary = useLatestRequest()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -38,9 +57,28 @@ export default function ReportsPage() {
     }
   }, [])
 
+  const loadSummary = useCallback(async () => {
+    const isLatest = beginSummary()
+    setSummaryLoading(true)
+    setSummaryError(false)
+    try {
+      const s = await fetchReportSummary(range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'))
+      if (isLatest()) setSummary(s)
+    } catch (e) {
+      if (isLatest()) setSummaryError(true)
+      ignoreShownError(e)  // 请求层已提示；卡片内提供重试
+    } finally {
+      if (isLatest()) setSummaryLoading(false)
+    }
+  }, [range, beginSummary])
+
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    void loadSummary()
+  }, [loadSummary])
 
   const doExport = async () => {
     setExporting(true)
@@ -70,11 +108,14 @@ export default function ReportsPage() {
     { title: '实收', dataIndex: 'netIncome', width: 120, align: 'right', render: (v: number) => formatYuan(v) },
   ]
 
+  const rangeText = `${range[0].format('MM-DD')} ~ ${range[1].format('MM-DD')}`
+  const rangeDays = range[1].diff(range[0], 'day') + 1
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
         <Typography.Title level={4} style={{ margin: 0 }}>数据看板</Typography.Title>
-        <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { void load(); void loadSummary() }} loading={loading || summaryLoading}>刷新</Button>
       </Space>
 
       <Row gutter={[16, 16]}>
@@ -84,14 +125,67 @@ export default function ReportsPage() {
         <Col xs={12} lg={6}><Card loading={!data}><Statistic title="今日退款" value={fenToYuan(data?.refundedAmount)} precision={2} prefix="¥" suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ {data?.refundCount ?? 0} 笔</Typography.Text>} /></Card></Col>
       </Row>
 
+      <Card
+        title="区间统计"
+        extra={
+          <Space wrap>
+            <DatePicker.RangePicker
+              value={range}
+              allowClear={false}
+              size="small"
+              onChange={(v) => {
+                if (!v || !v[0] || !v[1]) return
+                if (v[1].diff(v[0], 'day') >= MAX_RANGE_DAYS) {
+                  message.warning(`单次最多统计 ${MAX_RANGE_DAYS} 天，请缩小范围`)
+                  return
+                }
+                setRange([v[0], v[1]])
+              }}
+              disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+              presets={RANGE_PRESETS}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>按支付成功日期统计，最多 {MAX_RANGE_DAYS} 天</Typography.Text>
+          </Space>
+        }
+      >
+        {summaryError && !summary ? (
+          <Alert type="error" showIcon message="区间统计加载失败" action={<Button size="small" onClick={() => void loadSummary()}>重试</Button>} />
+        ) : (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Row gutter={[16, 16]}>
+              <Col xs={12} lg={6}><Statistic title={`实收（${rangeDays} 天）`} value={fenToYuan(summary?.netIncome)} precision={2} prefix="¥" loading={!summary} /></Col>
+              <Col xs={12} lg={6}><Statistic title="订单数" value={summary?.orderCount ?? 0} suffix="单" loading={!summary} /></Col>
+              <Col xs={12} lg={6}><Statistic title="日均实收" value={fenToYuan(summary ? Math.round(summary.netIncome / Math.max(1, summary.daily.length)) : 0)} precision={2} prefix="¥" loading={!summary} /></Col>
+              <Col xs={12} lg={6}><Statistic title="退款" value={fenToYuan(summary?.refundedAmount)} precision={2} prefix="¥" suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ {summary?.refundCount ?? 0} 笔</Typography.Text>} loading={!summary} /></Col>
+            </Row>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} lg={14}>
+                <Card type="inner" title={`每日实收 ${rangeText}`} loading={!summary && summaryLoading}>
+                  {summary && <DailyBarChart data={summary.daily} width={isMobile ? 360 : 640} label={`${rangeText} 每日实收`} />}
+                  {summary && (
+                    <Table
+                      size="small"
+                      rowKey="date"
+                      pagination={summary.daily.length > 14 ? { pageSize: 14, size: 'small', showSizeChanger: false } : false}
+                      columns={dailyColumns}
+                      dataSource={summary.daily}
+                      style={{ marginTop: 12 }}
+                    />
+                  )}
+                </Card>
+              </Col>
+              <Col xs={24} lg={10}>
+                <Card type="inner" title={`菜品销售排行 ${rangeText}`} loading={!summary && summaryLoading}>
+                  <Table size="small" rowKey="dishName" pagination={false} columns={dishColumns} dataSource={summary?.topDishes ?? []} locale={{ emptyText: '该区间暂无销售' }} />
+                </Card>
+              </Col>
+            </Row>
+          </Space>
+        )}
+      </Card>
+
       <Row gutter={[16, 16]}>
-        <Col xs={24} lg={14}>
-          <Card title="近 7 天实收" loading={!data} extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>按支付成功日期统计</Typography.Text>}>
-            {data && <DailyBarChart data={data.daily} width={isMobile ? 360 : 640} />}
-            {data && <Table size="small" rowKey="date" pagination={false} columns={dailyColumns} dataSource={data.daily} style={{ marginTop: 12 }} />}
-          </Card>
-        </Col>
-        <Col xs={24} lg={10}>
+        <Col xs={24}>
           <Card title="今日菜品销售排行" loading={!data}>
             <Table size="small" rowKey="dishName" pagination={false} columns={dishColumns} dataSource={data?.topDishes ?? []} locale={{ emptyText: '今日暂无销售' }} />
           </Card>
@@ -117,28 +211,9 @@ export default function ReportsPage() {
       )}
       <Card title="流水导出" extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>CSV：订单 + 支付 + 退款明细，可直接用 Excel 打开，用于人工对账</Typography.Text>}>
         <Space wrap>
-          <DatePicker.RangePicker
-            value={range}
-            allowClear={false}
-            onChange={(v) => {
-              if (!v || !v[0] || !v[1]) return
-              if (v[1].diff(v[0], 'day') > 91) {
-                message.warning('单次最多导出 92 天，请缩小范围')
-                return
-              }
-              setRange([v[0], v[1]])
-            }}
-            disabledDate={(d) => d.isAfter(dayjs(), 'day')}
-            presets={[
-              { label: '今天', value: [dayjs(), dayjs()] },
-              { label: '昨天', value: [dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')] },
-              { label: '本周', value: [dayjs().startOf('week'), dayjs()] },
-              { label: '本月', value: [dayjs().startOf('month'), dayjs()] },
-              { label: '上月', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] },
-            ]}
-          />
+          <Typography.Text>导出 {range[0].format('YYYY-MM-DD')} ~ {range[1].format('YYYY-MM-DD')}（与上方区间一致）</Typography.Text>
           <Button type="primary" icon={<DownloadOutlined />} loading={exporting} onClick={doExport}>导出 CSV</Button>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>单次最多 92 天</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>按下单日期筛选，单次最多 {MAX_RANGE_DAYS} 天</Typography.Text>
         </Space>
       </Card>
     </Space>
