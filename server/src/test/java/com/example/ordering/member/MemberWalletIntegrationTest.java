@@ -74,7 +74,6 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(get("/api/v1/c/me"), member)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.member").value(true))
                 .andExpect(jsonPath("$.data.phone").value(phone))
-                .andExpect(jsonPath("$.data.platform").value("H5"))
                 .andExpect(jsonPath("$.data.balance").value(8000));
 
         // 下单 38 元 → 发起支付即从余额扣费并入账，订单直接待接单
@@ -82,7 +81,6 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), member))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.channel").value("H5"))
-                .andExpect(jsonPath("$.data.mock").value(false))
                 .andExpect(jsonPath("$.data.params.balance").value(true))
                 .andExpect(jsonPath("$.data.params.paid").value(true));
         assertThat(orderStatus(orderNo)).isEqualTo("PAID");
@@ -163,22 +161,18 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
                 .content(json("enabled", true))).andExpect(status().isOk());
         memberLogin(phone, "reset888");
 
-        // 小程序顾客不是会员：不能改密码；商家端按 ID 也找不到它
-        String wechat = customerToken("WECHAT", "mock:nm-" + UUID.randomUUID());
-        mvc.perform(authed(put("/api/v1/c/me/password"), wechat).contentType(MediaType.APPLICATION_JSON)
-                        .content(json("oldPassword", "x", "newPassword", "newpass66")))
-                .andExpect(status().isForbidden());
-        long wechatId = getData("/api/v1/c/me", wechat).path("id").asLong();
-        mvc.perform(authed(post("/api/v1/m/members/" + wechatId + "/recharge"), owner).contentType(MediaType.APPLICATION_JSON)
+        // 原密码错误：拒绝修改
+        String other = memberToken();
+        mvc.perform(authed(put("/api/v1/c/me/password"), other).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("oldPassword", "wrong-pass", "newPassword", "newpass66")))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(40102));
+        // 已停用的小程序登录留下的非会员顾客：商家端按 ID 找不到，不能充值
+        jdbc.update("INSERT INTO customer (status) VALUES (1)");
+        Long legacyId = jdbc.queryForObject("SELECT MAX(id) FROM customer WHERE phone IS NULL", Long.class);
+        mvc.perform(authed(post("/api/v1/m/members/" + legacyId + "/recharge"), owner).contentType(MediaType.APPLICATION_JSON)
                 .content(json("amount", 100))).andExpect(status().isNotFound());
     }
 
-    private String memberLogin(String phone, String password) throws Exception {
-        MvcResult r = mvc.perform(post("/api/v1/c/auth/password-login").contentType(MediaType.APPLICATION_JSON)
-                        .content(json("phone", phone, "password", password)))
-                .andExpect(status().isOk()).andReturn();
-        return data(r).path("token").asText();
-    }
 
     private long balance(String memberToken) throws Exception {
         return getData("/api/v1/c/me", memberToken).path("balance").asLong();
@@ -191,7 +185,6 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
         MvcResult r = mvc.perform(authed(post("/api/v1/c/orders"), customer)
                         .contentType(MediaType.APPLICATION_JSON).content(toJson(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.platform").value("H5"))
                 .andReturn();
         return data(r).path("orderNo").asText();
     }

@@ -2,7 +2,6 @@ package com.example.ordering.module.auth.controller;
 
 import com.example.ordering.common.Result;
 import com.example.ordering.module.auth.dto.CustomerChangePasswordRequest;
-import com.example.ordering.module.auth.dto.CustomerLoginRequest;
 import com.example.ordering.module.auth.dto.PasswordLoginRequest;
 import com.example.ordering.ratelimit.ClientIp;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,14 +28,7 @@ public class CustomerAuthController {
         this.customerAuthService = customerAuthService;
     }
 
-    @Operation(summary = "小程序静默登录（platform + code）")
-    @RateLimit(permits = 30, windowSeconds = 60)
-    @PostMapping("/api/v1/c/auth/login")
-    public Result<CustomerLoginResponse> login(@Valid @RequestBody CustomerLoginRequest req) {
-        return Result.ok(customerAuthService.login(req));
-    }
-
-    @Operation(summary = "会员密码登录（H5：手机号 + 密码，账号由商家后台创建）")
+    @Operation(summary = "会员密码登录（手机号 + 密码，账号由商家后台创建）")
     @RateLimit(permits = 10, windowSeconds = 60)
     @PostMapping("/api/v1/c/auth/password-login")
     public Result<CustomerLoginResponse> passwordLogin(@Valid @RequestBody PasswordLoginRequest req, HttpServletRequest request) {

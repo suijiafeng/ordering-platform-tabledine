@@ -2,7 +2,6 @@ package com.example.ordering.security;
 
 import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
-import com.example.ordering.common.Platform;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -13,9 +12,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
  * @param id       customerId 或 staffId
  * @param storeId  员工所属门店（顾客为空）
  * @param role     员工角色 OWNER / STAFF（顾客为空）
- * @param platform 顾客所在平台（员工为空）
  */
-public record LoginUser(UserType type, Long id, Long storeId, String role, Platform platform) {
+public record LoginUser(UserType type, Long id, Long storeId, String role) {
 
     public boolean isOwner() {
         return type == UserType.STAFF && "OWNER".equals(role);

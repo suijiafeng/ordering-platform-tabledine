@@ -1,7 +1,6 @@
 package com.example.ordering.security;
 
 import com.example.ordering.common.ErrorCode;
-import com.example.ordering.common.Platform;
 import com.example.ordering.module.customer.entity.Customer;
 import com.example.ordering.module.customer.mapper.CustomerMapper;
 import com.example.ordering.module.staff.entity.Staff;
@@ -96,15 +95,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
         if (type == UserType.CUSTOMER) {
             Customer customer = customerMapper.selectById(id);
-            if (customer == null || !customer.isEnabled()) {
-                return; // 顾客被停用 → 401，不必等 token 过期
-            }
             Integer tv = claims.get(JwtService.CLAIM_TOKEN_VERSION, Integer.class);
-            if (tv != null && !Objects.equals(customer.getTokenVersion(), tv)) {
-                return; // 会员密码被重置 / 修改 → 旧 token 失效
+            if (customer == null || !customer.isMember() || !customer.isEnabled() || !Objects.equals(customer.getTokenVersion(), tv)) {
+                return; // 非会员（已停用的小程序登录留下的顾客）、会员被停用、密码被重置 / 修改 → 401，不必等 token 过期
             }
-            Platform platform = Platform.valueOf(claims.get(JwtService.CLAIM_PLATFORM, String.class));
-            user = new LoginUser(UserType.CUSTOMER, id, null, null, platform);
+            user = new LoginUser(UserType.CUSTOMER, id, null, null);
             authorities.add(new SimpleGrantedAuthority("ROLE_CUSTOMER"));
         } else if (type == UserType.STAFF) {
             Staff staff = staffMapper.selectById(id);
@@ -112,7 +107,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (staff == null || !staff.isEnabled() || !Objects.equals(staff.getTokenVersion(), tv)) {
                 return; // 员工已停用 / 改密 / 删除 → 401
             }
-            user = new LoginUser(UserType.STAFF, id, staff.getStoreId(), staff.getRole(), null);
+            user = new LoginUser(UserType.STAFF, id, staff.getStoreId(), staff.getRole());
             authorities.add(new SimpleGrantedAuthority("ROLE_STAFF"));
             if (Staff.ROLE_OWNER.equals(staff.getRole())) {
                 authorities.add(new SimpleGrantedAuthority("ROLE_OWNER"));

@@ -149,7 +149,7 @@ export interface StoreUpdateRequest {
 
 export type OrderStatus = 'PENDING_PAY' | 'PAID' | 'MAKING' | 'READY' | 'DONE' | 'CLOSED' | 'CANCELLED'
 export type OrderRefundStatus = 'NONE' | 'PARTIAL' | 'FULL'
-/** H5 = 会员账号，支付走余额 */
+/** H5 = 会员余额支付（唯一在用）；WECHAT / ALIPAY 为已停用渠道的历史数据 */
 export type Platform = 'WECHAT' | 'ALIPAY' | 'H5'
 export type RefundStatus = 'APPLYING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'REJECTED' | 'WITHDRAWN' | 'OFFLINE'
 export type RefundType = 'FULL' | 'ITEM' | 'CUSTOM'
@@ -325,14 +325,6 @@ export interface WalletTransaction {
   createdAt: string
 }
 
-export interface UnconfirmedPayment {
-  outTradeNo: string
-  orderNo: string
-  channel: 'WECHAT' | 'ALIPAY'
-  amount: number
-  createdAt: string
-  closedAt: string
-}
 
 export interface MerchantRefundRequest {
   type: RefundType

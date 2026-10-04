@@ -6,11 +6,7 @@ app:
   jwt:
     secret: test-secret-0123456789abcdef0123456789abcdef
   auth:
-    mock-enabled: true
     max-login-failures: 3
-  pay:
-    mock-enabled: true
-    notify-base-url: http://localhost:8080
   rate-limit:
     enabled: false
   storage:

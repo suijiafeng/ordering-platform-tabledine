@@ -20,14 +20,12 @@ public class Payment {
     private Long orderId;
     private String outTradeNo;
     private Platform channel;
-    /** 渠道交易号（回调后回填） */
+    /** 交易号（余额支付为 BAL + 商户订单号） */
     private String transactionNo;
     private Long amount;
     private PaymentStatus status;
     private OffsetDateTime paidAt;
     private Long refundedAmount;
-    /** 本地关闭后渠道是否已确认关单；false 的记录持续查单，防止付款丢失 */
-    private Boolean closeConfirmed;
     @TableField(fill = FieldFill.INSERT)
     private OffsetDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

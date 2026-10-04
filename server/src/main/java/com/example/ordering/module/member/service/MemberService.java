@@ -117,7 +117,7 @@ public class MemberService {
         return walletService.transactions(ownMember(id).getId(), page, pageSize);
     }
 
-    /** 只能操作本门店的会员；其他门店或小程序顾客一律 404，不泄露存在性 */
+    /** 只能操作本门店的会员；其他门店或非会员顾客（已停用的小程序登录留下的）一律 404，不泄露存在性 */
     private Customer ownMember(Long id) {
         Customer c = customerMapper.selectById(id);
         if (c == null || !c.isMember() || !LoginUser.currentStaff().storeId().equals(c.getStoreId())) {

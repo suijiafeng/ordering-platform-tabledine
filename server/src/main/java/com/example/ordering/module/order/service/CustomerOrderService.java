@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
+import com.example.ordering.common.Platform;
 import com.example.ordering.common.PageResult;
 import com.example.ordering.module.menu.dto.AddonGroupView;
 import com.example.ordering.module.menu.dto.SpecGroupView;
@@ -181,7 +182,7 @@ public class CustomerOrderService {
         order.setTableId(table.getId());
         order.setTableCode(table.getCode());
         order.setCustomerId(user.id());
-        order.setPlatform(user.platform());
+        order.setPlatform(Platform.H5);
         order.setStatus(OrderStatus.PENDING_PAY);
         order.setRefundStatus(RefundStatusOfOrder.NONE);
         order.setTotalAmount(total);
@@ -266,25 +267,11 @@ public class CustomerOrderService {
     public PayInitResult pay(String orderNo) {
         Order order = ownOrder(orderNo);
         if (order.getStatus() == OrderStatus.PENDING_PAY && order.getPayExpireAt().isBefore(OffsetDateTime.now())) {
-            // 关单前先向渠道确认：顾客可能刚付完、回调还没到
-            PayService.PayCheck check = payService.queryAndSync(order);
-            if (check == PayService.PayCheck.PAID) {
-                throw new BusinessException(ErrorCode.CONFLICT, "订单已支付，请刷新查看");
-            }
-            if (check == PayService.PayCheck.UNKNOWN) {
-                throw new BusinessException(ErrorCode.CONFLICT, "正在确认支付结果，请稍后刷新");
-            }
             // 自调用不经过代理，用模板显式开事务
             tx.executeWithoutResult(s -> closeExpired(order, "支付超时自动关闭"));
             throw new BusinessException(ErrorCode.CONFLICT, "订单已超时，请重新下单");
         }
         return payService.initiate(order);
-    }
-
-    public OrderDetail mockPay(String orderNo) {
-        Order order = ownOrder(orderNo);
-        payService.mockPay(order);
-        return assembler.customerDetail(orderStateService.getById(order.getId()));
     }
 
     /** 顾客取消：待支付 → 关闭（回补库存）；待接单 → 取消 + 自动全额退款（回补库存） */
@@ -296,7 +283,6 @@ public class CustomerOrderService {
             orderStateService.transitionOrConflict(order, OrderStatus.PENDING_PAY, OrderStatus.CLOSED,
                     OperatorType.CUSTOMER, order.getCustomerId(), remark);
             orderStateService.restoreStock(order.getId());
-            payService.closePendingPayments(order);
         } else if (order.getStatus() == OrderStatus.PAID) {
             orderStateService.transitionOrConflict(order, OrderStatus.PAID, OrderStatus.CANCELLED,
                     OperatorType.CUSTOMER, order.getCustomerId(), remark);
@@ -313,7 +299,6 @@ public class CustomerOrderService {
     public void closeExpired(Order order, String remark) {
         if (orderStateService.transition(order, OrderStatus.PENDING_PAY, OrderStatus.CLOSED, OperatorType.SYSTEM, null, remark)) {
             orderStateService.restoreStock(order.getId());
-            payService.closePendingPayments(order);
         }
     }
 

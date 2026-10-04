@@ -8,8 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 启动安全检查：只有显式激活 dev / test profile 时才允许开发便利项。
- * 生产误配（漏设 profile、手滑把开关打开）直接拒绝启动，而不是带着模拟登录 / 模拟支付 / 公开密钥上线。
+ * 启动安全检查：只有显式激活 dev / test profile 时才允许使用开发默认密钥。
+ * 生产误配（漏设 profile）直接拒绝启动，而不是带着仓库里公开的开发密钥上线。
  */
 @Component
 public class StartupSafetyCheck implements InitializingBean {
@@ -35,12 +35,6 @@ public class StartupSafetyCheck implements InitializingBean {
             return;
         }
         List<String> problems = new ArrayList<>();
-        if (props.getAuth().isMockEnabled()) {
-            problems.add("app.auth.mock-enabled=true（模拟小程序登录）");
-        }
-        if (props.getPay().isMockEnabled()) {
-            problems.add("app.pay.mock-enabled=true（模拟支付）");
-        }
         String secret = props.getJwt().getSecret();
         if (secret != null && secret.contains(DEV_SECRET_MARKER)) {
             problems.add("JWT 使用了开发环境默认密钥");

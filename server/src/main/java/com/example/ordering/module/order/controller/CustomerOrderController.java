@@ -46,17 +46,11 @@ public class CustomerOrderController {
         return Result.ok(customerOrderService.create(req));
     }
 
-    @Operation(summary = "发起支付，返回小程序拉起参数")
+    @Operation(summary = "余额支付：发起即扣费入账（余额不足 42203）")
     @RateLimit(permits = 20, windowSeconds = 60)
     @PostMapping("/orders/{orderNo}/pay")
     public Result<PayInitResult> pay(@PathVariable String orderNo) {
         return Result.ok(customerOrderService.pay(orderNo));
-    }
-
-    @Operation(summary = "【开发环境】模拟支付成功（仅 Mock 渠道可用）")
-    @PostMapping("/orders/{orderNo}/mock-pay")
-    public Result<OrderDetail> mockPay(@PathVariable String orderNo) {
-        return Result.ok(customerOrderService.mockPay(orderNo));
     }
 
     @Operation(summary = "订单详情（含支付、退款、状态日志）")

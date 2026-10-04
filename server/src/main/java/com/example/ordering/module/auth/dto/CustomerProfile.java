@@ -1,14 +1,10 @@
 package com.example.ordering.module.auth.dto;
 
-import com.example.ordering.common.Platform;
-
 /**
- * 当前顾客信息。
+ * 当前会员信息。
  *
- * @param member  是否是会员账号（可用密码登录、有余额钱包）
- * @param phone   会员手机号（小程序顾客为空）
- * @param balance 账户余额（分；小程序顾客为 0）
+ * @param member  是否是会员账号（目前只有会员能登录，恒为 true；保留给前端判断）
+ * @param balance 账户余额（分）
  */
-public record CustomerProfile(Long id, String nickname, String avatar, Platform platform,
-                              boolean member, String phone, long balance) {
+public record CustomerProfile(Long id, String nickname, boolean member, String phone, long balance) {
 }

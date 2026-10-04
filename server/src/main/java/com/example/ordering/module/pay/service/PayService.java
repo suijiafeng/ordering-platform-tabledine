@@ -4,18 +4,11 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
 import com.example.ordering.common.Platform;
-import com.example.ordering.config.AppProperties;
-import com.example.ordering.module.customer.entity.CustomerAuth;
-import com.example.ordering.module.customer.mapper.CustomerAuthMapper;
 import com.example.ordering.module.order.dto.PayInitResult;
 import com.example.ordering.module.order.entity.OperatorType;
 import com.example.ordering.module.order.entity.Order;
 import com.example.ordering.module.order.entity.OrderStatus;
 import com.example.ordering.module.order.service.OrderStateService;
-import com.example.ordering.module.pay.channel.PayChannel;
-import com.example.ordering.module.pay.channel.PayChannelRegistry;
-import com.example.ordering.module.pay.channel.PayCreateRequest;
-import com.example.ordering.module.pay.channel.PayQueryResult;
 import com.example.ordering.module.pay.entity.Payment;
 import com.example.ordering.module.pay.entity.PaymentStatus;
 import com.example.ordering.module.pay.mapper.PaymentMapper;
@@ -28,22 +21,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 支付门面：发起支付、支付成功入账（回调 / 查单 / Mock 共用）、关单、查单补偿。
+ * 支付：余额支付（发起即扣费入账）与支付成功入账。
  * <p>
  * 入账规则（需求 §7.3 / §16）：
  * <ul>
  *   <li>按 out_trade_no 幂等：支付单已 SUCCESS 直接返回</li>
  *   <li>金额与支付单不一致：拒绝入账并告警</li>
  *   <li>订单待支付 → 已支付（自动接单则直接制作中）</li>
- *   <li>订单已关闭（迟到回调）或已被另一笔支付成功（重复支付）→ 该笔支付自动全额退款</li>
+ *   <li>订单已不是待支付（并发下被关闭 / 已被另一笔支付入账）→ 该笔支付自动全额退款</li>
  * </ul>
  */
 @Slf4j
@@ -51,35 +43,25 @@ import java.util.Map;
 public class PayService {
 
     private final PaymentMapper paymentMapper;
-    private final CustomerAuthMapper customerAuthMapper;
     private final OrderStateService orderStateService;
     private final RefundService refundService;
     private final StoreService storeService;
-    private final PayChannelRegistry channels;
     private final WalletService walletService;
-    private final TransactionTemplate tx;
-    private final String notifyBaseUrl;
 
-    public PayService(PaymentMapper paymentMapper, CustomerAuthMapper customerAuthMapper,
-                      OrderStateService orderStateService, RefundService refundService, StoreService storeService,
-                      PayChannelRegistry channels, WalletService walletService, TransactionTemplate tx,
-                      AppProperties appProperties) {
+    public PayService(PaymentMapper paymentMapper, OrderStateService orderStateService, RefundService refundService,
+                      StoreService storeService, WalletService walletService) {
         this.paymentMapper = paymentMapper;
-        this.customerAuthMapper = customerAuthMapper;
         this.orderStateService = orderStateService;
         this.refundService = refundService;
         this.storeService = storeService;
-        this.channels = channels;
         this.walletService = walletService;
-        this.tx = tx;
-        this.notifyBaseUrl = appProperties.getPay().getNotifyBaseUrl();
     }
 
     // ==================== 发起支付 ====================
 
     /**
-     * 为待支付订单发起（或复用）一笔支付，返回拉起参数。
-     * 余额支付（H5 会员）：在本事务内直接扣费并入账，返回时订单已是已支付；余额不足整个事务回滚，不留支付单。
+     * 余额支付：在本事务内建支付单、扣费并入账，返回时订单已是已支付；
+     * 余额不足（42203）整个事务回滚，不留支付单，订单仍待支付。
      */
     @Transactional
     public PayInitResult initiate(Order order) {
@@ -89,69 +71,41 @@ public class PayService {
         if (order.getPayExpireAt().isBefore(OffsetDateTime.now())) {
             throw new BusinessException(ErrorCode.CONFLICT, "订单已超时，请重新下单");
         }
-        Platform channel = order.getPlatform();
-        Payment payment = paymentMapper.selectOne(Wrappers.<Payment>lambdaQuery()
-                .eq(Payment::getOrderId, order.getId())
-                .eq(Payment::getChannel, channel)
-                .eq(Payment::getStatus, PaymentStatus.PENDING)
-                .orderByDesc(Payment::getId)
-                .last("LIMIT 1"));
-        if (payment == null) {
-            long attempts = paymentMapper.selectCount(Wrappers.<Payment>lambdaQuery().eq(Payment::getOrderId, order.getId()));
-            payment = new Payment();
-            payment.setOrderId(order.getId());
-            payment.setOutTradeNo(attempts == 0 ? order.getOrderNo() : order.getOrderNo() + "P" + (attempts + 1));
-            payment.setChannel(channel);
-            payment.setAmount(order.getPayAmount());
-            payment.setStatus(PaymentStatus.PENDING);
-            payment.setRefundedAmount(0L);
-            try {
-                paymentMapper.insert(payment);
-            } catch (DuplicateKeyException e) {
-                // 双击 / 网络重试导致并发发起：对方已建好同号支付单，复用它（渠道下单按商户单号幂等）
-                throw new BusinessException(ErrorCode.CONFLICT, "支付正在发起中，请稍后再试");
-            }
+        long attempts = paymentMapper.selectCount(Wrappers.<Payment>lambdaQuery().eq(Payment::getOrderId, order.getId()));
+        Payment payment = new Payment();
+        payment.setOrderId(order.getId());
+        payment.setOutTradeNo(attempts == 0 ? order.getOrderNo() : order.getOrderNo() + "P" + (attempts + 1));
+        payment.setChannel(Platform.H5);
+        payment.setAmount(order.getPayAmount());
+        payment.setStatus(PaymentStatus.PENDING);
+        payment.setRefundedAmount(0L);
+        try {
+            paymentMapper.insert(payment);
+        } catch (DuplicateKeyException e) {
+            // 双击 / 网络重试导致并发发起：同号支付单已由另一请求创建
+            throw new BusinessException(ErrorCode.CONFLICT, "支付正在处理中，请稍后刷新");
         }
-        Store store = storeService.getRequired(order.getStoreId());
-        String description = store.getName() + (order.getTableCode() == null ? "" : " 桌号" + order.getTableCode());
-        PayChannel payChannel = channels.get(channel);
-        PayCreateRequest createReq = new PayCreateRequest(payment.getOutTradeNo(), payment.getAmount(), description,
-                channel.isBalance() ? null : openId(order.getCustomerId(), channel), order.getPayExpireAt(),
-                notifyBaseUrl + "/api/v1/pay/notify/" + channel.name().toLowerCase());
-        Map<String, Object> params = payChannel.createPayment(createReq);
-        if (channel.isBalance()) {
-            // 扣费与入账在同一事务：余额不足抛 42203，支付单一并回滚；入账为同类调用，已处于本事务内
-            walletService.pay(order.getCustomerId(), order.getStoreId(), order.getId(), payment.getOutTradeNo(), payment.getAmount());
-            onPaySuccess(payment.getOutTradeNo(), BalancePayChannel.transactionNo(payment.getOutTradeNo()),
-                    payment.getAmount(), OffsetDateTime.now());
-        }
-        return new PayInitResult(order.getOrderNo(), payment.getOutTradeNo(), channel, payment.getAmount(),
-                channels.isMock() && !channel.isBalance(), params);
-    }
-
-    private String openId(Long customerId, Platform platform) {
-        CustomerAuth auth = customerAuthMapper.selectOne(Wrappers.<CustomerAuth>lambdaQuery()
-                .eq(CustomerAuth::getCustomerId, customerId)
-                .eq(CustomerAuth::getPlatform, platform)
-                .last("LIMIT 1"));
-        if (auth == null || !StringUtils.hasText(auth.getOpenId())) {
-            throw new BusinessException(ErrorCode.CONFLICT, "未找到顾客在该平台的支付账号，请重新登录");
-        }
-        return auth.getOpenId();
+        walletService.pay(order.getCustomerId(), order.getStoreId(), order.getId(), payment.getOutTradeNo(), payment.getAmount());
+        onPaySuccess(payment.getOutTradeNo(), BalancePayChannel.transactionNo(payment.getOutTradeNo()),
+                payment.getAmount(), OffsetDateTime.now());
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("balance", true);
+        params.put("paid", true);
+        return new PayInitResult(order.getOrderNo(), payment.getOutTradeNo(), Platform.H5, payment.getAmount(), params);
     }
 
     // ==================== 入账 ====================
 
     /**
-     * 支付成功入账（回调、查单补偿、Mock 共用）。
+     * 支付成功入账（余额扣费后在同一事务内调用）。
      *
-     * @return 是否接受该通知（false 表示金额不符等需渠道重发 / 人工处理的情况）
+     * @return 是否入账（false 表示支付单不存在或金额不符，需人工核对）
      */
     @Transactional
     public boolean onPaySuccess(String outTradeNo, String transactionNo, long amount, OffsetDateTime paidAt) {
         Payment payment = paymentMapper.selectOne(Wrappers.<Payment>lambdaQuery().eq(Payment::getOutTradeNo, outTradeNo));
         if (payment == null) {
-            log.warn("收到未知商户单号的支付成功通知: {}", outTradeNo);
+            log.warn("入账时找不到支付单: {}", outTradeNo);
             return false;
         }
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
@@ -189,132 +143,11 @@ public class PayService {
             }
             order = orderStateService.getById(order.getId());
         }
-        // 走到这里：订单不是待支付 —— 已关闭（迟到回调）或已被另一笔支付入账（重复支付）
+        // 走到这里：订单不是待支付 —— 并发下已被关闭，或已被另一笔支付入账（重复支付）
         String reason = order.getStatus() == OrderStatus.CLOSED ? "订单已关闭后收到支付，自动退款" : "重复支付，自动退款";
         log.warn("订单 {} 状态为 {}，支付 {} 将自动全额退款", order.getOrderNo(), order.getStatus(), outTradeNo);
         refundService.refundExtraPayment(order, payment, reason);
         return true;
-    }
-
-    // ==================== 关单 / 查单 ====================
-
-    /** 关闭订单的待支付单（渠道关单失败只记日志，由查单补偿兜底） */
-    public void closePendingPayments(Order order) {
-        List<Payment> pendings = paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
-                .eq(Payment::getOrderId, order.getId())
-                .eq(Payment::getStatus, PaymentStatus.PENDING));
-        for (Payment p : pendings) {
-            // 先标记「本地已关、渠道未确认」；渠道关单成功后再置为已确认。
-            // 渠道关单失败（或顾客恰好在此刻付款成功）时，这笔支付单会被补偿任务持续查单
-            paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
-                    .set(Payment::getStatus, PaymentStatus.CLOSED)
-                    .set(Payment::getCloseConfirmed, false)
-                    .set(Payment::getUpdatedAt, OffsetDateTime.now())
-                    .eq(Payment::getId, p.getId())
-                    .eq(Payment::getStatus, PaymentStatus.PENDING));
-            try {
-                channels.get(p.getChannel()).closePayment(p.getOutTradeNo());
-                paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
-                        .set(Payment::getCloseConfirmed, true)
-                        .eq(Payment::getId, p.getId()).eq(Payment::getStatus, PaymentStatus.CLOSED));
-            } catch (RuntimeException e) {
-                log.warn("渠道关单失败 outTradeNo={}，将持续查单确认: {}", p.getOutTradeNo(), e.getMessage());
-            }
-        }
-    }
-
-    /** 查单结果：未确认（任一支付单查询失败）时调用方不能据此关单 */
-    public enum PayCheck { PAID, NOT_PAID, UNKNOWN }
-
-    /**
-     * 查单补偿：对订单的支付单向渠道查询真实状态；已支付则入账（含迟到支付 → 自动退款）。
-     * 任一支付单查询失败返回 UNKNOWN —— 渠道故障时「查不到」不等于「没付」，调用方不应关单。
-     */
-    public PayCheck queryAndSync(Order order) {
-        List<Payment> payments = paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
-                .eq(Payment::getOrderId, order.getId())
-                .ne(Payment::getStatus, PaymentStatus.SUCCESS));
-        boolean paid = false;
-        boolean unknown = false;
-        for (Payment p : payments) {
-            try {
-                PayQueryResult r = channels.get(p.getChannel()).queryPayment(p.getOutTradeNo());
-                if (r.state() == PayQueryResult.State.SUCCESS) {
-                    long amount = r.amount() == null ? p.getAmount() : r.amount();
-                    // 自调用不经过代理，@Transactional 不生效：显式开事务，保证支付单 SUCCESS 与订单流转同时提交，
-                    // 否则中途异常会留下「支付单已成功、订单仍待支付」并被随后的关单任务关掉
-                    Boolean accepted = tx.execute(s -> onPaySuccess(p.getOutTradeNo(), r.transactionNo(), amount, r.paidAt()));
-                    if (Boolean.TRUE.equals(accepted)) {
-                        paid = true;
-                    } else {
-                        unknown = true;  // 渠道说已付但金额不符等：需人工核对，绝不能关单
-                    }
-                } else if (r.state() == PayQueryResult.State.CLOSED && p.getStatus() == PaymentStatus.PENDING) {
-                    paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
-                            .set(Payment::getStatus, PaymentStatus.CLOSED)
-                            .eq(Payment::getId, p.getId()).eq(Payment::getStatus, PaymentStatus.PENDING));
-                } else if (r.state() == PayQueryResult.State.UNKNOWN) {
-                    unknown = true;
-                }
-            } catch (RuntimeException e) {
-                log.warn("查单失败 outTradeNo={}: {}", p.getOutTradeNo(), e.getMessage());
-                unknown = true;
-            }
-        }
-        return paid ? PayCheck.PAID : unknown ? PayCheck.UNKNOWN : PayCheck.NOT_PAID;
-    }
-
-    /**
-     * 对「本地已关、渠道未确认」的支付单查单：
-     * 渠道已付 → 入账（订单已关闭则走自动退款）；渠道已关或支付窗口早已过期 → 标记已确认；其余下轮再查。
-     */
-    public void reconcileUnconfirmedClosed(OffsetDateTime newerThan, int limit) {
-        List<Payment> list = paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
-                .eq(Payment::getStatus, PaymentStatus.CLOSED)
-                .eq(Payment::getCloseConfirmed, false)
-                .gt(Payment::getUpdatedAt, newerThan)
-                .orderByAsc(Payment::getUpdatedAt)
-                .last("LIMIT " + limit));
-        for (Payment p : list) {
-            try {
-                PayQueryResult r = channels.get(p.getChannel()).queryPayment(p.getOutTradeNo());
-                if (r.state() == PayQueryResult.State.SUCCESS) {
-                    long amount = r.amount() == null ? p.getAmount() : r.amount();
-                    Boolean ok = tx.execute(s -> onPaySuccess(p.getOutTradeNo(), r.transactionNo(), amount, r.paidAt()));
-                    log.warn("已关闭支付单 {} 在渠道侧为已支付，入账结果={}（订单已关闭则自动退款）", p.getOutTradeNo(), ok);
-                    continue;
-                }
-                boolean settled = r.state() == PayQueryResult.State.CLOSED;
-                if (!settled && r.state() == PayQueryResult.State.NOT_PAID) {
-                    // 渠道仍显示未支付：下单时的 time_expire 过去 1 小时后渠道不可能再收款，视为确认
-                    Order order = orderStateService.getById(p.getOrderId());
-                    settled = order != null && order.getPayExpireAt() != null
-                            && order.getPayExpireAt().plusHours(1).isBefore(OffsetDateTime.now());
-                }
-                if (settled) {
-                    paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
-                            .set(Payment::getCloseConfirmed, true)
-                            .set(Payment::getUpdatedAt, OffsetDateTime.now())
-                            .eq(Payment::getId, p.getId()));
-                } else {
-                    // 刷新时间让其他记录先轮到
-                    paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
-                            .set(Payment::getUpdatedAt, OffsetDateTime.now()).eq(Payment::getId, p.getId()));
-                }
-            } catch (RuntimeException e) {
-                log.warn("已关闭支付单 {} 查单失败: {}", p.getOutTradeNo(), e.getMessage());
-            }
-        }
-    }
-
-    /** 人工核对入口：本地已关闭、渠道超过一天仍无法确认的支付单 */
-    public List<Payment> unconfirmedClosedOlderThan(OffsetDateTime before) {
-        return paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
-                .eq(Payment::getStatus, PaymentStatus.CLOSED)
-                .eq(Payment::getCloseConfirmed, false)
-                .lt(Payment::getCreatedAt, before)
-                .orderByDesc(Payment::getId)
-                .last("LIMIT 100"));
     }
 
     public Payment latestPayment(Long orderId) {
@@ -336,23 +169,5 @@ public class PayService {
             map.putIfAbsent(p.getOrderId(), p);
         }
         return map;
-    }
-
-    /** Mock 渠道：模拟顾客完成支付 */
-    @Transactional
-    public void mockPay(Order order) {
-        if (!channels.isMock()) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "当前不是模拟支付环境");
-        }
-        Payment payment = paymentMapper.selectOne(Wrappers.<Payment>lambdaQuery()
-                .eq(Payment::getOrderId, order.getId())
-                .eq(Payment::getStatus, PaymentStatus.PENDING)
-                .orderByDesc(Payment::getId)
-                .last("LIMIT 1"));
-        if (payment == null) {
-            throw new BusinessException(ErrorCode.CONFLICT, "请先发起支付");
-        }
-        String txn = channels.mock(payment.getChannel()).markPaid(payment.getOutTradeNo());
-        onPaySuccess(payment.getOutTradeNo(), txn, payment.getAmount(), OffsetDateTime.now());
     }
 }

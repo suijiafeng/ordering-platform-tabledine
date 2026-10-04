@@ -29,10 +29,10 @@ public class Customer {
     private Long id;
     private String nickname;
     private String avatar;
-    /** 登录账号（会员，手机号）；小程序顾客为空 */
+    /** 登录账号（会员，手机号）；已停用的小程序顾客为空 */
     private String phone;
     private Integer status;
-    /** 会员归属门店（商家后台创建）；小程序顾客为空 */
+    /** 会员归属门店（商家后台创建）；已停用的小程序顾客为空 */
     private Long storeId;
     /** 会员登录密码；为空不能用密码登录 */
     private String passwordHash;

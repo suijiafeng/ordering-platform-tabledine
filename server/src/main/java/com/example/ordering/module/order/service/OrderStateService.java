@@ -27,7 +27,7 @@ import java.util.List;
  * 不含任何渠道调用，供 OrderService / MerchantOrderService / PayService / RefundService / 定时任务复用。
  * <p>
  * 注意：商家端请求带门店上下文，多租户插件会给 orders 的更新自动追加 store_id 条件；
- * 顾客端 / 定时任务 / 回调无门店上下文，调用方须自行校验归属。
+ * 顾客端 / 定时任务无门店上下文，调用方须自行校验归属。
  */
 @Slf4j
 @Service

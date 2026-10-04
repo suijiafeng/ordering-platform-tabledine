@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 订单 → 支付（Mock）→ 履约 → 退款 全链路。种子数据：奶茶(3) 1200 分，大杯 +300，珍珠 +200，椰果 +200；红烧肉(1) 3800。
+ * 订单 → 余额支付 → 履约 → 退款 全链路。种子数据：奶茶(3) 1200 分，大杯 +300，珍珠 +200，椰果 +200；红烧肉(1) 3800。
  */
 class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
@@ -28,7 +28,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void serverRecalculatesPriceAndIdempotentByClientRequestId() throws Exception {
-        String customer = customerToken("WECHAT", "mock:price-" + UUID.randomUUID());
+        String customer = memberToken();
         String reqId = UUID.randomUUID().toString();
         Map<String, Object> body = orderBody(reqId, List.of(
                 item(3, List.of(2L), List.of(1L, 2L), 2),   // (1200 + 300 + 200 + 200) × 2 = 3800
@@ -56,13 +56,13 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(count).isEqualTo(1);
 
         // 他人看不到这笔订单
-        String other = customerToken("ALIPAY", "mock:other-" + UUID.randomUUID());
+        String other = memberToken();
         mvc.perform(authed(get("/api/v1/c/orders/" + orderNo), other)).andExpect(status().isNotFound());
     }
 
     @Test
     void validationRejectsBadSelections() throws Exception {
-        String customer = customerToken("WECHAT", "mock:valid-" + UUID.randomUUID());
+        String customer = memberToken();
         // 必选规格未选
         mvc.perform(authed(post("/api/v1/c/orders"), customer).contentType(MediaType.APPLICATION_JSON)
                         .content(toJson(orderBody(UUID.randomUUID().toString(), List.of(item(3, List.of(), List.of(), 1))))))
@@ -97,7 +97,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void stockIsDeductedAndRestoredOnCancel() throws Exception {
         String owner = ownerToken();
-        String customer = customerToken("WECHAT", "mock:stock-" + UUID.randomUUID());
+        String customer = memberToken();
         // 番茄炒蛋(2) 限量 2 份
         mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
                 .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 2))).andExpect(status().isOk());
@@ -123,7 +123,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void dishInDisabledCategoryCannotBeOrdered() throws Exception {
-        String customer = customerToken("WECHAT", "mock:cat-" + UUID.randomUUID());
+        String customer = memberToken();
         jdbc.update("UPDATE category SET status = 0 WHERE id = 1");  // 招牌热菜（红烧肉、番茄炒蛋）
         try {
             mvc.perform(authed(post("/api/v1/c/orders"), customer).contentType(MediaType.APPLICATION_JSON)
@@ -137,7 +137,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void dailyStockResetsAtMidnightAndRestoreNeverExceedsLimit() throws Exception {
         String owner = ownerToken();
-        String customer = customerToken("WECHAT", "mock:daily-" + UUID.randomUUID());
+        String customer = memberToken();
         mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
                 .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 3))).andExpect(status().isOk());
         try {
@@ -174,9 +174,9 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void customerOrderDetailHidesStaffIdentity() throws Exception {
-        String customer = customerToken("WECHAT", "mock:hide-" + UUID.randomUUID());
+        String customer = memberToken();
         String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
-        payMock(customer, orderNo);
+        pay(customer, orderNo);
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), staffToken())).andExpect(status().isOk());
         JsonNode logs = getData("/api/v1/c/orders/" + orderNo, customer).path("logs");
         for (JsonNode l : logs) {
@@ -190,22 +190,23 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void payThenFulfilThroughMerchantEndpoints() throws Exception {
-        String customer = customerToken("WECHAT", "mock:flow-" + UUID.randomUUID());
+        String customer = memberToken();
         String owner = ownerToken();
         String staff = staffToken();
         String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
 
+        // 余额支付：发起即扣费入账
         mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.mock").value(true))
                 .andExpect(jsonPath("$.data.amount").value(3800))
-                .andExpect(jsonPath("$.data.channel").value("WECHAT"));
-        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/mock-pay"), customer))
+                .andExpect(jsonPath("$.data.channel").value("H5"))
+                .andExpect(jsonPath("$.data.params.paid").value(true));
+        mvc.perform(authed(get("/api/v1/c/orders/" + orderNo), customer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PAID"))
                 .andExpect(jsonPath("$.data.payment.status").value("SUCCESS"));
-        // 重复入账幂等
-        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/mock-pay"), customer)).andExpect(status().isConflict());
+        // 重复支付被拒，不会二次扣费
+        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer)).andExpect(status().isConflict());
 
         // 商家端：列表能看到 / 轮询计数
         mvc.perform(authed(get("/api/v1/m/orders?status=PAID"), staff))
@@ -248,11 +249,11 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void autoAcceptMovesPaidOrderToMaking() throws Exception {
         String owner = ownerToken();
-        String customer = customerToken("ALIPAY", "mock:auto-" + UUID.randomUUID());
+        String customer = memberToken();
         setAutoAccept(owner, true);
         try {
             String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
-            payMock(customer, orderNo);
+            pay(customer, orderNo);
             mvc.perform(authed(get("/api/v1/c/orders/" + orderNo), customer))
                     .andExpect(jsonPath("$.data.status").value("MAKING"))
                     .andExpect(jsonPath("$.data.paidAt").isNotEmpty())
@@ -266,14 +267,14 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void customerCancelPaidOrderRefundsAutomatically() throws Exception {
-        String customer = customerToken("WECHAT", "mock:cancel-" + UUID.randomUUID());
+        String customer = memberToken();
         String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 2)));
-        payMock(customer, orderNo);
+        pay(customer, orderNo);
         mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/cancel"), customer)
                         .contentType(MediaType.APPLICATION_JSON).content(json("reason", "点错了")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"));
-        // Mock 渠道立即成功：退款单 SUCCESS，订单 refund_status=FULL
+        // 余额返还立即成功：退款单 SUCCESS，订单 refund_status=FULL
         JsonNode detail = getData("/api/v1/c/orders/" + orderNo, customer);
         assertThat(detail.path("refundStatus").asText()).isEqualTo("FULL");
         assertThat(detail.path("refundedAmount").asLong()).isEqualTo(7600);
@@ -285,12 +286,12 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     void merchantRejectRefundsAndRestoresStock() throws Exception {
         String owner = ownerToken();
         String staff = staffToken();
-        String customer = customerToken("WECHAT", "mock:reject-" + UUID.randomUUID());
+        String customer = memberToken();
         mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
                 .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 5))).andExpect(status().isOk());
         try {
             String orderNo = createOrder(customer, List.of(item(2, List.of(), List.of(), 2)));
-            payMock(customer, orderNo);
+            pay(customer, orderNo);
             assertThat(stock(2)).isEqualTo(3);
             mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/reject"), staff)
                             .contentType(MediaType.APPLICATION_JSON).content(json("reason", "忙不过来")))
@@ -311,10 +312,10 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     void itemRefundApplyApproveFlowAndGuards() throws Exception {
         String owner = ownerToken();
         String staff = staffToken();
-        String customer = customerToken("WECHAT", "mock:item-" + UUID.randomUUID());
+        String customer = memberToken();
         // 奶茶中杯 ×2 (2400) + 红烧肉 ×1 (3800) = 6200
         String orderNo = createOrder(customer, List.of(item(3, List.of(1L), List.of(), 2), item(1, List.of(), List.of(), 1)));
-        payMock(customer, orderNo);
+        pay(customer, orderNo);
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), staff)).andExpect(status().isOk());
 
         JsonNode items = getData("/api/v1/c/orders/" + orderNo, customer).path("items");
@@ -373,7 +374,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(toJson(Map.of("type", "CUSTOM", "reason", "补偿", "amount", 4999))))
-                // 响应在事务内构建，渠道调用在提交后：先返回 PROCESSING，Mock 渠道随即成功
+                // 响应在事务内构建，返还余额在提交后：先返回 PROCESSING，随即成功
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PROCESSING"));
         assertThat(getData("/api/v1/m/orders/" + orderNo, owner).path("refundableAmount").asLong()).isEqualTo(1);
         // 再退 2 分（超 1 分余额）
@@ -386,15 +387,18 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void failedRefundCanBeRetriedOrSettledOffline() throws Exception {
         String owner = ownerToken();
-        String customer = customerToken("WECHAT", "mock:fail-" + UUID.randomUUID());
+        String customer = memberToken();
         String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
-        payMock(customer, orderNo);
+        pay(customer, orderNo);
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
 
-        // 原因含 mock-fail → 渠道失败
+        // 返还余额两次都确定失败（首次提交与重试）
+        org.mockito.Mockito.doReturn(com.example.ordering.module.pay.channel.RefundResult.failed("余额返还失败（测试）"))
+                .when(balanceChannel).refund(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyLong());
         MvcResult r = mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "FULL", "reason", "mock-fail 余额不足"))))
+                        .content(toJson(Map.of("type", "FULL", "reason", "退款测试"))))
                 .andExpect(status().isOk())
                 .andReturn();
         String refundNo = data(r).path("refundNo").asText();
@@ -421,9 +425,9 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void customerCanWithdrawApplication() throws Exception {
         String staff = staffToken();
-        String customer = customerToken("WECHAT", "mock:withdraw-" + UUID.randomUUID());
+        String customer = memberToken();
         String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
-        payMock(customer, orderNo);
+        pay(customer, orderNo);
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), staff)).andExpect(status().isOk());
         MvcResult r = mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/refunds"), customer)
                         .contentType(MediaType.APPLICATION_JSON).content(json("reason", "不想要了")))
@@ -445,9 +449,9 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     void dashboardAndExport() throws Exception {
         String owner = ownerToken();
         String staff = staffToken();
-        String customer = customerToken("WECHAT", "mock:dash-" + UUID.randomUUID());
+        String customer = memberToken();
         String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
-        payMock(customer, orderNo);
+        pay(customer, orderNo);
 
         // 需求 §4：数据看板仅店主
         mvc.perform(authed(get("/api/v1/m/dashboard/today"), staff)).andExpect(status().isForbidden());
@@ -489,7 +493,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
                 .andReturn();
         String csv = r.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         assertThat(csv).startsWith("﻿记录类型,订单号");
-        assertThat(csv).contains(orderNo).contains("38.00").contains("微信");
+        assertThat(csv).contains(orderNo).contains("38.00").contains("余额");
     }
 
     // ==================== 工具 ====================
@@ -502,10 +506,6 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         return data(r).path("orderNo").asText();
     }
 
-    private void payMock(String customer, String orderNo) throws Exception {
-        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer)).andExpect(status().isOk());
-        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/mock-pay"), customer)).andExpect(status().isOk());
-    }
 
     private void setAutoAccept(String owner, boolean on) throws Exception {
         JsonNode store = getData("/api/v1/m/store", owner);

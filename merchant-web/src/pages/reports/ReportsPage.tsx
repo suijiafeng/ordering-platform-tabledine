@@ -3,14 +3,13 @@ import { Alert, App, Button, Card, Col, DatePicker, Result, Row, Space, Statisti
 import type { ColumnsType } from 'antd/es/table'
 import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
-import { exportReport, fetchDashboard, fetchReportSummary, fetchUnconfirmedPayments } from '../../api/report'
-import type { DashboardToday, ReportSummary, UnconfirmedPayment } from '../../api/types'
+import { exportReport, fetchDashboard, fetchReportSummary } from '../../api/report'
+import type { DashboardToday, ReportSummary } from '../../api/types'
 import { fenToYuan, formatYuan } from '../../utils/money'
 import DailyBarChart from '../../components/DailyBarChart'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import { ignoreShownError } from '../../utils/errors'
-import { PLATFORM } from '../../utils/orderStatus'
 
 /** 区间统计与导出共用的最大天数（与后端一致） */
 const MAX_RANGE_DAYS = 92
@@ -28,10 +27,6 @@ const RANGE_PRESETS = [
 /** 数据看板（今日概览 + 任意区间统计）+ 流水导出（店主）。区间选择同时作用于统计与导出 */
 export default function ReportsPage() {
   const isMobile = useIsMobile()
-  const [unconfirmed, setUnconfirmed] = useState<UnconfirmedPayment[]>([])
-  useEffect(() => {
-    fetchUnconfirmedPayments().then(setUnconfirmed).catch(() => {})
-  }, [])
   const { message } = App.useApp()
   const [data, setData] = useState<DashboardToday | null>(null)
   const [error, setError] = useState(false)
@@ -195,23 +190,6 @@ export default function ReportsPage() {
         </Col>
       </Row>
 
-      {unconfirmed.length > 0 && (
-        <Alert
-          type="warning"
-          showIcon
-          message={`${unconfirmed.length} 笔支付需要人工核对`}
-          description={
-            <div>
-              <div style={{ marginBottom: 8 }}>这些支付单本地已关闭，但超过一天仍无法从渠道确认是否收款。请到微信支付商户平台 / 支付宝商家中心按商户订单号查询：已收款的请在订单中登记退款。</div>
-              {unconfirmed.map((p) => (
-                <div key={p.outTradeNo} style={{ fontSize: 12 }}>
-                  {PLATFORM[p.channel]} · 商户订单号 <Typography.Text copyable code>{p.outTradeNo}</Typography.Text> · 订单 {p.orderNo} · ¥{formatYuan(p.amount)} · 关闭于 {dayjs(p.closedAt).format('MM-DD HH:mm')}
-                </div>
-              ))}
-            </div>
-          }
-        />
-      )}
       <Card title="流水导出" extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>CSV：订单 + 支付 + 退款明细，可直接用 Excel 打开，用于人工对账</Typography.Text>}>
         <Space wrap>
           <Typography.Text>导出 {range[0].format('YYYY-MM-DD')} ~ {range[1].format('YYYY-MM-DD')}（与上方区间一致）</Typography.Text>

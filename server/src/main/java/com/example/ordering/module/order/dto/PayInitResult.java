@@ -5,9 +5,7 @@ import com.example.ordering.common.Platform;
 import java.util.Map;
 
 /**
- * 发起支付结果：小程序用 params 拉起支付（微信 wx.requestPayment / 支付宝 my.tradePay）。
- * mock=true 时为开发环境模拟渠道，调用 mock-pay 接口即可完成支付。
+ * 发起支付结果。余额支付在同一事务里扣费入账：params.paid=true 表示返回时订单已支付。
  */
-public record PayInitResult(String orderNo, String outTradeNo, Platform channel, long amount, boolean mock,
-                            Map<String, Object> params) {
+public record PayInitResult(String orderNo, String outTradeNo, Platform channel, long amount, Map<String, Object> params) {
 }
