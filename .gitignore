@@ -12,9 +12,16 @@ server/target/
 node_modules/
 dist/
 
+
+
 # 部署敏感信息
 deploy/.env
 deploy/secrets/
 
+Claude outputs/
+
 # 杂项
 *.whl
+
+# Claude 本地构建协作目录
+.claude-build/

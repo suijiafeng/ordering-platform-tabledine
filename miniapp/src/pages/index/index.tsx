@@ -32,7 +32,7 @@ export default function Index() {
     setLoadingTable(true)
     setError(null)
     try {
-      setCurrent(await resolveQr(token, true))
+      setCurrent({ ...(await resolveQr(token, true)), qrToken: token })
     } catch (e) {
       setError((e as Error).message || '桌码无效')
     } finally {

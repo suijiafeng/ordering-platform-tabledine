@@ -40,6 +40,8 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
       }
       setEditing(null)
       onChanged()
+    } catch {
+      // 错误提示已由 request 统一弹出
     } finally {
       setSaving(false)
     }

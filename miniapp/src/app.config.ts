@@ -3,6 +3,7 @@ export default defineAppConfig({
     'pages/index/index',
     'pages/checkout/index',
     'pages/order-list/index',
+    'pages/order-detail/index',
   ],
   window: {
     backgroundTextStyle: 'light',

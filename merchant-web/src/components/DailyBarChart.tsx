@@ -1,0 +1,96 @@
+import { useState } from 'react'
+import { Typography } from 'antd'
+import { formatYuan } from '../utils/money'
+
+interface Point {
+  date: string
+  netIncome: number
+  orderCount: number
+}
+
+/**
+ * 近 7 天实收柱状图（单一序列，无需图例）：细柱、顶部 4px 圆角、悬停提示、最高值直接标注。
+ * 同页提供表格视图作为无障碍 / 数据查看入口。
+ */
+export default function DailyBarChart({ data, height = 180 }: { data: Point[]; height?: number }) {
+  const [hover, setHover] = useState<number | null>(null)
+  const width = 640
+  const padL = 56
+  const padR = 16
+  const padT = 20
+  const padB = 28
+  const plotW = width - padL - padR
+  const plotH = height - padT - padB
+  const max = Math.max(1, ...data.map((d) => d.netIncome))
+  const niceMax = niceCeil(max)
+  const gap = 2
+  const slot = plotW / Math.max(1, data.length)
+  const barW = Math.min(36, slot * 0.6)
+  const y = (v: number) => padT + plotH - (v / niceMax) * plotH
+  const ticks = [0, niceMax / 2, niceMax]
+  const maxIdx = data.reduce((best, d, i) => (d.netIncome > (data[best]?.netIncome ?? -1) ? i : best), 0)
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label="近 7 天每日实收">
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke="#f0f0f0" />
+            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="#8c8c8c">¥{(t / 100).toFixed(0)}</text>
+          </g>
+        ))}
+        {data.map((d, i) => {
+          const cx = padL + slot * i + slot / 2
+          const h = Math.max(0, (d.netIncome / niceMax) * plotH)
+          const top = y(d.netIncome)
+          const r = Math.min(4, h / 2)
+          const active = hover === i
+          return (
+            <g key={d.date} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              {/* 命中区域大于柱体 */}
+              <rect x={cx - slot / 2 + gap} y={padT} width={slot - gap * 2} height={plotH} fill="transparent" />
+              {h > 0 && (
+                <path
+                  d={`M${cx - barW / 2},${padT + plotH} V${top + r} Q${cx - barW / 2},${top} ${cx - barW / 2 + r},${top} H${cx + barW / 2 - r} Q${cx + barW / 2},${top} ${cx + barW / 2},${top + r} V${padT + plotH} Z`}
+                  fill={active ? '#0958d9' : '#1677ff'}
+                />
+              )}
+              {(i === maxIdx && d.netIncome > 0) && !active && (
+                <text x={cx} y={top - 6} textAnchor="middle" fontSize={11} fill="#595959">{formatYuan(d.netIncome)}</text>
+              )}
+              <text x={cx} y={height - 8} textAnchor="middle" fontSize={11} fill={active ? '#262626' : '#8c8c8c'}>{d.date.slice(5)}</text>
+            </g>
+          )
+        })}
+      </svg>
+      {hover !== null && data[hover] && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${((padL + slot * hover + slot / 2) / width) * 100}%`,
+            top: 0,
+            transform: 'translate(-50%, -100%)',
+            background: '#fff',
+            border: '1px solid #f0f0f0',
+            borderRadius: 6,
+            boxShadow: '0 2px 8px rgba(0,0,0,.08)',
+            padding: '6px 10px',
+            fontSize: 12,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}
+        >
+          <div><Typography.Text type="secondary">{data[hover].date}</Typography.Text></div>
+          <div>实收 <b>{formatYuan(data[hover].netIncome)}</b> · {data[hover].orderCount} 单</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function niceCeil(v: number): number {
+  const pow = Math.pow(10, Math.floor(Math.log10(v)))
+  const n = v / pow
+  const m = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10
+  return m * pow
+}

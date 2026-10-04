@@ -60,6 +60,34 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void clearingDescriptionAndImagePersists() throws Exception {
+        String owner = ownerToken();
+        long categoryId = createCategory(owner, "清空测试-" + System.nanoTime());
+
+        Map<String, Object> dish = dishBody(categoryId, "带描述的菜", 1500L);
+        dish.put("description", "很好吃");
+        dish.put("image", "/uploads/test.jpg");
+        MvcResult r = mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dish)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dish.description").value("很好吃"))
+                .andReturn();
+        long dishId = data(r).path("dish").path("id").asLong();
+
+        // 清空描述与图片后保存，再次读取应为 null 而不是残留旧值
+        Map<String, Object> cleared = dishBody(categoryId, "带描述的菜", 1500L);
+        cleared.put("description", null);
+        cleared.put("image", null);
+        mvc.perform(authed(put("/api/v1/m/dishes/" + dishId), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(cleared)))
+                .andExpect(status().isOk());
+        mvc.perform(authed(get("/api/v1/m/dishes/" + dishId), owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dish.description").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.dish.image").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
     void staffCanToggleSoldOutButCannotEditMenu() throws Exception {
         String staff = staffToken();
         // 种子菜品 1：红烧肉

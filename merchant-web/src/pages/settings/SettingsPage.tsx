@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { App, Button, Card, Col, Form, Input, InputNumber, Row, Space, Spin, Switch, Typography } from 'antd'
+import { useCallback, useEffect, useState } from 'react'
+import { App, Button, Card, Col, Form, Input, InputNumber, Result, Row, Space, Spin, Switch, Typography } from 'antd'
 import { fetchStore, setBusinessStatus, updateStore } from '../../api/store'
 import type { StoreDetail, StoreUpdateRequest } from '../../api/types'
 import ImageUpload from '../../components/ImageUpload'
@@ -9,14 +9,24 @@ export default function SettingsPage() {
   const { message, modal } = App.useApp()
   const [form] = Form.useForm<StoreUpdateRequest>()
   const [store, setStore] = useState<StoreDetail | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    fetchStore().then((s) => {
+  const load = useCallback(async () => {
+    setLoadError(false)
+    try {
+      const s = await fetchStore()
       setStore(s)
       form.setFieldsValue(s)
-    })
+    } catch {
+      // 错误提示已由 request 统一弹出，这里只切换到可重试的错误态，避免永久转圈
+      setLoadError(true)
+    }
   }, [form])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const toggleOpen = (open: boolean) => {
     modal.confirm({
@@ -27,7 +37,10 @@ export default function SettingsPage() {
   }
 
   const save = async () => {
-    const v = await form.validateFields()
+    const v = await form.validateFields().catch(() => null)
+    if (!v) {
+      return
+    }
     setSaving(true)
     try {
       const s = await updateStore(v)
@@ -39,6 +52,9 @@ export default function SettingsPage() {
     }
   }
 
+  if (loadError) {
+    return <Result status="error" title="店铺信息加载失败" extra={<Button type="primary" onClick={load}>重试</Button>} />
+  }
   if (!store) {
     return <Spin />
   }

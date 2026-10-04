@@ -65,6 +65,17 @@ app:
     app-id: ${ALIPAY_APP_ID:}
     private-key: ${ALIPAY_PRIVATE_KEY:}
     alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
+  pay:
+    mock-enabled: false
+    # 公网地址，用于拼接渠道异步通知 URL（/api/v1/pay/notify/*）
+    notify-base-url: ${PAY_NOTIFY_BASE_URL:}
+  wechat-pay:
+    mch-id: ${WECHAT_PAY_MCH_ID:}
+    serial-no: ${WECHAT_PAY_SERIAL_NO:}
+    private-key: ${WECHAT_PAY_PRIVATE_KEY:}
+    api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+    platform-public-key-id: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID:}
+    platform-public-key: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
   qr:

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Button, Layout, Menu, Space, Tag, Typography } from 'antd'
+import { Badge, Button, Layout, Menu, Space, Tag, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
@@ -14,6 +14,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
+import { useOrderPoll } from '../hooks/useOrderPoll'
 
 interface NavItem {
   key: string
@@ -40,10 +41,35 @@ export default function MainLayout() {
   const location = useLocation()
   const { staff, logout } = useAuthStore()
   const isOwner = staff?.role === 'OWNER'
+  // 全局新订单轮询（提示音 + 菜单角标）
+  const { counts } = useOrderPoll()
+
+  const badgeFor = (key: string): number => {
+    if (!counts) {
+      return 0
+    }
+    if (key === '/orders') {
+      return counts.pendingAcceptCount
+    }
+    if (key === '/kitchen') {
+      return counts.pendingAcceptCount + counts.makingCount
+    }
+    if (key === '/refunds') {
+      return counts.applyingRefundCount + counts.failedRefundCount
+    }
+    return 0
+  }
 
   const items: MenuProps['items'] = useMemo(
-    () => NAV_ITEMS.filter((i) => !i.ownerOnly || isOwner).map((i) => ({ key: i.key, icon: i.icon, label: i.label })),
-    [isOwner],
+    () => NAV_ITEMS.filter((i) => !i.ownerOnly || isOwner).map((i) => {
+      const n = badgeFor(i.key)
+      return {
+        key: i.key,
+        icon: i.icon,
+        label: n > 0 ? <Badge count={n} size="small" offset={[12, 0]} color={i.key === '/refunds' ? 'red' : 'orange'}>{i.label}</Badge> : i.label,
+      }
+    }),
+    [isOwner, counts], // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const selected = NAV_ITEMS.map((i) => i.key)

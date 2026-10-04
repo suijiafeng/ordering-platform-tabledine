@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { Button, Image, Space, Upload } from 'antd'
+import { App, Button, Image, Space, Upload } from 'antd'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import { uploadImage } from '../api/store'
+
+const MAX_SIZE = 5 * 1024 * 1024
 
 interface Props {
   value?: string | null
@@ -10,6 +12,7 @@ interface Props {
 
 /** 图片上传（受控组件，配合 Form.Item 使用）：上传后保存后端返回的相对路径 */
 export default function ImageUpload({ value, onChange }: Props) {
+  const { message } = App.useApp()
   const [uploading, setUploading] = useState(false)
 
   return (
@@ -19,6 +22,14 @@ export default function ImageUpload({ value, onChange }: Props) {
         <Upload
           accept="image/jpeg,image/png"
           showUploadList={false}
+          beforeUpload={(file) => {
+            // 与后端 max-file-size: 5MB 保持一致，超限直接在前端拦截，不浪费一次上传
+            if (file.size > MAX_SIZE) {
+              message.error('图片不能超过 5MB')
+              return Upload.LIST_IGNORE
+            }
+            return true
+          }}
           customRequest={async ({ file, onSuccess, onError }) => {
             setUploading(true)
             try {

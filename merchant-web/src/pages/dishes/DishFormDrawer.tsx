@@ -75,11 +75,16 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
           })),
         })
       })
+      .catch(() => onClose())
       .finally(() => setLoading(false))
   }, [open, dishId, defaultCategoryId, categories, form])
 
   const submit = async () => {
-    const v = await form.validateFields()
+    // 校验不通过时 antd 会 reject 一个字段错误对象，不是异常，直接返回即可
+    const v = await form.validateFields().catch(() => null)
+    if (!v) {
+      return
+    }
     const body: DishSaveRequest = {
       categoryId: v.categoryId,
       name: v.name.trim(),
@@ -111,6 +116,8 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       }
       message.success('已保存')
       onSaved()
+    } catch {
+      // 保持抽屉打开供用户修改；错误提示已由 request 统一弹出
     } finally {
       setSaving(false)
     }

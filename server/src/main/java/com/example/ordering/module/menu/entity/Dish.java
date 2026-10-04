@@ -23,9 +23,13 @@ public class Dish {
     private Long storeId;
     private Long categoryId;
     private String name;
+    /** 允许更新为 null（商家端清空描述） */
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
     private String description;
     /** 基础价（分） */
     private Long price;
+    /** 允许更新为 null（商家端删除图片） */
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
     private String image;
     private Integer sort;
     /** 1 上架 0 下架 */
