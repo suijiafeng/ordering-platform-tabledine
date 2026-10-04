@@ -25,3 +25,6 @@ Claude outputs/
 
 # Claude 本地构建协作目录
 .claude-build/
+.idea
+.vscode
+
