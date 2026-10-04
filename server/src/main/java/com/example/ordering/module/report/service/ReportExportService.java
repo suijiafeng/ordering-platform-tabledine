@@ -163,6 +163,7 @@ public class ReportExportService {
     private static String platform(String p) {
         return switch (p) {
             case "WECHAT" -> "微信";
+            case "H5" -> "余额";
             case "ALIPAY" -> "支付宝";
             default -> p;
         };

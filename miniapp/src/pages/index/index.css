@@ -219,6 +219,20 @@
   font-size: 26px;
 }
 
+.header-links {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-links .link {
+  padding: 8px 18px;
+  border-radius: 24px;
+  background: var(--bg-muted);
+  color: var(--text-2);
+  font-size: 24px;
+}
+
 .warn {
   margin-top: 16px;
   color: var(--danger);

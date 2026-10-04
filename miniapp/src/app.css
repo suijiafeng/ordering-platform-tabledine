@@ -41,3 +41,31 @@ page, body {
   color: var(--text);
   font-size: 28px;
 }
+
+/* H5 宽屏：页面按手机宽度居中显示，固定定位的底栏 / 弹层也限制在同一宽度内 */
+@media (min-width: 640px) {
+  body {
+    background: #e9ebef;
+  }
+  .taro_page {
+    max-width: 640px;
+    margin: 0 auto;
+    background: var(--bg-page);
+    box-shadow: 0 0 32px rgba(0, 0, 0, 0.08);
+  }
+  .cart-bar,
+  .co-bar,
+  .popup,
+  .cart-panel,
+  .rp,
+  .me-popup {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .cart-bar {
+    left: 0;
+    right: 0;
+    width: calc(640px - 48px);
+  }
+}

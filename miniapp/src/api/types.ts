@@ -12,7 +12,24 @@ export interface CustomerProfile {
   id: number
   nickname: string | null
   avatar: string | null
-  platform: 'WECHAT' | 'ALIPAY'
+  platform: 'WECHAT' | 'ALIPAY' | 'H5'
+  /** 会员账号（H5 密码登录，有余额钱包） */
+  member: boolean
+  phone: string | null
+  /** 账户余额（分） */
+  balance: number
+}
+
+export interface WalletTransaction {
+  id: number
+  type: 'RECHARGE' | 'PAY' | 'REFUND'
+  /** true 余额增加（充值 / 退款返还），false 余额减少（消费） */
+  credit: boolean
+  amount: number
+  balanceAfter: number
+  outTradeNo: string | null
+  remark: string | null
+  createdAt: string
 }
 
 export interface SpecItem {
@@ -131,9 +148,10 @@ export interface OrderDetail extends OrderSummary {
 export interface PayInitResult {
   orderNo: string
   outTradeNo: string
-  channel: 'WECHAT' | 'ALIPAY'
+  channel: 'WECHAT' | 'ALIPAY' | 'H5'
   amount: number
   mock: boolean
+  /** 余额支付：{ balance: true, paid: true }，发起时已扣费入账 */
   params: Record<string, string | number | boolean>
 }
 

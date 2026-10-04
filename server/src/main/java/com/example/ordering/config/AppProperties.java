@@ -88,6 +88,8 @@ public class AppProperties {
         private String issuer = "ordering-platform";
         /** 顾客 token 有效期（过期后小程序静默重登，不设 refresh） */
         private Duration customerTtl = Duration.ofHours(2);
+        /** 会员（H5 密码登录）token 有效期：浏览器无法静默重登，过期后需重新输入密码 */
+        private Duration memberTtl = Duration.ofDays(7);
         /** 员工 access token 有效期 */
         private Duration staffAccessTtl = Duration.ofHours(2);
         /** 员工 refresh token 有效期 */

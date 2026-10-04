@@ -54,11 +54,20 @@ public class JwtService {
     }
 
     public IssuedToken issueCustomerToken(Long customerId, Platform platform) {
-        Duration ttl = props.getCustomerTtl();
-        String token = baseBuilder(UserType.CUSTOMER, customerId, TYPE_ACCESS, ttl)
-                .claim(CLAIM_PLATFORM, platform.name())
-                .compact();
-        return new IssuedToken(token, ttl.toSeconds());
+        return issueCustomerToken(customerId, platform, null);
+    }
+
+    /**
+     * @param tokenVersion 会员账号（密码登录）携带：重置密码 / 停用后递增，旧 token 失效；小程序顾客传 null
+     */
+    public IssuedToken issueCustomerToken(Long customerId, Platform platform, Integer tokenVersion) {
+        Duration ttl = tokenVersion == null ? props.getCustomerTtl() : props.getMemberTtl();
+        var builder = baseBuilder(UserType.CUSTOMER, customerId, TYPE_ACCESS, ttl)
+                .claim(CLAIM_PLATFORM, platform.name());
+        if (tokenVersion != null) {
+            builder.claim(CLAIM_TOKEN_VERSION, tokenVersion);
+        }
+        return new IssuedToken(builder.compact(), ttl.toSeconds());
     }
 
     public IssuedToken issueStaffAccessToken(Staff staff) {

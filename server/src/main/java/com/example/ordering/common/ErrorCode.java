@@ -31,6 +31,7 @@ public enum ErrorCode {
 
     PARAM_INVALID(42201, "参数不合法", HttpStatus.UNPROCESSABLE_ENTITY),
     REFUND_AMOUNT_EXCEEDED(42202, "退款金额超过可退余额", HttpStatus.UNPROCESSABLE_ENTITY),
+    BALANCE_INSUFFICIENT(42203, "账户余额不足，请联系店员充值", HttpStatus.UNPROCESSABLE_ENTITY),
 
     TOO_MANY_REQUESTS(42901, "请求过于频繁，请稍后再试", HttpStatus.TOO_MANY_REQUESTS),
 

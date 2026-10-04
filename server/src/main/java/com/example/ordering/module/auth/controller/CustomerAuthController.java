@@ -1,7 +1,12 @@
 package com.example.ordering.module.auth.controller;
 
 import com.example.ordering.common.Result;
+import com.example.ordering.module.auth.dto.CustomerChangePasswordRequest;
 import com.example.ordering.module.auth.dto.CustomerLoginRequest;
+import com.example.ordering.module.auth.dto.PasswordLoginRequest;
+import com.example.ordering.ratelimit.ClientIp;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.bind.annotation.PutMapping;
 import com.example.ordering.module.auth.dto.CustomerLoginResponse;
 import com.example.ordering.module.auth.dto.CustomerProfile;
 import com.example.ordering.module.auth.service.CustomerAuthService;
@@ -31,9 +36,24 @@ public class CustomerAuthController {
         return Result.ok(customerAuthService.login(req));
     }
 
-    @Operation(summary = "当前顾客信息")
+    @Operation(summary = "会员密码登录（H5：手机号 + 密码，账号由商家后台创建）")
+    @RateLimit(permits = 10, windowSeconds = 60)
+    @PostMapping("/api/v1/c/auth/password-login")
+    public Result<CustomerLoginResponse> passwordLogin(@Valid @RequestBody PasswordLoginRequest req, HttpServletRequest request) {
+        return Result.ok(customerAuthService.passwordLogin(req, ClientIp.of(request)));
+    }
+
+    @Operation(summary = "当前顾客信息（会员含手机号与余额）")
     @GetMapping("/api/v1/c/me")
     public Result<CustomerProfile> me() {
         return Result.ok(customerAuthService.currentProfile());
+    }
+
+    @Operation(summary = "会员修改自己的密码（成功后需重新登录）")
+    @RateLimit(permits = 5, windowSeconds = 60)
+    @PutMapping("/api/v1/c/me/password")
+    public Result<Void> changePassword(@Valid @RequestBody CustomerChangePasswordRequest req) {
+        customerAuthService.changeOwnPassword(req);
+        return Result.ok();
     }
 }

@@ -9,6 +9,10 @@ export type PayOutcome = 'success' | 'cancel' | 'fail'
  */
 export async function payOrder(orderNo: string): Promise<PayOutcome> {
   const init = await initPay(orderNo)
+  if (init.params.balance) {
+    // 余额支付：服务端在发起支付的同一事务里已扣费入账，没有收银台；余额不足时 initPay 直接抛 42203
+    return 'success'
+  }
   if (init.mock) {
     await mockPay(orderNo)
     return 'success'

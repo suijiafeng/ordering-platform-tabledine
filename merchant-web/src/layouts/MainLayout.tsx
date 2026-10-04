@@ -13,6 +13,7 @@ import {
   RollbackOutlined,
   SettingOutlined,
   TeamOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import UserMenu from '../components/UserMenu'
@@ -36,6 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: '/refunds', label: '退款管理', icon: <RollbackOutlined />, ownerOnly: true },
   { key: '/dishes', label: '菜品管理', icon: <AppstoreOutlined /> },
   { key: '/tables', label: '桌台管理', icon: <QrcodeOutlined /> },
+  { key: '/members', label: '会员充值', icon: <WalletOutlined /> },
   { key: '/reports', label: '数据看板', icon: <BarChartOutlined />, ownerOnly: true },
   { key: '/staff', label: '员工管理', icon: <TeamOutlined />, ownerOnly: true },
   { key: '/settings', label: '店铺设置', icon: <SettingOutlined />, ownerOnly: true },

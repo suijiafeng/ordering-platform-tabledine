@@ -11,6 +11,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/html:/usr/share/nginx/html:ro          # 桌码落地页、平台校验文件
       - ../merchant-web/dist:/usr/share/nginx/merchant:ro  # 商家端构建产物（CI 构建后同步）
+      - ../miniapp/dist/h5:/usr/share/nginx/h5:ro          # H5 点餐应用（npm run build:h5）
       - uploads:/data/uploads:ro                        # 菜品图片
       - certbot-conf:/etc/letsencrypt:ro
       - certbot-www:/var/www/certbot:ro

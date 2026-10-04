@@ -1,8 +1,8 @@
 import Taro from '@tarojs/taro'
 import { ApiError, UNAUTHORIZED, httpErrorToResponse } from './apiError'
-import { clearToken, ensureLogin } from './auth'
+import { clearToken, ensureLogin, goToLogin } from './auth'
 import { toast } from './toast'
-import { apiBaseUrl } from './platform'
+import { apiBaseUrl, isH5 } from './platform'
 
 export interface ApiResult<T> {
   code: number
@@ -24,8 +24,8 @@ export interface RequestOptions {
 
 /**
  * 统一请求封装：
- * - 自动注入 customer token（未登录时先静默登录）
- * - 收到 401 / 40101：清除 token、重新静默登录后重放一次
+ * - 自动注入 customer token（小程序未登录时先静默登录；H5 未登录则跳转登录页）
+ * - 收到 401 / 40101：小程序清除 token、重新静默登录后重放一次；H5 清除 token 并跳转登录页
  * - code !== 0：默认 Toast 提示并抛出 ApiError
  */
 export async function request<T>(options: RequestOptions, retried = false): Promise<T> {
@@ -60,6 +60,11 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
   const code = body?.code ?? -1
   if (auth && !retried && (res.statusCode === 401 || code === UNAUTHORIZED)) {
     clearToken()
+    if (isH5) {
+      // 会员 token 过期 / 被停用或改密：回到登录页，登录后回到当前页
+      goToLogin()
+      throw new ApiError(UNAUTHORIZED, body?.message || '请先登录', res.statusCode)
+    }
     await loginOrFail(true, silent)
     return request<T>(options, true)
   }
@@ -82,6 +87,10 @@ async function loginOrFail(force: boolean, silent: boolean): Promise<string> {
     return await ensureLogin(force)
   } catch (e) {
     const err = e instanceof ApiError ? e : new ApiError(-1, (e as Error)?.message || '登录失败')
+    if (isH5 && err.code === UNAUTHORIZED) {
+      goToLogin()  // 浏览器没有静默登录：未登录就去登录页，不弹「请先登录」打断
+      throw err
+    }
     if (!silent) {
       toast(err.message)
     }

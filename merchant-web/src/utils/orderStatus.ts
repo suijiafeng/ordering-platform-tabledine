@@ -28,7 +28,7 @@ export const REFUND_STATUS: Record<RefundStatus, { label: string; color: string 
 
 export const REFUND_TYPE: Record<RefundType, string> = { FULL: '整单', ITEM: '按菜品', CUSTOM: '自定义金额' }
 export const REFUND_INITIATOR: Record<RefundInitiator, string> = { CUSTOMER: '顾客申请', MERCHANT: '商家发起', SYSTEM: '系统自动' }
-export const PLATFORM: Record<Platform, string> = { WECHAT: '微信', ALIPAY: '支付宝' }
+export const PLATFORM: Record<Platform, string> = { WECHAT: '微信', ALIPAY: '支付宝', H5: '余额' }
 
 export const OPERATOR_TYPE = { CUSTOMER: '顾客', MERCHANT: '商家', SYSTEM: '系统', PAY_CHANNEL: '支付渠道' } as const
 

@@ -22,6 +22,8 @@ import com.example.ordering.module.pay.mapper.PaymentMapper;
 import com.example.ordering.module.refund.service.RefundService;
 import com.example.ordering.module.store.entity.Store;
 import com.example.ordering.module.store.service.StoreService;
+import com.example.ordering.module.wallet.service.WalletService;
+import com.example.ordering.module.pay.channel.BalancePayChannel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -54,25 +56,31 @@ public class PayService {
     private final RefundService refundService;
     private final StoreService storeService;
     private final PayChannelRegistry channels;
+    private final WalletService walletService;
     private final TransactionTemplate tx;
     private final String notifyBaseUrl;
 
     public PayService(PaymentMapper paymentMapper, CustomerAuthMapper customerAuthMapper,
                       OrderStateService orderStateService, RefundService refundService, StoreService storeService,
-                      PayChannelRegistry channels, TransactionTemplate tx, AppProperties appProperties) {
+                      PayChannelRegistry channels, WalletService walletService, TransactionTemplate tx,
+                      AppProperties appProperties) {
         this.paymentMapper = paymentMapper;
         this.customerAuthMapper = customerAuthMapper;
         this.orderStateService = orderStateService;
         this.refundService = refundService;
         this.storeService = storeService;
         this.channels = channels;
+        this.walletService = walletService;
         this.tx = tx;
         this.notifyBaseUrl = appProperties.getPay().getNotifyBaseUrl();
     }
 
     // ==================== 发起支付 ====================
 
-    /** 为待支付订单发起（或复用）一笔支付，返回拉起参数 */
+    /**
+     * 为待支付订单发起（或复用）一笔支付，返回拉起参数。
+     * 余额支付（H5 会员）：在本事务内直接扣费并入账，返回时订单已是已支付；余额不足整个事务回滚，不留支付单。
+     */
     @Transactional
     public PayInitResult initiate(Order order) {
         if (order.getStatus() != OrderStatus.PENDING_PAY) {
@@ -106,13 +114,19 @@ public class PayService {
         }
         Store store = storeService.getRequired(order.getStoreId());
         String description = store.getName() + (order.getTableCode() == null ? "" : " 桌号" + order.getTableCode());
-        String openId = openId(order.getCustomerId(), channel);
         PayChannel payChannel = channels.get(channel);
-        Map<String, Object> params = payChannel.createPayment(new PayCreateRequest(payment.getOutTradeNo(),
-                payment.getAmount(), description, openId, order.getPayExpireAt(),
-                notifyBaseUrl + "/api/v1/pay/notify/" + channel.name().toLowerCase()));
+        PayCreateRequest createReq = new PayCreateRequest(payment.getOutTradeNo(), payment.getAmount(), description,
+                channel.isBalance() ? null : openId(order.getCustomerId(), channel), order.getPayExpireAt(),
+                notifyBaseUrl + "/api/v1/pay/notify/" + channel.name().toLowerCase());
+        Map<String, Object> params = payChannel.createPayment(createReq);
+        if (channel.isBalance()) {
+            // 扣费与入账在同一事务：余额不足抛 42203，支付单一并回滚；入账为同类调用，已处于本事务内
+            walletService.pay(order.getCustomerId(), order.getStoreId(), order.getId(), payment.getOutTradeNo(), payment.getAmount());
+            onPaySuccess(payment.getOutTradeNo(), BalancePayChannel.transactionNo(payment.getOutTradeNo()),
+                    payment.getAmount(), OffsetDateTime.now());
+        }
         return new PayInitResult(order.getOrderNo(), payment.getOutTradeNo(), channel, payment.getAmount(),
-                channels.isMock(), params);
+                channels.isMock() && !channel.isBalance(), params);
     }
 
     private String openId(Long customerId, Platform platform) {

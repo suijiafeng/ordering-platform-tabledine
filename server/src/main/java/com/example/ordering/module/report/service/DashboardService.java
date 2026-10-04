@@ -44,6 +44,8 @@ public class DashboardService {
             """;
     private static final String REFUND_SUM = "SELECT COALESCE(SUM(r.amount),0) " + REFUND_WHERE;
     private static final String REFUND_COUNT = "SELECT COUNT(*) " + REFUND_WHERE;
+    /** 会员充值（预收款）：单独展示，不并入实收，避免与余额扣费的订单重复计算 */
+    private static final String RECHARGE_SUM = "SELECT COALESCE(SUM(amount),0) FROM wallet_transaction WHERE store_id=? AND type='RECHARGE' AND created_at>=? AND created_at<?";
 
     private final JdbcTemplate jdbc;
 
@@ -65,7 +67,7 @@ public class DashboardService {
         long failed = count("SELECT COUNT(*) FROM refund WHERE store_id=? AND status='FAILED'", storeId);
 
         return new DashboardToday(stats.netIncome(), stats.paidAmount, stats.refundedAmount, stats.orderCount, stats.refundCount,
-                pendingAccept, making, ready, applying, failed,
+                stats.rechargeAmount, pendingAccept, making, ready, applying, failed,
                 topDishes(storeId, start, end), dailySeries(storeId, today.minusDays(6), today));
     }
 
@@ -82,10 +84,10 @@ public class DashboardService {
         OffsetDateTime end = startOfDay(to).plusDays(1);
         PeriodStats stats = periodStats(storeId, start, end);
         return new ReportSummary(from, to, stats.netIncome(), stats.paidAmount, stats.refundedAmount, stats.orderCount, stats.refundCount,
-                topDishes(storeId, start, end), dailySeries(storeId, from, to));
+                stats.rechargeAmount, topDishes(storeId, start, end), dailySeries(storeId, from, to));
     }
 
-    private record PeriodStats(long paidAmount, long orderCount, long refundedAmount, long refundCount) {
+    private record PeriodStats(long paidAmount, long orderCount, long refundedAmount, long refundCount, long rechargeAmount) {
         long netIncome() {
             return paidAmount - refundedAmount;
         }
@@ -96,7 +98,8 @@ public class DashboardService {
                 sum(PAID_SUM, storeId, start, end),
                 sum(PAID_COUNT, storeId, start, end),
                 sum(REFUND_SUM, storeId, start, end),
-                sum(REFUND_COUNT, storeId, start, end));
+                sum(REFUND_COUNT, storeId, start, end),
+                sum(RECHARGE_SUM, storeId, start, end));
     }
 
     private List<DashboardToday.DishRank> topDishes(Long storeId, OffsetDateTime start, OffsetDateTime end) {

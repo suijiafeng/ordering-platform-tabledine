@@ -29,7 +29,8 @@ export default defineConfig<'webpack5'>(async (merge) => {
       enable: false,
     },
     h5: {
-      publicPath: '/',
+      // 构建产物部署在 /h5/；桌码链接 /q/<token> 由 Nginx 指向 /h5/index.html，应用从路径解析桌码
+      publicPath: '/h5/',
       router: { mode: 'hash' },
     },
     mini: {

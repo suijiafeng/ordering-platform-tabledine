@@ -12,6 +12,7 @@ import OrdersPage from './pages/orders/OrdersPage'
 import KitchenPage from './pages/kitchen/KitchenPage'
 import RefundsPage from './pages/refunds/RefundsPage'
 import ReportsPage from './pages/reports/ReportsPage'
+import MembersPage from './pages/members/MembersPage'
 import { useAuthStore } from './store/auth'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
       { path: 'dishes', element: <DishesPage /> },
       { path: 'tables', element: <TablesPage /> },
       { path: 'reports', element: <RequireOwner><ReportsPage /></RequireOwner> },
+      { path: 'members', element: <MembersPage /> },
       { path: 'staff', element: <RequireOwner><StaffPage /></RequireOwner> },
       { path: 'settings', element: <RequireOwner><SettingsPage /></RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },

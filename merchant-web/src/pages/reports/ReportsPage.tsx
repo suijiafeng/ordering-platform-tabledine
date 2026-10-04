@@ -10,6 +10,7 @@ import DailyBarChart from '../../components/DailyBarChart'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import { ignoreShownError } from '../../utils/errors'
+import { PLATFORM } from '../../utils/orderStatus'
 
 /** 区间统计与导出共用的最大天数（与后端一致） */
 const MAX_RANGE_DAYS = 92
@@ -123,6 +124,7 @@ export default function ReportsPage() {
         <Col xs={12} lg={6}><Card loading={!data}><Statistic title="今日订单" value={data?.orderCount ?? 0} suffix="单" /></Card></Col>
         <Col xs={12} lg={6}><Card loading={!data}><Statistic title="今日支付金额" value={fenToYuan(data?.paidAmount)} precision={2} prefix="¥" /></Card></Col>
         <Col xs={12} lg={6}><Card loading={!data}><Statistic title="今日退款" value={fenToYuan(data?.refundedAmount)} precision={2} prefix="¥" suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ {data?.refundCount ?? 0} 笔</Typography.Text>} /></Card></Col>
+        <Col xs={12} lg={6}><Card loading={!data}><Statistic title="今日会员充值（预收款）" value={fenToYuan(data?.rechargeAmount)} precision={2} prefix="¥" /></Card></Col>
       </Row>
 
       <Card
@@ -157,6 +159,7 @@ export default function ReportsPage() {
               <Col xs={12} lg={6}><Statistic title="订单数" value={summary?.orderCount ?? 0} suffix="单" loading={!summary} /></Col>
               <Col xs={12} lg={6}><Statistic title="日均实收" value={fenToYuan(summary ? Math.round(summary.netIncome / Math.max(1, summary.daily.length)) : 0)} precision={2} prefix="¥" loading={!summary} /></Col>
               <Col xs={12} lg={6}><Statistic title="退款" value={fenToYuan(summary?.refundedAmount)} precision={2} prefix="¥" suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ {summary?.refundCount ?? 0} 笔</Typography.Text>} loading={!summary} /></Col>
+              <Col xs={12} lg={6}><Statistic title="会员充值（预收款，不计入实收）" value={fenToYuan(summary?.rechargeAmount)} precision={2} prefix="¥" loading={!summary} /></Col>
             </Row>
             <Row gutter={[16, 16]}>
               <Col xs={24} lg={14}>
@@ -202,7 +205,7 @@ export default function ReportsPage() {
               <div style={{ marginBottom: 8 }}>这些支付单本地已关闭，但超过一天仍无法从渠道确认是否收款。请到微信支付商户平台 / 支付宝商家中心按商户订单号查询：已收款的请在订单中登记退款。</div>
               {unconfirmed.map((p) => (
                 <div key={p.outTradeNo} style={{ fontSize: 12 }}>
-                  {p.channel === 'WECHAT' ? '微信' : '支付宝'} · 商户订单号 <Typography.Text copyable code>{p.outTradeNo}</Typography.Text> · 订单 {p.orderNo} · ¥{formatYuan(p.amount)} · 关闭于 {dayjs(p.closedAt).format('MM-DD HH:mm')}
+                  {PLATFORM[p.channel]} · 商户订单号 <Typography.Text copyable code>{p.outTradeNo}</Typography.Text> · 订单 {p.orderNo} · ¥{formatYuan(p.amount)} · 关闭于 {dayjs(p.closedAt).format('MM-DD HH:mm')}
                 </div>
               ))}
             </div>

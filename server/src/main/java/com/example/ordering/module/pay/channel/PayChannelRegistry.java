@@ -31,9 +31,13 @@ public class PayChannelRegistry {
             for (Platform p : Platform.values()) {
                 channels.put(p, new MockPayChannel(p));
             }
-        } else {
-            realChannels.forEach(c -> channels.put(c.platform(), c));
         }
+        // 余额支付不是外部渠道，Mock 模式下也用真实实现（否则测试 / 开发环境无法验证扣费与返还）
+        realChannels.forEach(c -> {
+            if (c.platform().isBalance() || !mock) {
+                channels.put(c.platform(), c);
+            }
+        });
     }
 
     public boolean isMock() {

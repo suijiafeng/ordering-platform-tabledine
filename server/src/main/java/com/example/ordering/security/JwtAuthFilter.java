@@ -96,8 +96,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
         if (type == UserType.CUSTOMER) {
             Customer customer = customerMapper.selectById(id);
-            if (customer == null || customer.getStatus() == null || customer.getStatus() != Customer.STATUS_NORMAL) {
+            if (customer == null || !customer.isEnabled()) {
                 return; // 顾客被停用 → 401，不必等 token 过期
+            }
+            Integer tv = claims.get(JwtService.CLAIM_TOKEN_VERSION, Integer.class);
+            if (tv != null && !Objects.equals(customer.getTokenVersion(), tv)) {
+                return; // 会员密码被重置 / 修改 → 旧 token 失效
             }
             Platform platform = Platform.valueOf(claims.get(JwtService.CLAIM_PLATFORM, String.class));
             user = new LoginUser(UserType.CUSTOMER, id, null, null, platform);
