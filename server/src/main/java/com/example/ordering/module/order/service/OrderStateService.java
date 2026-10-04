@@ -163,13 +163,21 @@ public class OrderStateService {
         return dish != null && dish.getStockQuantity() == null;
     }
 
-    /** 回补库存：未支付关闭、待接单阶段取消时调用；已开始制作后的退款不回补 */
+    /**
+     * 回补库存：未支付关闭、待接单阶段取消时调用；已开始制作后的退款不回补。
+     * 只回补到订单所属业务日期的库存：昨天的订单今天取消，占用的是昨天的限量，不能把今天的剩余加回去。
+     */
     public void restoreStock(Long orderId) {
+        Order order = getById(orderId);
+        if (order == null || order.getCreatedAt() == null) {
+            return;
+        }
+        java.time.LocalDate orderDay = order.getCreatedAt().atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
         for (OrderItem item : items(orderId)) {
-            // 不超过每日限量：跨天的旧订单关单 / 取消时，今日剩余已在 0 点重置，回补会超出限量
             dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
                     .setSql("stock_quantity = LEAST(stock_quantity + " + item.getQuantity() + ", daily_stock)")
                     .eq(Dish::getId, item.getDishId())
+                    .eq(Dish::getStockDate, orderDay)
                     .isNotNull(Dish::getStockQuantity)
                     .isNotNull(Dish::getDailyStock));
         }

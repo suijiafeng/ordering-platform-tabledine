@@ -4,7 +4,7 @@ import { Text, View } from '@tarojs/components'
 import { fetchOrders } from '../../api/order'
 import type { OrderSummary } from '../../api/types'
 import { formatYuan } from '../../utils/money'
-import { formatTime, ORDER_STATUS_TEXT } from '../../utils/order'
+import { formatTime, orderStatusText } from '../../utils/order'
 import './index.css'
 
 const PAGE_SIZE = 20
@@ -69,7 +69,7 @@ export default function OrderList() {
         <View key={o.orderNo} className='ol-card' onClick={() => Taro.navigateTo({ url: `/pages/order-detail/index?orderNo=${o.orderNo}` })}>
           <View className='ol-head'>
             <Text className='ol-time'>{formatTime(o.createdAt)} · 桌号 {o.tableCode}</Text>
-            <Text className={`ol-status s-${o.status}`}>{ORDER_STATUS_TEXT[o.status]}</Text>
+            <Text className={`ol-status s-${o.status}`}>{orderStatusText(o.status)}</Text>
           </View>
           <Text className='ol-dishes'>
             {o.items.slice(0, 3).map((i) => `${i.dishName}x${i.quantity}`).join('、')}

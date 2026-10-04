@@ -8,5 +8,7 @@ import java.time.OffsetDateTime;
  * @param serverTime 服务器当前时间，前端下次轮询以此作为 since
  */
 public record NewOrderCount(long newPaidCount, long pendingAcceptCount, long makingCount, long applyingRefundCount,
-                            long failedRefundCount, OffsetDateTime serverTime) {
+                            long failedRefundCount, OffsetDateTime serverTime,
+                            /** 当前所有待接单订单号：前端按集合去重判断「新来的」，不依赖支付时间与游标，回调晚到也不会漏提醒 */
+                            java.util.List<String> pendingOrderNos) {
 }

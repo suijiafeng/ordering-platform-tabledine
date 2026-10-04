@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -141,6 +142,54 @@ class OrderTasksIntegrationTest extends AbstractIntegrationTest {
         tasks.compensateRefunds();
         assertThat(refundStatus(refundNo)).isEqualTo("SUCCESS");
         assertThat(jdbc.queryForObject("SELECT refund_status FROM orders WHERE order_no = ?", String.class, orderNo)).isEqualTo("FULL");
+    }
+
+    @Test
+    void paymentLostBetweenLocalCloseAndChannelSuccessIsRecovered() throws Exception {
+        String customer = customerToken("WECHAT", "mock:lost-" + UUID.randomUUID());
+        String orderNo = createOrder(customer);
+        MvcResult pay = mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer))
+                .andExpect(status().isOk()).andReturn();
+        String outTradeNo = data(pay).path("outTradeNo").asText();
+        // 顾客取消 → 本地关闭；模拟渠道关单时顾客恰好付款成功（渠道侧为已支付），且成功回调丢失
+        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/cancel"), customer)).andExpect(status().isOk());
+        assertThat(orderStatus(orderNo)).isEqualTo("CLOSED");
+        channels.mock(Platform.WECHAT).markPaid(outTradeNo);
+        jdbc.update("UPDATE payment SET close_confirmed = FALSE WHERE out_trade_no = ?", outTradeNo);
+
+        // 订单已不在待支付范围，但支付单仍会被补偿任务找回并自动退款
+        tasks.compensatePayments();
+        assertThat(jdbc.queryForObject("SELECT status FROM payment WHERE out_trade_no = ?", String.class, outTradeNo)).isEqualTo("SUCCESS");
+        assertThat(jdbc.queryForObject("SELECT refunded_amount FROM payment WHERE out_trade_no = ?", Long.class, outTradeNo)).isEqualTo(3800);
+        assertThat(orderStatus(orderNo)).isEqualTo("CLOSED");
+    }
+
+    @Test
+    void closedPaymentConfirmedWhenChannelSaysClosed() throws Exception {
+        String customer = customerToken("WECHAT", "mock:cc-" + UUID.randomUUID());
+        String orderNo = createOrder(customer);
+        MvcResult pay = mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer))
+                .andExpect(status().isOk()).andReturn();
+        String outTradeNo = data(pay).path("outTradeNo").asText();
+        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/cancel"), customer)).andExpect(status().isOk());
+        // Mock 渠道关单成功 → 立即确认
+        assertThat(jdbc.queryForObject("SELECT close_confirmed FROM payment WHERE out_trade_no = ?", Boolean.class, outTradeNo)).isTrue();
+        // 人工核对列表为空（店主）
+        mvc.perform(authed(get("/api/v1/m/payments/unconfirmed"), ownerToken())).andExpect(status().isOk());
+        mvc.perform(authed(get("/api/v1/m/payments/unconfirmed"), staffToken())).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void newCountCarriesPendingOrderNosForSetBasedDedup() throws Exception {
+        String customer = customerToken("WECHAT", "mock:nc-" + UUID.randomUUID());
+        String orderNo = createOrder(customer);
+        payMock(customer, orderNo);
+        JsonNode c = getData("/api/v1/m/orders/new-count", staffToken());
+        assertThat(c.path("pendingOrderNos").findValuesAsText("").isEmpty()).isTrue();
+        java.util.List<String> nos = new java.util.ArrayList<>();
+        c.path("pendingOrderNos").forEach(n -> nos.add(n.asText()));
+        assertThat(nos).contains(orderNo);
+        assertThat(c.path("pendingAcceptCount").asLong()).isEqualTo(nos.size());
     }
 
     @Test

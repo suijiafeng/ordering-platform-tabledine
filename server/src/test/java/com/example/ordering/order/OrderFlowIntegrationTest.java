@@ -150,11 +150,21 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
             mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
                     .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 3))).andExpect(status().isOk());
             assertThat(stock(2)).isEqualTo(1);
-            // 0 点重置：今日剩余回到每日限量
+            // 模拟跨天：业务日期回到昨天 → 幂等重置补做，今日剩余回到每日限量
+            jdbc.update("UPDATE dish SET stock_date = stock_date - 1 WHERE id = 2");
             menuService.resetDailyStock();
             assertThat(stock(2)).isEqualTo(3);
-            // 昨天的待支付订单今天被关闭：回补不能超过每日限量
+            // 再次调用不会重复重置：今天卖 1 份后仍是 2
+            String todayOrder = createOrder(customer, List.of(item(2, List.of(), List.of(), 1)));
+            assertThat(stock(2)).isEqualTo(2);
+            menuService.resetDailyStock();
+            assertThat(stock(2)).isEqualTo(2);
+            // 昨天的订单今天取消：占用的是昨天的限量，不回补今天的剩余
+            jdbc.update("UPDATE orders SET created_at = created_at - interval '1 day' WHERE order_no = ?", orderNo);
             mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/cancel"), customer)).andExpect(status().isOk());
+            assertThat(stock(2)).isEqualTo(2);
+            // 今天的订单取消：回补
+            mvc.perform(authed(post("/api/v1/c/orders/" + todayOrder + "/cancel"), customer)).andExpect(status().isOk());
             assertThat(stock(2)).isEqualTo(3);
         } finally {
             mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)

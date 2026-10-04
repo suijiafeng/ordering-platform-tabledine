@@ -26,6 +26,8 @@ public class Payment {
     private PaymentStatus status;
     private OffsetDateTime paidAt;
     private Long refundedAmount;
+    /** 本地关闭后渠道是否已确认关单；false 的记录持续查单，防止付款丢失 */
+    private Boolean closeConfirmed;
     @TableField(fill = FieldFill.INSERT)
     private OffsetDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

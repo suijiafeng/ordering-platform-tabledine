@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Drawer, Layout, Menu, Space, theme as antdTheme } from 'antd'
+import { App, Badge, Button, Drawer, Layout, Menu, Space, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
@@ -18,7 +18,7 @@ import { useAuthStore } from '../store/auth'
 import UserMenu from '../components/UserMenu'
 import BrandLogo from '../components/BrandLogo'
 import ThemeToggle from '../components/ThemeToggle'
-import { useOrderPoll } from '../hooks/useOrderPoll'
+import { useOrderPoll, usePollStore } from '../hooks/useOrderPoll'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 interface NavItem {
@@ -53,6 +53,21 @@ export default function MainLayout() {
   const { token } = antdTheme.useToken()
   // 全局新订单轮询（提示音 + 菜单角标）
   const { counts } = useOrderPoll()
+  const { notification } = App.useApp()
+  const initialPending = usePollStore((s) => s.initialPending)
+  const consumeInitial = usePollStore((s) => s.consumeInitial)
+  useEffect(() => {
+    if (initialPending > 0) {
+      notification.warning({
+        key: 'initial-pending',
+        message: `有 ${initialPending} 单待接单`,
+        description: '这些订单在你打开后台前已支付，请尽快处理。',
+        duration: 0,
+        onClick: () => navigate('/orders?status=PAID'),
+      })
+      consumeInitial()
+    }
+  }, [initialPending, consumeInitial, notification, navigate])
 
   const badgeFor = (key: string): number => {
     if (!counts) {

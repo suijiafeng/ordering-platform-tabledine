@@ -199,18 +199,39 @@ public class MerchantMenuService {
         if (dailyStock == null) {
             w.set(Dish::getDailyStock, null).set(Dish::getStockQuantity, null);
         } else {
+            ensureStockFresh();  // 先把可能错过的 0 点重置补上，再按今日已占用重算
             w.setSql("stock_quantity = GREATEST(0, " + dailyStock + " - (COALESCE(daily_stock, 0) - COALESCE(stock_quantity, 0)))")
-                    .set(Dish::getDailyStock, dailyStock);
+                    .set(Dish::getDailyStock, dailyStock)
+                    .set(Dish::getStockDate, java.time.LocalDate.now(STOCK_ZONE));
         }
         dishMapper.update(null, w);
+    }
+
+    static final java.time.ZoneId STOCK_ZONE = java.time.ZoneId.of("Asia/Shanghai");
+
+    /**
+     * 幂等的每日重置：业务日期落后于今天的限量菜，把今日剩余重置为每日限量并推进日期。
+     * 0 点定时任务、服务启动、下单前、顾客拉菜单时都会调用，停机错过 0 点也不会漏掉。
+     * 所有门店（无门店上下文时租户插件不过滤）。
+     */
+    public int ensureStockFresh() {
+        java.time.LocalDate today = java.time.LocalDate.now(STOCK_ZONE);
+        return dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .setSql("stock_quantity = daily_stock")
+                .set(Dish::getStockDate, today)
+                .isNotNull(Dish::getDailyStock)
+                .and(q -> q.isNull(Dish::getStockDate).or().lt(Dish::getStockDate, today)));
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void resetDailyStockOnStartup() {
+        resetDailyStock();
     }
 
     /** 每天 0 点（Asia/Shanghai）把今日剩余重置为每日限量；所有门店（定时任务无门店上下文） */
     @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 0 * * *", zone = "Asia/Shanghai")
     public void resetDailyStock() {
-        int rows = dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                .setSql("stock_quantity = daily_stock")
-                .isNotNull(Dish::getDailyStock));
+        int rows = ensureStockFresh();
         if (rows > 0) {
             org.slf4j.LoggerFactory.getLogger(MerchantMenuService.class).info("已重置 {} 道菜的每日限量", rows);
         }

@@ -191,15 +191,21 @@ public class PayService {
                 .eq(Payment::getOrderId, order.getId())
                 .eq(Payment::getStatus, PaymentStatus.PENDING));
         for (Payment p : pendings) {
+            // 先标记「本地已关、渠道未确认」；渠道关单成功后再置为已确认。
+            // 渠道关单失败（或顾客恰好在此刻付款成功）时，这笔支付单会被补偿任务持续查单
             paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
                     .set(Payment::getStatus, PaymentStatus.CLOSED)
+                    .set(Payment::getCloseConfirmed, false)
                     .set(Payment::getUpdatedAt, OffsetDateTime.now())
                     .eq(Payment::getId, p.getId())
                     .eq(Payment::getStatus, PaymentStatus.PENDING));
             try {
                 channels.get(p.getChannel()).closePayment(p.getOutTradeNo());
+                paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
+                        .set(Payment::getCloseConfirmed, true)
+                        .eq(Payment::getId, p.getId()).eq(Payment::getStatus, PaymentStatus.CLOSED));
             } catch (RuntimeException e) {
-                log.warn("渠道关单失败 outTradeNo={}: {}", p.getOutTradeNo(), e.getMessage());
+                log.warn("渠道关单失败 outTradeNo={}，将持续查单确认: {}", p.getOutTradeNo(), e.getMessage());
             }
         }
     }
@@ -243,6 +249,59 @@ public class PayService {
             }
         }
         return paid ? PayCheck.PAID : unknown ? PayCheck.UNKNOWN : PayCheck.NOT_PAID;
+    }
+
+    /**
+     * 对「本地已关、渠道未确认」的支付单查单：
+     * 渠道已付 → 入账（订单已关闭则走自动退款）；渠道已关或支付窗口早已过期 → 标记已确认；其余下轮再查。
+     */
+    public void reconcileUnconfirmedClosed(OffsetDateTime newerThan, int limit) {
+        List<Payment> list = paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
+                .eq(Payment::getStatus, PaymentStatus.CLOSED)
+                .eq(Payment::getCloseConfirmed, false)
+                .gt(Payment::getUpdatedAt, newerThan)
+                .orderByAsc(Payment::getUpdatedAt)
+                .last("LIMIT " + limit));
+        for (Payment p : list) {
+            try {
+                PayQueryResult r = channels.get(p.getChannel()).queryPayment(p.getOutTradeNo());
+                if (r.state() == PayQueryResult.State.SUCCESS) {
+                    long amount = r.amount() == null ? p.getAmount() : r.amount();
+                    Boolean ok = tx.execute(s -> onPaySuccess(p.getOutTradeNo(), r.transactionNo(), amount, r.paidAt()));
+                    log.warn("已关闭支付单 {} 在渠道侧为已支付，入账结果={}（订单已关闭则自动退款）", p.getOutTradeNo(), ok);
+                    continue;
+                }
+                boolean settled = r.state() == PayQueryResult.State.CLOSED;
+                if (!settled && r.state() == PayQueryResult.State.NOT_PAID) {
+                    // 渠道仍显示未支付：下单时的 time_expire 过去 1 小时后渠道不可能再收款，视为确认
+                    Order order = orderStateService.getById(p.getOrderId());
+                    settled = order != null && order.getPayExpireAt() != null
+                            && order.getPayExpireAt().plusHours(1).isBefore(OffsetDateTime.now());
+                }
+                if (settled) {
+                    paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
+                            .set(Payment::getCloseConfirmed, true)
+                            .set(Payment::getUpdatedAt, OffsetDateTime.now())
+                            .eq(Payment::getId, p.getId()));
+                } else {
+                    // 刷新时间让其他记录先轮到
+                    paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
+                            .set(Payment::getUpdatedAt, OffsetDateTime.now()).eq(Payment::getId, p.getId()));
+                }
+            } catch (RuntimeException e) {
+                log.warn("已关闭支付单 {} 查单失败: {}", p.getOutTradeNo(), e.getMessage());
+            }
+        }
+    }
+
+    /** 人工核对入口：本地已关闭、渠道超过一天仍无法确认的支付单 */
+    public List<Payment> unconfirmedClosedOlderThan(OffsetDateTime before) {
+        return paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
+                .eq(Payment::getStatus, PaymentStatus.CLOSED)
+                .eq(Payment::getCloseConfirmed, false)
+                .lt(Payment::getCreatedAt, before)
+                .orderByDesc(Payment::getId)
+                .last("LIMIT 100"));
     }
 
     public Payment latestPayment(Long orderId) {

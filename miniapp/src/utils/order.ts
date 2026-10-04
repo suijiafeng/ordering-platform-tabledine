@@ -20,6 +20,10 @@ export const REFUND_STATUS_TEXT: Record<RefundStatus, string> = {
   OFFLINE: '已线下退款',
 }
 
+/** 已发布的小程序可能晚于后端升级：未知状态给出兜底文案，不显示 undefined */
+export const orderStatusText = (s: string) => (ORDER_STATUS_TEXT as Record<string, string>)[s] ?? '处理中'
+export const refundStatusText = (s: string) => (REFUND_STATUS_TEXT as Record<string, string>)[s] ?? '处理中'
+
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)

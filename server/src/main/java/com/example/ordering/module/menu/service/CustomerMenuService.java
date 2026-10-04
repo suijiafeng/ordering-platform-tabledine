@@ -9,6 +9,7 @@ import com.example.ordering.module.menu.entity.Dish;
 import com.example.ordering.module.menu.mapper.CategoryMapper;
 import com.example.ordering.module.menu.mapper.DishMapper;
 import com.example.ordering.module.store.service.StoreService;
+import com.example.ordering.module.menu.service.MerchantMenuService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -23,13 +24,16 @@ import java.util.stream.Collectors;
 @Service
 public class CustomerMenuService {
 
+    private final MerchantMenuService merchantMenuService;
+
     private final StoreService storeService;
     private final CategoryMapper categoryMapper;
     private final DishMapper dishMapper;
     private final MenuGroupLoader groupLoader;
 
     public CustomerMenuService(StoreService storeService, CategoryMapper categoryMapper,
-                               DishMapper dishMapper, MenuGroupLoader groupLoader) {
+                               DishMapper dishMapper, MenuGroupLoader groupLoader, MerchantMenuService merchantMenuService) {
+        this.merchantMenuService = merchantMenuService;
         this.storeService = storeService;
         this.categoryMapper = categoryMapper;
         this.dishMapper = dishMapper;
@@ -38,6 +42,7 @@ public class CustomerMenuService {
 
     public MenuView menu(Long storeId) {
         storeService.getRequired(storeId);
+        merchantMenuService.ensureStockFresh();  // 错过 0 点重置时，顾客看到的售罄状态也要正确
         List<Category> categories = categoryMapper.selectList(Wrappers.<Category>lambdaQuery()
                 .eq(Category::getStoreId, storeId)
                 .eq(Category::getStatus, 1)

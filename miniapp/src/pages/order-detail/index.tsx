@@ -6,7 +6,7 @@ import { ApiError, NOT_FOUND } from '../../utils/apiError'
 import type { OrderDetail } from '../../api/types'
 import RefundPopup from '../../components/RefundPopup'
 import { formatYuan } from '../../utils/money'
-import { formatTime, ORDER_STATUS_TEXT, REFUND_STATUS_TEXT } from '../../utils/order'
+import { formatTime, orderStatusText, refundStatusText } from '../../utils/order'
 import { payOrder } from '../../utils/pay'
 import './index.css'
 
@@ -141,7 +141,7 @@ export default function OrderDetailPage() {
   return (
     <View className='od-page'>
       <View className='od-status'>
-        <Text className='od-status-text'>{ORDER_STATUS_TEXT[order.status]}</Text>
+        <Text className='od-status-text'>{orderStatusText(order.status)}</Text>
         {order.status === 'PENDING_PAY' && <Text className='od-sub'>请在 {formatTime(order.payExpireAt)} 前完成支付，超时将自动关闭</Text>}
         {order.status === 'CANCELLED' && order.cancelReason && <Text className='od-sub'>{order.cancelReason}</Text>}
       </View>
@@ -180,7 +180,7 @@ export default function OrderDetailPage() {
             <View key={r.refundNo} className='od-refund'>
               <View className='od-refund-head'>
                 <Text>¥{formatYuan(r.amount)}</Text>
-                <Text className='od-refund-status'>{REFUND_STATUS_TEXT[r.status]}</Text>
+                <Text className='od-refund-status'>{refundStatusText(r.status)}</Text>
               </View>
               <Text className='od-row-desc'>原因：{r.reason}</Text>
               {r.rejectReason && <Text className='od-row-desc'>商家回复：{r.rejectReason}</Text>}

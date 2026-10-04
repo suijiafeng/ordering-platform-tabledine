@@ -85,7 +85,7 @@ public class MerchantOrderService {
     /** 后厨队列：待制作（已支付待接单）+ 制作中，按支付时间升序 */
     public List<OrderSummary> kitchenQueue() {
         List<Order> orders = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
-                .in(Order::getStatus, OrderStatus.PAID, OrderStatus.MAKING)
+                .in(Order::getStatus, OrderStatus.PAID, OrderStatus.MAKING, OrderStatus.READY)
                 .orderByAsc(Order::getPaidAt, Order::getId)
                 .last("LIMIT 200"));
         return assembler.summaries(orders);
@@ -101,11 +101,14 @@ public class MerchantOrderService {
         long newPaid = since == null ? 0 : orderMapper.selectCount(Wrappers.<Order>lambdaQuery()
                 .in(Order::getStatus, OrderStatus.PAID, OrderStatus.MAKING, OrderStatus.READY, OrderStatus.DONE, OrderStatus.CANCELLED)
                 .gt(Order::getPaidAt, since));
-        long pendingAccept = orderMapper.selectCount(Wrappers.<Order>lambdaQuery().eq(Order::getStatus, OrderStatus.PAID));
+        List<String> pendingNos = orderMapper.selectList(Wrappers.<Order>lambdaQuery()
+                        .select(Order::getOrderNo).eq(Order::getStatus, OrderStatus.PAID).orderByAsc(Order::getId).last("LIMIT 500"))
+                .stream().map(Order::getOrderNo).toList();
+        long pendingAccept = pendingNos.size();
         long making = orderMapper.selectCount(Wrappers.<Order>lambdaQuery().eq(Order::getStatus, OrderStatus.MAKING));
         long applying = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery().eq(Refund::getStatus, RefundStatus.APPLYING));
         long failed = refundMapper.selectCount(Wrappers.<Refund>lambdaQuery().eq(Refund::getStatus, RefundStatus.FAILED));
-        return new NewOrderCount(newPaid, pendingAccept, making, applying, failed, now);
+        return new NewOrderCount(newPaid, pendingAccept, making, applying, failed, now, pendingNos);
     }
 
     // ==================== 履约流转 ====================

@@ -125,6 +125,8 @@ public class OrderTasks {
                 log.error("查单补偿处理订单 {} 失败", order.getOrderNo(), e);
             }
         }
+        // 本地已关闭但渠道未确认的支付单：关单与付款同时发生、渠道关单失败、回调丢失时，付款只能从这里找回
+        payService.reconcileUnconfirmedClosed(OffsetDateTime.now().minusDays(3), 200);
     }
 
     /** 退款结果补偿：每 5 分钟，处理中超过 N 分钟的退款单主动查询 */

@@ -276,6 +276,17 @@ export interface NewOrderCount {
   applyingRefundCount: number
   failedRefundCount: number
   serverTime: string
+  /** 当前所有待接单订单号，前端按集合去重判断新单 */
+  pendingOrderNos: string[]
+}
+
+export interface UnconfirmedPayment {
+  outTradeNo: string
+  orderNo: string
+  channel: 'WECHAT' | 'ALIPAY'
+  amount: number
+  createdAt: string
+  closedAt: string
 }
 
 export interface MerchantRefundRequest {

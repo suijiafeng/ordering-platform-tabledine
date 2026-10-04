@@ -62,6 +62,7 @@ public class OrderService {
     private final DiningTableMapper tableMapper;
     private final MenuGroupLoader groupLoader;
     private final com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper;
+    private final com.example.ordering.module.menu.service.MerchantMenuService menuService;
     private final StoreService storeService;
     private final OrderStateService orderStateService;
     private final OrderViewAssembler assembler;
@@ -71,7 +72,8 @@ public class OrderService {
 
     public OrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper, DishMapper dishMapper,
                         DiningTableMapper tableMapper, MenuGroupLoader groupLoader,
-                        com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper, StoreService storeService,
+                        com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper,
+                        com.example.ordering.module.menu.service.MerchantMenuService menuService, StoreService storeService,
                         OrderStateService orderStateService, OrderViewAssembler assembler, PayService payService,
                         RefundService refundService, TransactionTemplate tx) {
         this.orderMapper = orderMapper;
@@ -80,6 +82,7 @@ public class OrderService {
         this.tableMapper = tableMapper;
         this.groupLoader = groupLoader;
         this.categoryMapper = categoryMapper;
+        this.menuService = menuService;
         this.storeService = storeService;
         this.orderStateService = orderStateService;
         this.assembler = assembler;
@@ -157,7 +160,8 @@ public class OrderService {
             total += item.getTotalPrice();
         }
 
-        // 3. 限量库存扣减（同一事务内，失败整体回滚）
+        // 3. 限量库存扣减（同一事务内，失败整体回滚）；先补做可能错过的 0 点重置
+        menuService.ensureStockFresh();
         Map<Long, Integer> qtyByDish = new java.util.LinkedHashMap<>();
         for (OrderItem item : items) {
             qtyByDish.merge(item.getDishId(), item.getQuantity(), Integer::sum);
