@@ -55,6 +55,17 @@
   margin-top: 8px;
 }
 
+.popup-intro {
+  color: #666;
+  font-size: 24px;
+  line-height: 1.5;
+  margin-top: 8px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
 .popup-close {
   position: absolute;
   right: 0;

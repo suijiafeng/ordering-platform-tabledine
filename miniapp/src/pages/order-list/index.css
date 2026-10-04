@@ -7,7 +7,12 @@
 .ol-status.s-DONE { color: #52c41a; }
 .ol-status.s-CLOSED, .ol-status.s-CANCELLED { color: #999; }
 .ol-dishes { display: block; font-size: 28px; color: #333; margin-bottom: 16px; }
-.ol-foot { display: flex; justify-content: flex-end; align-items: baseline; }
+.ol-foot { display: flex; justify-content: space-between; align-items: baseline; }
+.ol-foot-right { display: flex; align-items: baseline; }
 .ol-count { font-size: 24px; color: #999; margin-right: 16px; }
 .ol-amount { font-size: 32px; font-weight: 600; color: #333; }
+.ol-countdown { font-size: 24px; color: #ff6a00; }
+.ol-countdown.expired { color: #999; }
+.ol-refunded { display: block; text-align: right; font-size: 24px; color: #ff6a00; margin-top: 8px; }
+.ol-pay-btn { margin-top: 16px; text-align: center; padding: 16px 0; border-radius: 40px; background: #ff6a00; color: #fff; font-size: 26px; font-weight: 600; }
 .ol-end { display: block; text-align: center; font-size: 24px; color: #bbb; padding: 16px 0; }

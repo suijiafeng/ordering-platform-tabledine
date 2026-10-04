@@ -56,6 +56,26 @@ export default function MainLayout() {
   const { notification } = App.useApp()
   const initialPending = usePollStore((s) => s.initialPending)
   const consumeInitial = usePollStore((s) => s.consumeInitial)
+  const lastArrival = usePollStore((s) => s.lastArrival)
+  // 新订单弹窗（需求 §5.2「声音 + 弹窗」）：全局挂在布局层，任何页面都能看到；点击跳到待接单列表并打开该订单
+  useEffect(() => {
+    if (!lastArrival) {
+      return
+    }
+    const { orderNos } = lastArrival
+    const first = orderNos[0]
+    notification.open({
+      key: 'new-order',  // 同一个 key：连续来单时更新同一条通知，不堆叠
+      message: orderNos.length === 1 ? '新订单，请接单' : `${orderNos.length} 个新订单，请接单`,
+      description: orderNos.length === 1 ? `订单号 ${first}` : `订单号 ${orderNos.slice(0, 3).join('、')}${orderNos.length > 3 ? ' 等' : ''}`,
+      duration: 15,
+      placement: 'topRight',
+      onClick: () => {
+        notification.destroy('new-order')
+        navigate(orderNos.length === 1 ? `/orders?status=PAID&orderNo=${first}` : '/orders?status=PAID')
+      },
+    })
+  }, [lastArrival, notification, navigate])
   useEffect(() => {
     if (initialPending > 0) {
       notification.warning({

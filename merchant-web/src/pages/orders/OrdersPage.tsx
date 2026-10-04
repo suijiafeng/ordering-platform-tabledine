@@ -37,6 +37,11 @@ export default function OrdersPage() {
   const [data, setData] = useState<{ list: OrderSummary[]; total: number }>({ list: [], total: 0 })
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<string | null>(params.get('orderNo'))
+  // 页面已打开时地址栏 orderNo 变化（如点击新订单弹窗跳转）也要打开对应详情
+  const paramOrderNo = params.get('orderNo')
+  useEffect(() => {
+    if (paramOrderNo) setDetail(paramOrderNo)
+  }, [paramOrderNo])
   const counts = usePollStore((s) => s.counts)
   const newArrived = usePollStore((s) => s.newArrived)
   const consumeNew = usePollStore((s) => s.consumeNew)

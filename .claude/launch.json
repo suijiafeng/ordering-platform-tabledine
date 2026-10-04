@@ -4,9 +4,13 @@
     {
       "name": "merchant-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "merchant-web",
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

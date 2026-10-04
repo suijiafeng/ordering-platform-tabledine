@@ -22,6 +22,8 @@ interface PollState {
   newArrived: number
   /** 首次打开后台时已存在的待接单数（提示一次后清零） */
   initialPending: number
+  /** 最近一批新到订单（供全局弹窗）。seq 每批递增，页面以此判断是否是新一批 */
+  lastArrival: { seq: number; orderNos: string[] } | null
   /** 未接单持续提醒间隔（毫秒），0 关闭 */
   remindIntervalMs: number
   setCounts: (c: NewOrderCount) => void
@@ -44,6 +46,7 @@ export const usePollStore = create<PollState>((set) => ({
   soundEnabled: loadSound(),
   newArrived: 0,
   initialPending: 0,
+  lastArrival: null,
   remindIntervalMs: loadRemind(),
   setCounts: (counts) => set({ counts }),
   setRemindInterval: (ms) => {
@@ -125,7 +128,10 @@ export function useOrderPoll(intervalMs = 5000) {
         const fresh = pending.filter((no) => !seen.has(no))
         if (fresh.length > 0) {
           fresh.forEach((no) => seen.add(no))
-          usePollStore.setState((s) => ({ newArrived: s.newArrived + fresh.length }))
+          usePollStore.setState((s) => ({
+            newArrived: s.newArrived + fresh.length,
+            lastArrival: { seq: (s.lastArrival?.seq ?? 0) + 1, orderNos: fresh },
+          }))
           if (usePollStore.getState().soundEnabled) {
             playNewOrderSound()
             lastRemindRef.current = Date.now()

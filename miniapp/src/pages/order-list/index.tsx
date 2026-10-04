@@ -4,10 +4,20 @@ import { Text, View } from '@tarojs/components'
 import { fetchOrders } from '../../api/order'
 import type { OrderSummary } from '../../api/types'
 import { formatYuan } from '../../utils/money'
-import { formatTime, orderStatusText } from '../../utils/order'
+import { formatCountdown, formatTime, orderStatusText } from '../../utils/order'
+import { useCountdown } from '../../hooks/useCountdown'
 import './index.css'
 
 const PAGE_SIZE = 20
+
+/** 待支付订单的剩余时间；到期后提示即将关闭（列表不轮询，进入详情或下拉刷新才更新状态） */
+function PendingPayHint({ payExpireAt }: { payExpireAt: string | null }) {
+  const left = useCountdown(payExpireAt)
+  if (left == null) return null
+  return left > 0
+    ? <Text className='ol-countdown'>剩余 {formatCountdown(left)} 支付</Text>
+    : <Text className='ol-countdown expired'>支付已超时，订单即将关闭</Text>
+}
 
 /** 我的订单：按时间倒序，下拉刷新，触底加载更多 */
 export default function OrderList() {
@@ -76,9 +86,16 @@ export default function OrderList() {
             {o.itemCount > 3 ? ' 等' : ''}
           </Text>
           <View className='ol-foot'>
-            <Text className='ol-count'>共 {o.itemCount} 件</Text>
-            <Text className='ol-amount'>¥{formatYuan(o.totalAmount)}</Text>
+            {o.status === 'PENDING_PAY' ? <PendingPayHint payExpireAt={o.payExpireAt} /> : <View />}
+            <View className='ol-foot-right'>
+              <Text className='ol-count'>共 {o.itemCount} 件</Text>
+              <Text className='ol-amount'>¥{formatYuan(o.payAmount)}</Text>
+            </View>
           </View>
+          {o.refundedAmount > 0 && <Text className='ol-refunded'>已退款 ¥{formatYuan(o.refundedAmount)}</Text>}
+          {o.status === 'PENDING_PAY' && (
+            <View className='ol-pay-btn'><Text>去支付</Text></View>
+          )}
         </View>
       ))}
       {loaded && list.length >= total && list.length > 0 && <Text className='ol-end'>没有更多了</Text>}

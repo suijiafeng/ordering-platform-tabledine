@@ -109,6 +109,8 @@ export interface RefundView {
 export interface OrderStatusLog {
   fromStatus: OrderStatus | null
   toStatus: OrderStatus
+  /** 顾客端只返回类型，不返回员工身份 */
+  operatorType: 'CUSTOMER' | 'MERCHANT' | 'SYSTEM' | null
   remark: string | null
   createdAt: string
 }

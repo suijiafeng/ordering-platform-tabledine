@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
-import { Button, Image, ScrollView, Text, View } from '@tarojs/components'
+import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 import { fetchMenu } from '../../api/menu'
 import { resolveQr } from '../../api/customer'
 import type { MenuDish, MenuView } from '../../api/types'
@@ -28,6 +28,8 @@ export default function Index() {
   const [specDish, setSpecDish] = useState<MenuDish | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loadingTable, setLoadingTable] = useState(false)
+  // 菜品搜索：在已加载的菜单里按名称 / 描述本地过滤，不请求后端
+  const [keyword, setKeyword] = useState('')
 
   const loadTable = async (token: string) => {
     setLoadingTable(true)
@@ -118,6 +120,35 @@ export default function Index() {
     changeQty(item.key, -1)
   }
 
+  const renderDish = (d: MenuDish) => (
+    <View key={d.id} className={`dish ${d.soldOut ? 'sold-out' : ''}`}>
+      {d.image ? <Image className='dish-img' src={imageUrl(d.image)} mode='aspectFill' lazyLoad /> : <View className='dish-img' />}
+      <View className='dish-info'>
+        <Text className='dish-name'>{d.name}</Text>
+        {d.description && <Text className='dish-desc'>{d.description}</Text>}
+        <View className='dish-bottom'>
+          <Text className='dish-price'>¥{formatYuan(d.price)}{hasOptions(d) ? '起' : ''}</Text>
+          {d.soldOut ? (
+            <Text className='muted'>已售罄</Text>
+          ) : hasOptions(d) ? (
+            <View className='spec-btn' onClick={() => tapAdd(d)}>
+              <Text>选规格</Text>
+              {dishQty(items, d.id) > 0 && <Text className='spec-badge'>{dishQty(items, d.id)}</Text>}
+            </View>
+          ) : (
+            <Stepper value={dishQty(items, d.id)} onMinus={() => tapMinus(d)} onPlus={() => tapAdd(d)} />
+          )}
+        </View>
+      </View>
+    </View>
+  )
+
+  const trimmedKeyword = keyword.trim().toLowerCase()
+  const matchedDishes = trimmedKeyword
+    ? (menu?.categories ?? []).flatMap((c) => c.dishes).filter((d) =>
+        d.name.toLowerCase().includes(trimmedKeyword) || (d.description ?? '').toLowerCase().includes(trimmedKeyword))
+    : []
+
   // ---------- 未扫码 ----------
   if (!current) {
     return (
@@ -146,55 +177,56 @@ export default function Index() {
         </View>
       )}
 
-      <View className='menu'>
-        <ScrollView scrollY className='cats'>
-          {menu?.categories.map((c) => {
-            const qty = c.dishes.reduce((s, d) => s + dishQty(items, d.id), 0)
-            return (
-              <View
-                key={c.id}
-                className={`cat ${activeCat === c.id ? 'active' : ''}`}
-                onClick={() => { setActiveCat(c.id); setScrollTarget(`cat-${c.id}`) }}
-              >
-                <Text>{c.name}</Text>
-                {qty > 0 && <Text className='cat-badge'>{qty}</Text>}
-              </View>
-            )
-          })}
-        </ScrollView>
+      <View className='search-bar'>
+        <Input
+          className='search-input'
+          type='text'
+          confirmType='search'
+          placeholder='搜索菜品'
+          placeholderClass='search-placeholder'
+          value={keyword}
+          onInput={(e) => setKeyword(e.detail.value)}
+        />
+        {keyword && <Text className='search-clear' onClick={() => setKeyword('')}>×</Text>}
+      </View>
 
-        <ScrollView scrollY className='dishes' scrollIntoView={scrollTarget} scrollWithAnimation>
-          {menu && menu.categories.length === 0 && <Text className='muted center'>暂无菜品</Text>}
-          {menu?.categories.map((c) => (
-            <View key={c.id} id={`cat-${c.id}`}>
-              <Text className='cat-title'>{c.name}</Text>
-              {c.dishes.map((d) => (
-                <View key={d.id} className={`dish ${d.soldOut ? 'sold-out' : ''}`}>
-                  {d.image ? <Image className='dish-img' src={imageUrl(d.image)} mode='aspectFill' lazyLoad /> : <View className='dish-img' />}
-                  <View className='dish-info'>
-                    <Text className='dish-name'>{d.name}</Text>
-                    {d.description && <Text className='dish-desc'>{d.description}</Text>}
-                    <View className='dish-bottom'>
-                      <Text className='dish-price'>¥{formatYuan(d.price)}{hasOptions(d) ? '起' : ''}</Text>
-                      {d.soldOut ? (
-                        <Text className='muted'>已售罄</Text>
-                      ) : hasOptions(d) ? (
-                        <View className='spec-btn' onClick={() => tapAdd(d)}>
-                          <Text>选规格</Text>
-                          {dishQty(items, d.id) > 0 && <Text className='spec-badge'>{dishQty(items, d.id)}</Text>}
-                        </View>
-                      ) : (
-                        <Stepper value={dishQty(items, d.id)} onMinus={() => tapMinus(d)} onPlus={() => tapAdd(d)} />
-                      )}
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ))}
+      {trimmedKeyword ? (
+        <ScrollView scrollY className='search-result'>
+          {matchedDishes.length === 0
+            ? <Text className='muted center'>没有找到「{keyword.trim()}」相关菜品</Text>
+            : matchedDishes.map(renderDish)}
           <View style={{ height: '200px' }} />
         </ScrollView>
-      </View>
+      ) : (
+        <View className='menu'>
+          <ScrollView scrollY className='cats'>
+            {menu?.categories.map((c) => {
+              const qty = c.dishes.reduce((s, d) => s + dishQty(items, d.id), 0)
+              return (
+                <View
+                  key={c.id}
+                  className={`cat ${activeCat === c.id ? 'active' : ''}`}
+                  onClick={() => { setActiveCat(c.id); setScrollTarget(`cat-${c.id}`) }}
+                >
+                  <Text>{c.name}</Text>
+                  {qty > 0 && <Text className='cat-badge'>{qty}</Text>}
+                </View>
+              )
+            })}
+          </ScrollView>
+
+          <ScrollView scrollY className='dishes' scrollIntoView={scrollTarget} scrollWithAnimation>
+            {menu && menu.categories.length === 0 && <Text className='muted center'>暂无菜品</Text>}
+            {menu?.categories.map((c) => (
+              <View key={c.id} id={`cat-${c.id}`}>
+                <Text className='cat-title'>{c.name}</Text>
+                {c.dishes.map(renderDish)}
+              </View>
+            ))}
+            <View style={{ height: '200px' }} />
+          </ScrollView>
+        </View>
+      )}
 
       <CartBar
         disabled={!current.storeOpen}

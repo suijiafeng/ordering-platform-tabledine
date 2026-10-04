@@ -56,8 +56,12 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
       return
     }
     ;[ids[index], ids[target]] = [ids[target], ids[index]]
-    await sortCategories(ids)
-    onChanged()
+    try {
+      await sortCategories(ids)
+      onChanged()
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；列表保持原顺序
+    }
   }
 
   const remove = (c: Category) => {

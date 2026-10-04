@@ -75,6 +75,7 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
           {dish.image ? <Image className='popup-img' src={imageUrl(dish.image)} mode='aspectFill' /> : <View className='popup-img' />}
           <View className='popup-title'>
             <Text className='popup-name'>{dish.name}</Text>
+            {dish.description && <Text className='popup-intro'>{dish.description}</Text>}
             <Text className='popup-price'>¥{formatYuan(unitPrice)}</Text>
             <Text className='popup-desc'>{[specDesc, addonDesc].filter(Boolean).join(' · ')}</Text>
           </View>

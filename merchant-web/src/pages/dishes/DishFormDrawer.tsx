@@ -19,6 +19,8 @@ interface FormValues {
   priceYuan: number
   image?: string | null
   onShelf: boolean
+  /** 分类内排序，数字越小越靠前；留空表示不改 */
+  sort?: number | null
   specGroups: SpecGroupForm[]
   addonGroups: AddonGroupForm[]
 }
@@ -68,6 +70,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
           priceYuan: fenToYuan(d.dish.price),
           image: d.dish.image,
           onShelf: d.dish.status === 1,
+          sort: d.dish.sort,
           specGroups: d.specGroups.map((g) => ({
             name: g.name,
             required: g.required,
@@ -97,6 +100,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       price: yuanToFen(v.priceYuan),
       image: v.image || null,
       status: v.onShelf ? 1 : 0,
+      sort: v.sort == null ? undefined : v.sort,
       specGroups: (v.specGroups ?? []).map((g) => ({
         name: g.name.trim(),
         required: g.required ?? true,
@@ -181,9 +185,14 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
                 <InputNumber min={0} max={100000} precision={2} style={{ width: '100%' }} prefix="¥" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={6}>
               <Form.Item name="onShelf" label="上架" valuePropName="checked">
                 <Switch />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="sort" label="排序" tooltip="同一分类内数字越小越靠前；留空为默认">
+                <InputNumber min={0} max={9999} precision={0} style={{ width: '100%' }} placeholder="默认" />
               </Form.Item>
             </Col>
             <Col span={24}>

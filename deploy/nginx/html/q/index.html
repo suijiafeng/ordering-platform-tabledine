@@ -2,19 +2,62 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>扫码点餐</title>
-  <style>
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #f6f6f6; color: #222; }
-    .box { max-width: 420px; margin: 20vh auto 0; padding: 32px 24px; background: #fff; border-radius: 16px; text-align: center; }
-    h1 { font-size: 20px; margin: 0 0 12px; }
-    p { color: #666; line-height: 1.7; margin: 0; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fffaf4">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
+  <title>店铺菜单 · 扫码点餐</title>
+  <link rel="stylesheet" href="/q/assets/menu.css">
+  <script src="/q/assets/menu.js" defer></script>
 </head>
 <body>
-  <div class="box">
-    <h1>请使用微信或支付宝扫码点餐</h1>
-    <p>打开微信或支付宝的「扫一扫」，<br>重新扫描桌上的二维码即可进入点餐页面。</p>
+  <div class="page">
+    <header class="store-header">
+      <p class="eyebrow">欢迎光临 · 堂食菜单</p>
+      <h1 id="store-name">看看今天吃什么</h1>
+      <div id="store-meta" class="store-meta" hidden>
+        <span id="table-code" class="table-tag"></span>
+        <span id="store-status" class="status-tag"></span>
+      </div>
+      <div id="store-info" class="store-info"></div>
+    </header>
+    <main>
+      <section id="load-state" class="state-card" role="status" aria-live="polite" aria-atomic="true">
+        <span class="state-icon" aria-hidden="true">☷</span>
+        <h2 id="state-title">正在打开菜单</h2>
+        <p id="state-message">稍等一下，美味马上呈现。</p>
+        <button id="retry" type="button" class="secondary-button" hidden>重新加载</button>
+      </section>
+      <div id="menu-content" hidden>
+        <p id="closed-notice" class="notice" hidden>店铺暂未营业，可以先看看菜单，营业后再来点餐。</p>
+        <div class="menu-toolbar">
+          <div class="menu-heading"><h2>本店菜单</h2><button id="refresh" type="button" class="text-button">刷新菜单</button></div>
+          <label class="search-box">
+            <span aria-hidden="true">⌕</span>
+            <input id="search" type="search" placeholder="搜索菜名或食材" aria-label="搜索菜名或食材" maxlength="80" autocomplete="off">
+          </label>
+          <nav id="categories" class="categories" aria-label="菜品分类"></nav>
+        </div>
+        <p id="result-count" class="result-count" role="status" aria-live="polite"></p>
+        <div id="menu-list"></div>
+        <div id="empty-state" class="state-card" hidden>
+          <h2 id="empty-title">菜单正在准备中</h2>
+          <p id="empty-message">请稍后刷新，或联系店员了解今日供应。</p>
+        </div>
+      </div>
+      <section id="order-guide" class="order-guide" tabindex="-1" aria-labelledby="guide-title">
+        <p class="eyebrow">想好吃什么了？</p>
+        <h2 id="guide-title">用小程序下单，更方便</h2>
+        <p>打开微信或支付宝的「扫一扫」，重新扫描桌上的二维码，即可进入小程序选菜、下单和支付。</p>
+        <div class="platforms"><span>微信扫一扫</span><span>支付宝扫一扫</span></div>
+        <p class="guide-note">本页仅供浏览菜单，价格与供应情况以下单时为准。</p>
+      </section>
+      <noscript><p class="notice">请开启浏览器 JavaScript 以查看菜单，或使用微信、支付宝扫描桌码点餐。</p></noscript>
+    </main>
+    <footer class="order-bar">
+      <div><strong>浏览菜单，轻松选餐</strong><span>下单支付请使用小程序</span></div>
+      <a class="primary-button" href="#order-guide">如何点餐 <span aria-hidden="true">↗</span></a>
+    </footer>
   </div>
 </body>
 </html>

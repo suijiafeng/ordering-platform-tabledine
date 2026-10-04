@@ -31,6 +31,8 @@ export default function DishesPage() {
   const beginLoad = useLatestRequest()
   // 限量输入框是非受控的：保存失败时递增该值强制重建，让显示值回到服务端的旧值
   const [stockReset, setStockReset] = useState(0)
+  // 正在请求中的开关（`status-{id}` / `soldout-{id}`），显示 loading 并防止重复点击
+  const [switching, setSwitching] = useState<string | null>(null)
 
   const loadDishes = useCallback(async () => {
     const isLatest = beginLoad()
@@ -91,9 +93,17 @@ export default function DishesPage() {
         isOwner ? (
           <Switch
             checked={v === 1}
+            loading={switching === `status-${r.id}`}
             onChange={async (checked) => {
-              await setDishStatus(r.id, checked ? 1 : 0)
-              patchLocal(r.id, { status: checked ? 1 : 0 })
+              setSwitching(`status-${r.id}`)
+              try {
+                await setDishStatus(r.id, checked ? 1 : 0)
+                patchLocal(r.id, { status: checked ? 1 : 0 })
+              } catch (e) {
+                ignoreShownError(e)  // 请求层已提示；开关保持原值
+              } finally {
+                setSwitching(null)
+              }
             }}
           />
         ) : v === 1 ? <Tag color="green">上架</Tag> : <Tag>下架</Tag>,
@@ -106,10 +116,18 @@ export default function DishesPage() {
         <Switch
           checked={v}
           checkedChildren="售罄"
+          loading={switching === `soldout-${r.id}`}
           onChange={async (checked) => {
-            await setDishSoldOut(r.id, checked)
-            patchLocal(r.id, { soldOut: checked })
-            message.success(checked ? '已沽清' : '已恢复售卖')
+            setSwitching(`soldout-${r.id}`)
+            try {
+              await setDishSoldOut(r.id, checked)
+              patchLocal(r.id, { soldOut: checked })
+              message.success(checked ? '已沽清' : '已恢复售卖')
+            } catch (e) {
+              ignoreShownError(e)  // 请求层已提示；开关保持原值
+            } finally {
+              setSwitching(null)
+            }
           }}
         />
       ),

@@ -4,11 +4,12 @@ import { Text, View } from '@tarojs/components'
 import { applyRefund, cancelOrder, withdrawRefund } from '../../api/order'
 import RefundPopup from '../../components/RefundPopup'
 import { formatYuan } from '../../utils/money'
-import { formatTime, orderStatusText, refundStatusText } from '../../utils/order'
+import { formatCountdown, formatTime, formatTimeWithSeconds, orderStatusText, refundStatusText, statusLogText } from '../../utils/order'
 import { payOrder } from '../../utils/pay'
 import './index.css'
 import { ignoreShownError } from '../../utils/errors'
 import { useOrderPolling } from '../../hooks/useOrderPolling'
+import { useCountdown } from '../../hooks/useCountdown'
 import { toast } from '../../utils/toast'
 
 /** 订单详情：状态与退款进度自动刷新（见 useOrderPolling）；支持继续支付、取消、申请退款、撤回退款 */
@@ -17,6 +18,8 @@ export default function OrderDetailPage() {
   const { order, loadFailed, fatal, refresh } = useOrderPolling(orderNo)
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
+  // 待支付倒计时：到期后立即刷新一次，让「已关闭」尽快呈现，不等下一轮轮询
+  const paySecondsLeft = useCountdown(order?.status === 'PENDING_PAY' ? order.payExpireAt : null, () => { void refresh() })
 
   const runOrderAction = async (fn: () => Promise<unknown>) => {
     if (busy) return
@@ -82,7 +85,11 @@ export default function OrderDetailPage() {
     <View className='od-page'>
       <View className='od-status'>
         <Text className='od-status-text'>{orderStatusText(order.status)}</Text>
-        {order.status === 'PENDING_PAY' && <Text className='od-sub'>请在 {formatTime(order.payExpireAt)} 前完成支付，超时将自动关闭</Text>}
+        {order.status === 'PENDING_PAY' && (
+          paySecondsLeft != null && paySecondsLeft > 0
+            ? <Text className='od-sub'>剩余 <Text className='od-countdown'>{formatCountdown(paySecondsLeft)}</Text> 完成支付，超时将自动关闭</Text>
+            : <Text className='od-sub'>支付已超时，订单即将关闭</Text>
+        )}
         {order.status === 'CANCELLED' && order.cancelReason && <Text className='od-sub'>{order.cancelReason}</Text>}
       </View>
 
@@ -122,11 +129,35 @@ export default function OrderDetailPage() {
                 <Text>¥{formatYuan(r.amount)}</Text>
                 <Text className='od-refund-status'>{refundStatusText(r.status)}</Text>
               </View>
+              {r.items.length > 0 && (
+                <Text className='od-row-desc'>
+                  退款菜品：{r.items.map((it) => `${it.dishName}${it.specDesc ? `（${it.specDesc}）` : ''} x${it.quantity}`).join('、')}
+                </Text>
+              )}
+              <Text className='od-row-desc'>申请时间：{formatTime(r.createdAt)}</Text>
               <Text className='od-row-desc'>原因：{r.reason}</Text>
               {r.rejectReason && <Text className='od-row-desc'>商家回复：{r.rejectReason}</Text>}
               {r.status === 'FAILED' && r.failReason && <Text className='od-row-desc'>失败原因：{r.failReason}，商家会重新处理</Text>}
             </View>
           ))}
+        </View>
+      )}
+
+      {order.logs.length > 0 && (
+        <View className='od-card'>
+          <Text className='od-store'>订单进度</Text>
+          <View className='od-timeline'>
+            {[...order.logs].reverse().map((l, idx) => (
+              <View key={`${l.toStatus}-${l.createdAt}-${idx}`} className={`od-step ${idx === 0 ? 'current' : ''}`}>
+                <View className='od-step-dot' />
+                <View className='od-step-body'>
+                  <Text className='od-step-title'>{statusLogText(l.toStatus, l.operatorType)}</Text>
+                  {l.remark && l.operatorType !== 'CUSTOMER' && <Text className='od-row-desc'>{l.remark}</Text>}
+                  <Text className='od-step-time'>{formatTimeWithSeconds(l.createdAt)}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
         </View>
       )}
 
