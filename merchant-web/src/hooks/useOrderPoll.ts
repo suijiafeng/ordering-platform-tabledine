@@ -69,7 +69,7 @@ export const usePollStore = create<PollState>((set) => ({
   consumeNew: () => set({ newArrived: 0 }),
 }))
 
-/** 提示音：Web Audio 合成两声短促的「叮咚」，不依赖音频文件 */
+/** 提示音：Web Audio 合成一声短提示，不依赖音频文件 */
 export function playNewOrderSound() {
   try {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
@@ -86,9 +86,8 @@ export function playNewOrderSound() {
       osc.start(ctx.currentTime + start)
       osc.stop(ctx.currentTime + start + dur + 0.05)
     }
-    beep(880, 0, 0.25)
-    beep(1175, 0.28, 0.35)
-    setTimeout(() => ctx.close().catch(() => {}), 1200)
+    beep(1046, 0, 0.35)
+    setTimeout(() => ctx.close().catch(() => {}), 700)
   } catch {
     // 浏览器不支持或被自动播放策略拦截
   }
