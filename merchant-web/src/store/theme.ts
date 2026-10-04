@@ -1,49 +1,60 @@
 import { create } from 'zustand'
 
-export type ThemeMode = 'light' | 'dark' | 'system'
-
 const STORAGE_KEY = 'merchant_theme'
 
-function loadMode(): ThemeMode {
+type Choice = 'light' | 'dark'
+
+function loadChoice(): Choice | null {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
-    return v === 'light' || v === 'dark' || v === 'system' ? v : 'system'
+    return v === 'light' || v === 'dark' ? v : null
   } catch {
-    return 'system'
+    return null
   }
 }
 
 const media = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
 
-function resolve(mode: ThemeMode): boolean {
-  return mode === 'dark' || (mode === 'system' && !!media?.matches)
-}
-
 interface ThemeState {
-  mode: ThemeMode
-  /** 实际生效是否深色（system 时跟随操作系统） */
+  /** 用户手动选择；null 表示从未选择，跟随操作系统 */
+  choice: Choice | null
+  /** 实际生效是否深色 */
   isDark: boolean
-  setMode: (mode: ThemeMode) => void
+  /** 在浅色 / 深色之间切换，并记住选择 */
+  toggle: () => void
 }
 
-/** 主题偏好：浅色 / 深色 / 跟随系统，持久化到 localStorage */
 export const useThemeStore = create<ThemeState>((set, get) => {
-  media?.addEventListener('change', () => {
-    if (get().mode === 'system') {
-      set({ isDark: resolve('system') })
+  // 用户没选过时与系统保持同步
+  const sync = () => {
+    if (get().choice === null && media && get().isDark !== media.matches) {
+      set({ isDark: media.matches })
     }
+  }
+  if (media) {
+    if (media.addEventListener) {
+      media.addEventListener('change', sync)
+    } else {
+      media.addListener(sync)  // Safari < 14
+    }
+  }
+  // 兜底：部分浏览器 / WebView 在后台切换系统主题时不派发 change，回到页面时再对一次
+  window.addEventListener('focus', sync)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') sync()
   })
-  const mode = loadMode()
+  const choice = loadChoice()
   return {
-    mode,
-    isDark: resolve(mode),
-    setMode: (mode) => {
+    choice,
+    isDark: choice ? choice === 'dark' : !!media?.matches,
+    toggle: () => {
+      const next: Choice = get().isDark ? 'light' : 'dark'
       try {
-        localStorage.setItem(STORAGE_KEY, mode)
+        localStorage.setItem(STORAGE_KEY, next)
       } catch {
         // 隐私模式下不持久化
       }
-      set({ mode, isDark: resolve(mode) })
+      set({ choice: next, isDark: next === 'dark' })
     },
   }
 })
