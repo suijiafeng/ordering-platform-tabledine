@@ -29,6 +29,7 @@ export default function Checkout() {
       return
     }
     setSubmitting(true)
+    let orderNo: string | null = null
     try {
       const order = await createOrder({
         clientRequestId: requestId.current,
@@ -42,17 +43,24 @@ export default function Checkout() {
         peopleCount: people,
         remark: remark.trim() || undefined,
       })
+      orderNo = order.orderNo
       requestId.current = `${Date.now()}${Math.random().toString(36).slice(2, 10)}`
       useCartStore.getState().clear()
-      const outcome = await payOrder(order.orderNo)
+      const outcome = await payOrder(orderNo)
       if (outcome === 'cancel') Taro.showToast({ title: '已取消支付，可在订单中继续支付', icon: 'none' })
       if (outcome === 'fail') Taro.showToast({ title: '支付未完成，可在订单中重试', icon: 'none' })
-      Taro.redirectTo({ url: `/pages/order-detail/index?orderNo=${order.orderNo}` })
     } catch {
-      // request 层已提示错误；订单可能已创建，保留 requestId 便于重试幂等
+      // 下单失败：request 层已提示，保留 requestId 便于重试幂等；
+      // 发起支付失败：订单已创建，下面照样跳到详情页，可在那里继续支付
     } finally {
       setSubmitting(false)
+      if (orderNo) Taro.redirectTo({ url: `/pages/order-detail/index?orderNo=${orderNo}` })
     }
+  }
+
+  if (submitting && items.length === 0) {
+    // 下单成功后购物车已清空、正在拉起支付：不要闪现「购物车是空的」
+    return <View className='co-empty'><Text>正在提交订单…</Text></View>
   }
 
   if (!table || items.length === 0) {

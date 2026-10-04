@@ -17,6 +17,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout>>()
   const visible = useRef(false)
 
@@ -24,8 +25,10 @@ export default function OrderDetailPage() {
     try {
       const o = await fetchOrder(orderNo, true)
       setOrder(o)
+      setLoadFailed(false)
       return o
     } catch {
+      setLoadFailed(true)
       return null
     }
   }, [orderNo])
@@ -34,8 +37,12 @@ export default function OrderDetailPage() {
     clearTimeout(timer.current)
     if (!visible.current) return
     const o = await load()
+    // 请求期间页面可能已离开（onUnload 不触发 onHide），不要再排下一次
+    if (!visible.current) return
     const hasActiveRefund = o?.refunds.some((r) => r.status === 'APPLYING' || r.status === 'PROCESSING')
-    if (o && (!['DONE', 'CLOSED', 'CANCELLED'].includes(o.status) || hasActiveRefund)) {
+    const settled = o != null && ['DONE', 'CLOSED', 'CANCELLED'].includes(o.status) && !hasActiveRefund
+    // 一次失败不终止轮询，下次自动恢复
+    if (!settled) {
       timer.current = setTimeout(poll, POLL_MS)
     }
   }, [load])
@@ -48,7 +55,13 @@ export default function OrderDetailPage() {
     visible.current = false
     clearTimeout(timer.current)
   })
-  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(
+    () => () => {
+      visible.current = false
+      clearTimeout(timer.current)
+    },
+    [],
+  )
 
   const run = async (fn: () => Promise<unknown>) => {
     if (busy) return
@@ -87,10 +100,25 @@ export default function OrderDetailPage() {
     })
   }
 
+  /** 从列表进来的就返回列表，否则替换当前页，避免 列表→详情→列表→… 把页面栈撑满 */
+  const goOrderList = () => {
+    const pages = Taro.getCurrentPages()
+    const prev = pages[pages.length - 2]
+    if (prev && String(prev.route ?? '').includes('order-list')) {
+      Taro.navigateBack()
+    } else {
+      Taro.redirectTo({ url: '/pages/order-list/index' })
+    }
+  }
+
   const onWithdraw = (refundNo: string) => run(() => withdrawRefund(refundNo))
 
   if (!order) {
-    return <View className='od-loading'><Text>加载中…</Text></View>
+    return (
+      <View className='od-loading'>
+        <Text>{loadFailed ? '加载失败，正在重试…' : '加载中…'}</Text>
+      </View>
+    )
   }
 
   const activeApplying = order.refunds.find((r) => r.status === 'APPLYING')
@@ -151,7 +179,7 @@ export default function OrderDetailPage() {
         {order.canCancel && <View className='od-btn' onClick={onCancel}><Text>取消订单</Text></View>}
         {activeApplying && <View className='od-btn' onClick={() => onWithdraw(activeApplying.refundNo)}><Text>撤回退款申请</Text></View>}
         {order.canApplyRefund && <View className='od-btn' onClick={() => setRefundOpen(true)}><Text>申请退款</Text></View>}
-        <View className='od-btn' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}><Text>全部订单</Text></View>
+        <View className='od-btn' onClick={goOrderList}><Text>全部订单</Text></View>
       </View>
       {refundOpen && <RefundPopup items={order.items} onClose={() => setRefundOpen(false)} onSubmit={onRefundSubmit} />}
     </View>

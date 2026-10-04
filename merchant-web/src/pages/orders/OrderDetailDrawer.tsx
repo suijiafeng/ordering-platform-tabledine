@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Descriptions, Divider, Drawer, Input, Modal, Space, Spin, Table, Tag, Timeline, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -31,6 +31,10 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
   const [refundOpen, setRefundOpen] = useState(false)
   const [reasonModal, setReasonModal] = useState<'reject' | 'cancel' | null>(null)
   const [reason, setReason] = useState('')
+  // 调用方传的是内联箭头函数，父页面每 5 秒轮询重渲染都会换一个新引用；
+  // 若把 onClose 放进 load 的依赖，抽屉就会每 5 秒清空重拉。用 ref 持有最新回调。
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   const load = useCallback(async () => {
     if (!orderNo) {
@@ -40,11 +44,11 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
     try {
       setOrder(await getOrder(orderNo))
     } catch {
-      onClose()
+      onCloseRef.current()
     } finally {
       setLoading(false)
     }
-  }, [orderNo, onClose])
+  }, [orderNo])
 
   useEffect(() => {
     if (open) {

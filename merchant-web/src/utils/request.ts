@@ -81,7 +81,11 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
     }
     return res.data.data
   } catch (e) {
-    const err = normalize(e)
+    let err = normalize(e)
+    if (config.responseType === 'blob' && e instanceof AxiosError && e.response?.data instanceof Blob) {
+      // 非 2xx 时 axios 仍按 blob 解析响应体，后端的 JSON 错误（含 40101）要从 Blob 里读出来
+      err = (await blobToApiError(e.response.data, e.response.status)) ?? err
+    }
     const isAuthCall = String(config.url ?? '').includes('/auth/')
     if (err.code === UNAUTHORIZED && !retried && !isAuthCall) {
       try {
@@ -100,6 +104,21 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
     }
     throw err
   }
+}
+
+async function blobToApiError(blob: Blob, status: number): Promise<ApiError | null> {
+  if (!blob.type.includes('json')) {
+    return null
+  }
+  try {
+    const body = JSON.parse(await blob.text()) as Partial<ApiResult<unknown>>
+    if (typeof body.code === 'number') {
+      return new ApiError(body.code, body.message || '请求失败', status)
+    }
+  } catch {
+    // 不是合法 JSON，走通用错误
+  }
+  return null
 }
 
 function normalize(e: unknown): ApiError {

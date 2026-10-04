@@ -71,9 +71,15 @@ export function playNewOrderSound() {
 export function useOrderPoll(intervalMs = 5000) {
   const { counts, setCounts, soundEnabled } = usePollStore()
   const sinceRef = useRef<string | null>(null)
+  // 后端慢于轮询间隔时，不让两次请求重叠：否则同一批新订单会被计数 / 提示两次，since 也可能被旧响应回拨
+  const inFlight = useRef(false)
   const [error, setError] = useState(false)
 
   const tick = useCallback(async () => {
+    if (inFlight.current) {
+      return
+    }
+    inFlight.current = true
     try {
       const c = await newOrderCount(sinceRef.current)
       setError(false)
@@ -88,6 +94,8 @@ export function useOrderPoll(intervalMs = 5000) {
       setCounts(c)
     } catch {
       setError(true)
+    } finally {
+      inFlight.current = false
     }
   }, [setCounts])
 

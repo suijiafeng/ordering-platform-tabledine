@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import Taro, { useDidShow, usePullDownRefresh, useReachBottom } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 import { fetchOrders } from '../../api/order'
@@ -16,17 +16,27 @@ export default function OrderList() {
   const [total, setTotal] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
+  // 刷新与加载更多可能交错：只采纳最后一次发起的请求
+  const seq = useRef(0)
 
   const load = useCallback(async (p: number) => {
+    const mine = ++seq.current
     setLoading(true)
     try {
       const res = await fetchOrders(p, PAGE_SIZE)
-      setList((old) => (p === 1 ? res.list : [...old, ...res.list]))
+      if (mine !== seq.current) return
+      setList((old) => {
+        if (p === 1) return res.list
+        const seen = new Set(old.map((o) => o.orderNo))
+        return [...old, ...res.list.filter((o) => !seen.has(o.orderNo))]
+      })
       setPage(p)
       setTotal(res.total)
     } finally {
-      setLoading(false)
-      setLoaded(true)
+      if (mine === seq.current) {
+        setLoading(false)
+        setLoaded(true)
+      }
       Taro.stopPullDownRefresh()
     }
   }, [])
