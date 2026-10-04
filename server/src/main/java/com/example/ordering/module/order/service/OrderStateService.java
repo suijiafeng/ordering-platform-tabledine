@@ -166,10 +166,12 @@ public class OrderStateService {
     /** 回补库存：未支付关闭、待接单阶段取消时调用；已开始制作后的退款不回补 */
     public void restoreStock(Long orderId) {
         for (OrderItem item : items(orderId)) {
+            // 不超过每日限量：跨天的旧订单关单 / 取消时，今日剩余已在 0 点重置，回补会超出限量
             dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                    .setSql("stock_quantity = stock_quantity + " + item.getQuantity())
+                    .setSql("stock_quantity = LEAST(stock_quantity + " + item.getQuantity() + ", daily_stock)")
                     .eq(Dish::getId, item.getDishId())
-                    .isNotNull(Dish::getStockQuantity));
+                    .isNotNull(Dish::getStockQuantity)
+                    .isNotNull(Dish::getDailyStock));
         }
     }
 }

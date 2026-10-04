@@ -21,6 +21,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    com.example.ordering.module.menu.service.MerchantMenuService menuService;
+
     // ==================== 下单 ====================
 
     @Test
@@ -118,6 +121,54 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         }
     }
 
+    @Test
+    void dishInDisabledCategoryCannotBeOrdered() throws Exception {
+        String customer = customerToken("WECHAT", "mock:cat-" + UUID.randomUUID());
+        jdbc.update("UPDATE category SET status = 0 WHERE id = 1");  // 招牌热菜（红烧肉、番茄炒蛋）
+        try {
+            mvc.perform(authed(post("/api/v1/c/orders"), customer).contentType(MediaType.APPLICATION_JSON)
+                            .content(toJson(orderBody(UUID.randomUUID().toString(), List.of(item(1, List.of(), List.of(), 1))))))
+                    .andExpect(status().isConflict());
+        } finally {
+            jdbc.update("UPDATE category SET status = 1 WHERE id = 1");
+        }
+    }
+
+    @Test
+    void dailyStockResetsAtMidnightAndRestoreNeverExceedsLimit() throws Exception {
+        String owner = ownerToken();
+        String customer = customerToken("WECHAT", "mock:daily-" + UUID.randomUUID());
+        mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
+                .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 3))).andExpect(status().isOk());
+        try {
+            String orderNo = createOrder(customer, List.of(item(2, List.of(), List.of(), 2)));
+            assertThat(stock(2)).isEqualTo(1);
+            // 0 点重置：今日剩余回到每日限量
+            menuService.resetDailyStock();
+            assertThat(stock(2)).isEqualTo(3);
+            // 昨天的待支付订单今天被关闭：回补不能超过每日限量
+            mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/cancel"), customer)).andExpect(status().isOk());
+            assertThat(stock(2)).isEqualTo(3);
+        } finally {
+            mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":null}")).andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void customerOrderDetailHidesStaffIdentity() throws Exception {
+        String customer = customerToken("WECHAT", "mock:hide-" + UUID.randomUUID());
+        String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
+        payMock(customer, orderNo);
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), staffToken())).andExpect(status().isOk());
+        JsonNode logs = getData("/api/v1/c/orders/" + orderNo, customer).path("logs");
+        for (JsonNode l : logs) {
+            assertThat(l.path("operatorName").isNull()).isTrue();
+            assertThat(l.path("operatorId").isNull()).isTrue();
+        }
+        assertThat(getData("/api/v1/m/orders/" + orderNo, ownerToken()).path("logs").findValuesAsText("operatorName")).contains("店员小王");
+    }
+
     // ==================== 支付 + 履约 ====================
 
     @Test
@@ -161,11 +212,13 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/deliver"), staff))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DONE"));
 
-        // 顾客端看到状态与日志（含操作人）
+        // 顾客端看到状态与日志（操作人类型可见，员工身份不对顾客暴露；商家端可见操作人）
         JsonNode detail = getData("/api/v1/c/orders/" + orderNo, customer);
         assertThat(detail.path("status").asText()).isEqualTo("DONE");
         assertThat(detail.path("logs").size()).isGreaterThanOrEqualTo(5);
-        assertThat(detail.path("logs").get(2).path("operatorName").asText()).isEqualTo("店员小王");
+        assertThat(detail.path("logs").get(2).path("operatorType").asText()).isEqualTo("MERCHANT");
+        assertThat(detail.path("logs").get(2).path("operatorName").isNull()).isTrue();
+        assertThat(getData("/api/v1/m/orders/" + orderNo, owner).path("logs").get(2).path("operatorName").asText()).isEqualTo("店员小王");
         assertThat(detail.path("canApplyRefund").asBoolean()).isTrue();
 
         // 整单取消只有店主可以，且已完成订单不能取消

@@ -155,6 +155,30 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void priceMustStayPositiveForEverySelection() throws Exception {
+        String owner = ownerToken();
+        long categoryId = createCategory(owner, "价格校验-" + System.nanoTime());
+        // 0 元菜品（渠道不受理 0 元支付）
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dishBody(categoryId, "零元", 0L))))
+                .andExpect(status().isUnprocessableEntity());
+        // 必选规格把单价减成负数：300 + (-500)
+        Map<String, Object> neg = dishBody(categoryId, "负规格", 300L);
+        neg.put("specGroups", List.of(Map.of("name", "份量", "required", true,
+                "items", List.of(Map.of("name", "小份", "priceDelta", -500), Map.of("name", "大份", "priceDelta", 0)))));
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(neg)))
+                .andExpect(status().isUnprocessableEntity());
+        // 基础价 0 + 必选规格全为正价：允许（按规格定价）
+        Map<String, Object> bySize = dishBody(categoryId, "按杯型定价", 0L);
+        bySize.put("specGroups", List.of(Map.of("name", "杯型", "required", true,
+                "items", List.of(Map.of("name", "中杯", "priceDelta", 1200), Map.of("name", "大杯", "priceDelta", 1500)))));
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(bySize)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void otherStoresDataIsInvisible() throws Exception {
         jdbc.update("INSERT INTO store (id, name) VALUES (900, '隔壁店') ON CONFLICT (id) DO NOTHING");
         jdbc.update("INSERT INTO category (id, store_id, name) VALUES (900, 900, '隔壁分类') ON CONFLICT (id) DO NOTHING");

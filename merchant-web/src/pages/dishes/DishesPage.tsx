@@ -114,33 +114,43 @@ export default function DishesPage() {
       ),
     },
     {
-      title: '今日限量',
-      dataIndex: 'stockQuantity',
-      width: 140,
-      render: (v: number | null, r) =>
-        isOwner ? (
-          <InputNumber
-            key={`${r.id}-${v ?? 'none'}-${stockReset}`}
-            size="small"
-            min={0}
-            max={100000}
-            placeholder="不限"
-            defaultValue={v ?? undefined}
-            style={{ width: 100 }}
-            onBlur={async (e) => {
-              const raw = e.target.value.trim()
-              const next = raw === '' ? null : Number(raw)
-              if (next !== v && (next === null || Number.isInteger(next))) {
-                try {
-                  await setDishStock(r.id, next)
-                  patchLocal(r.id, { stockQuantity: next })
-                } catch {
-                  setStockReset((t) => t + 1)  // 已统一提示；回滚显示值
+      title: '每日限量',
+      dataIndex: 'dailyStock',
+      width: 150,
+      render: (v: number | null, r) => {
+        // 输入框是店主设置的每日限量；下方是今日剩余（下单扣减，每天 0 点重置）
+        const remaining = v != null ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>今日剩余 {r.stockQuantity ?? 0}</Typography.Text> : null
+        if (!isOwner) {
+          return v == null ? '不限' : <Space direction="vertical" size={0}><span>{v}</span>{remaining}</Space>
+        }
+        return (
+          <Space direction="vertical" size={0}>
+            <InputNumber
+              key={`${r.id}-${v ?? 'none'}-${stockReset}`}
+              size="small"
+              min={0}
+              max={100000}
+              placeholder="不限"
+              defaultValue={v ?? undefined}
+              style={{ width: 100 }}
+              onBlur={async (e) => {
+                const raw = e.target.value.trim()
+                const next = raw === '' ? null : Number(raw)
+                if (next !== v && (next === null || Number.isInteger(next))) {
+                  try {
+                    await setDishStock(r.id, next)
+                    // 设置限量同时把今日剩余重置为该值
+                    patchLocal(r.id, { dailyStock: next, stockQuantity: next })
+                  } catch {
+                    setStockReset((t) => t + 1)  // 已统一提示；回滚显示值
+                  }
                 }
-              }
-            }}
-          />
-        ) : (v ?? '不限'),
+              }}
+            />
+            {remaining}
+          </Space>
+        )
+      },
     },
     ...(isOwner
       ? [{

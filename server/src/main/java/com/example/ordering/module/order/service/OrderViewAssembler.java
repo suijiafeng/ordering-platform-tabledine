@@ -91,8 +91,11 @@ public class OrderViewAssembler {
                 items.stream().map(OrderItemView::of).toList(),
                 payment == null ? null : PaymentView.of(payment),
                 refunds,
-                logs.stream().map(l -> new OrderStatusLogView(l.getFromStatus(), l.getToStatus(), l.getOperatorType(),
-                        l.getOperatorId(), l.getOperatorId() == null ? null : staffNames.get(l.getOperatorId()), l.getRemark(), l.getCreatedAt())).toList(),
+                logs.stream().map(l -> customerView
+                        // 顾客端不暴露员工 ID / 姓名
+                        ? new OrderStatusLogView(l.getFromStatus(), l.getToStatus(), l.getOperatorType(), null, null, l.getRemark(), l.getCreatedAt())
+                        : new OrderStatusLogView(l.getFromStatus(), l.getToStatus(), l.getOperatorType(),
+                                l.getOperatorId(), l.getOperatorId() == null ? null : staffNames.get(l.getOperatorId()), l.getRemark(), l.getCreatedAt())).toList(),
                 canCancel, canApplyRefund);
     }
 

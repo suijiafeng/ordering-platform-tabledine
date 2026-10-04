@@ -38,6 +38,9 @@ public class Dish {
     /** 每日限量库存，null = 不限量；允许更新为 null */
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Integer stockQuantity;
+    /** 店主设置的每日限量（null 不限量）；每天 0 点 stock_quantity 重置为此值 */
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private Integer dailyStock;
     @TableLogic
     private Integer deleted;
     @TableField(fill = FieldFill.INSERT)

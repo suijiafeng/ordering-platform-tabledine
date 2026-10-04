@@ -147,14 +147,22 @@ public class MerchantMenuService {
         validateGroups(req);
         Dish dish = requireDish(id);
         requireCategory(req.categoryId());
-        applyBasic(dish, req);
+        // 定向更新基础字段：整行 updateById 会把读到的旧库存写回，覆盖期间顾客下单扣减的库存（超卖）
+        var w = Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getCategoryId, req.categoryId())
+                .set(Dish::getName, req.name().trim())
+                .set(Dish::getDescription, StringUtils.hasText(req.description()) ? req.description().trim() : null)
+                .set(Dish::getPrice, req.price())
+                .set(Dish::getImage, StringUtils.hasText(req.image()) ? req.image().trim() : null)
+                .set(Dish::getUpdatedAt, java.time.OffsetDateTime.now())
+                .eq(Dish::getId, dish.getId());
         if (req.sort() != null) {
-            dish.setSort(req.sort());
+            w.set(Dish::getSort, req.sort());
         }
         if (req.status() != null) {
-            dish.setStatus(req.status());
+            w.set(Dish::getStatus, req.status());
         }
-        dishMapper.updateById(dish);
+        dishMapper.update(null, w);
         removeGroups(id);
         saveGroups(id, req);
         return getDish(id);
@@ -168,21 +176,36 @@ public class MerchantMenuService {
     }
 
     public void updateStatus(Long id, int status) {
-        Dish dish = requireDish(id);
-        dish.setStatus(status);
-        dishMapper.updateById(dish);
+        requireDish(id);
+        dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getStatus, status).set(Dish::getUpdatedAt, java.time.OffsetDateTime.now()).eq(Dish::getId, id));
     }
 
     public void updateSoldOut(Long id, boolean soldOut) {
-        Dish dish = requireDish(id);
-        dish.setIsSoldOut(soldOut);
-        dishMapper.updateById(dish);
+        requireDish(id);
+        dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getIsSoldOut, soldOut).set(Dish::getUpdatedAt, java.time.OffsetDateTime.now()).eq(Dish::getId, id));
     }
 
-    public void updateStock(Long id, Integer stockQuantity) {
-        Dish dish = requireDish(id);
-        dish.setStockQuantity(stockQuantity);
-        dishMapper.updateById(dish);
+    /** 设置每日限量：同时把今日剩余重置为该值；null 取消限量 */
+    public void updateStock(Long id, Integer dailyStock) {
+        requireDish(id);
+        dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getDailyStock, dailyStock)
+                .set(Dish::getStockQuantity, dailyStock)
+                .set(Dish::getUpdatedAt, java.time.OffsetDateTime.now())
+                .eq(Dish::getId, id));
+    }
+
+    /** 每天 0 点（Asia/Shanghai）把今日剩余重置为每日限量；所有门店（定时任务无门店上下文） */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 0 * * *", zone = "Asia/Shanghai")
+    public void resetDailyStock() {
+        int rows = dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .setSql("stock_quantity = daily_stock")
+                .isNotNull(Dish::getDailyStock));
+        if (rows > 0) {
+            org.slf4j.LoggerFactory.getLogger(MerchantMenuService.class).info("已重置 {} 道菜的每日限量", rows);
+        }
     }
 
     // ==================== 内部方法 ====================
@@ -196,6 +219,19 @@ public class MerchantMenuService {
     }
 
     static void validateGroups(DishSaveRequest req) {
+        // 任意合法选择下单价都必须 ≥ 1 分：负价规格会让订单总额变负（违反约束 500）或抵扣其他菜品，
+        // 0 元订单渠道不受理（永远无法支付且占着库存）。加料价不能为负，只需看规格组的最低加价
+        long minUnit = req.price();
+        if (req.specGroups() != null) {
+            for (DishSaveRequest.SpecGroupInput g : req.specGroups()) {
+                long minDelta = g.items().stream().mapToLong(i -> i.priceDelta() == null ? 0 : i.priceDelta()).min().orElse(0);
+                boolean required = g.required() == null || g.required();
+                minUnit += required ? minDelta : Math.min(0, minDelta);
+            }
+        }
+        if (minUnit < 1) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "菜品最低售价（基础价 + 最便宜的规格）必须大于 0");
+        }
         if (req.specGroups() != null) {
             for (DishSaveRequest.SpecGroupInput g : req.specGroups()) {
                 long defaults = g.items().stream().filter(i -> Boolean.TRUE.equals(i.isDefault())).count();

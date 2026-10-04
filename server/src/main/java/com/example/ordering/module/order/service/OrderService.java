@@ -61,6 +61,7 @@ public class OrderService {
     private final DishMapper dishMapper;
     private final DiningTableMapper tableMapper;
     private final MenuGroupLoader groupLoader;
+    private final com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper;
     private final StoreService storeService;
     private final OrderStateService orderStateService;
     private final OrderViewAssembler assembler;
@@ -69,7 +70,8 @@ public class OrderService {
     private final TransactionTemplate tx;
 
     public OrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper, DishMapper dishMapper,
-                        DiningTableMapper tableMapper, MenuGroupLoader groupLoader, StoreService storeService,
+                        DiningTableMapper tableMapper, MenuGroupLoader groupLoader,
+                        com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper, StoreService storeService,
                         OrderStateService orderStateService, OrderViewAssembler assembler, PayService payService,
                         RefundService refundService, TransactionTemplate tx) {
         this.orderMapper = orderMapper;
@@ -77,6 +79,7 @@ public class OrderService {
         this.dishMapper = dishMapper;
         this.tableMapper = tableMapper;
         this.groupLoader = groupLoader;
+        this.categoryMapper = categoryMapper;
         this.storeService = storeService;
         this.orderStateService = orderStateService;
         this.assembler = assembler;
@@ -129,6 +132,12 @@ public class OrderService {
         Map<Long, Dish> dishes = dishMapper.selectList(Wrappers.<Dish>lambdaQuery()
                         .eq(Dish::getStoreId, store.getId()).in(Dish::getId, dishIds)).stream()
                 .collect(Collectors.toMap(Dish::getId, Function.identity()));
+        // 分类被停用（顾客菜单已隐藏）的菜品同样不能下单
+        Set<Long> categoryIds = dishes.values().stream().map(Dish::getCategoryId).collect(Collectors.toSet());
+        Set<Long> enabledCategories = categoryIds.isEmpty() ? Set.of() : categoryMapper.selectBatchIds(categoryIds).stream()
+                .filter(c -> c.getStatus() != null && c.getStatus() == 1)
+                .map(com.example.ordering.module.menu.entity.Category::getId)
+                .collect(Collectors.toSet());
         Map<Long, List<SpecGroupView>> specs = groupLoader.loadSpecGroups(dishIds);
         Map<Long, List<AddonGroupView>> addons = groupLoader.loadAddonGroups(dishIds);
 
@@ -136,7 +145,8 @@ public class OrderService {
         long total = 0;
         for (CreateOrderRequest.Item in : req.items()) {
             Dish dish = dishes.get(in.dishId());
-            if (dish == null || dish.getStatus() == null || dish.getStatus() != Dish.STATUS_ON_SHELF) {
+            if (dish == null || dish.getStatus() == null || dish.getStatus() != Dish.STATUS_ON_SHELF
+                    || !enabledCategories.contains(dish.getCategoryId())) {
                 throw new BusinessException(ErrorCode.CONFLICT, "菜品已下架，请刷新菜单");
             }
             if (dish.soldOutForCustomer()) {
@@ -229,6 +239,10 @@ public class OrderService {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "「" + dish.getName() + "」的加料选择无效，请刷新菜单");
         }
 
+        if (unit < 1) {
+            // 菜品保存时已校验；这里兜底历史数据，避免负价抵扣其他菜品或产生无法支付的 0 元订单
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "「" + dish.getName() + "」价格配置异常，请联系店员");
+        }
         OrderItem item = new OrderItem();
         item.setDishId(dish.getId());
         item.setDishName(dish.getName());

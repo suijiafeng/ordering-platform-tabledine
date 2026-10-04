@@ -564,7 +564,9 @@ public class RefundService {
         }
         Store store = storeService.getRequired(order.getStoreId());
         int hours = store.getAfterSaleHours() == null ? 24 : store.getAfterSaleHours();
-        return order.getCreatedAt().plusHours(hours).isAfter(OffsetDateTime.now());
+        // 从送达（完成）时间起算；老数据无 doneAt 时退回下单时间
+        OffsetDateTime base = order.getDoneAt() != null ? order.getDoneAt() : order.getCreatedAt();
+        return base.plusHours(hours).isAfter(OffsetDateTime.now());
     }
 
     private Payment successPayment(Refund refund, Order order) {

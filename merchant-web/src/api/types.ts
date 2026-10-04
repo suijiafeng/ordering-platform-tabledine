@@ -67,7 +67,10 @@ export interface DishItem {
   sort: number
   status: number
   soldOut: boolean
+  /** 今日剩余（每天 0 点重置为 dailyStock） */
   stockQuantity: number | null
+  /** 每日限量，null 不限量 */
+  dailyStock: number | null
 }
 
 export interface SpecItem {
