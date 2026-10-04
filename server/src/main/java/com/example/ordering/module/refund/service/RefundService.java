@@ -7,9 +7,7 @@ import com.example.ordering.common.ErrorCode;
 import com.example.ordering.common.PageResult;
 import com.example.ordering.config.AppProperties;
 import com.example.ordering.module.order.entity.Order;
-import com.example.ordering.module.order.entity.OrderItem;
 import com.example.ordering.module.order.entity.OrderStatus;
-import com.example.ordering.module.order.mapper.OrderItemMapper;
 import com.example.ordering.module.order.mapper.OrderMapper;
 import com.example.ordering.module.order.service.OrderNoGenerator;
 import com.example.ordering.module.order.service.OrderStateService;
@@ -18,8 +16,6 @@ import com.example.ordering.module.pay.channel.PayChannelRegistry;
 import com.example.ordering.module.pay.channel.RefundChannelRequest;
 import com.example.ordering.module.pay.channel.RefundResult;
 import com.example.ordering.module.pay.entity.Payment;
-import com.example.ordering.module.pay.entity.PaymentStatus;
-import com.example.ordering.module.pay.mapper.PaymentMapper;
 import com.example.ordering.module.refund.dto.CustomerRefundRequest;
 import com.example.ordering.module.refund.dto.MerchantRefundRequest;
 import com.example.ordering.module.refund.dto.RefundView;
@@ -30,8 +26,6 @@ import com.example.ordering.module.refund.entity.RefundStatus;
 import com.example.ordering.module.refund.entity.RefundType;
 import com.example.ordering.module.refund.mapper.RefundItemMapper;
 import com.example.ordering.module.refund.mapper.RefundMapper;
-import com.example.ordering.module.staff.entity.Staff;
-import com.example.ordering.module.staff.mapper.StaffMapper;
 import com.example.ordering.module.store.entity.Store;
 import com.example.ordering.module.store.service.StoreService;
 import com.example.ordering.security.LoginUser;
@@ -48,9 +42,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -86,26 +77,26 @@ public class RefundService {
     private final RefundMapper refundMapper;
     private final RefundItemMapper refundItemMapper;
     private final OrderMapper orderMapper;
-    private final OrderItemMapper orderItemMapper;
-    private final PaymentMapper paymentMapper;
-    private final StaffMapper staffMapper;
     private final OrderStateService orderStateService;
     private final StoreService storeService;
     private final PayChannelRegistry channels;
+    private final RefundCalculator calculator;
+    private final RefundLedger ledger;
+    private final RefundViewAssembler viewAssembler;
+    private final String notifyBaseUrl;
     /** 独立新事务（REQUIRES_NEW）：渠道结果回写、店主人工处理时使用，见构造器说明 */
     private final TransactionTemplate requiresNewTx;
-    private final String notifyBaseUrl;
 
     public RefundService(RefundMapper refundMapper, RefundItemMapper refundItemMapper, OrderMapper orderMapper,
-                         OrderItemMapper orderItemMapper, PaymentMapper paymentMapper, StaffMapper staffMapper,
                          OrderStateService orderStateService, StoreService storeService,
-                         PayChannelRegistry channels, PlatformTransactionManager txManager, AppProperties appProperties) {
+                         PayChannelRegistry channels, PlatformTransactionManager txManager, AppProperties appProperties,
+                         RefundCalculator calculator, RefundLedger ledger, RefundViewAssembler viewAssembler) {
+        this.calculator = calculator;
+        this.ledger = ledger;
+        this.viewAssembler = viewAssembler;
         this.refundMapper = refundMapper;
         this.refundItemMapper = refundItemMapper;
         this.orderMapper = orderMapper;
-        this.orderItemMapper = orderItemMapper;
-        this.paymentMapper = paymentMapper;
-        this.staffMapper = staffMapper;
         this.orderStateService = orderStateService;
         this.storeService = storeService;
         this.channels = channels;
@@ -118,14 +109,17 @@ public class RefundService {
 
     // ==================== 顾客端 ====================
 
-    /** 顾客申请退款：制作中 / 待送餐 / 已完成（售后时限内）；待接单请走取消订单（自动退款） */
+    /**
+     * 顾客申请退款：制作中 / 待送餐 / 已完成（售后时限内）；待接单请走取消订单（自动退款）
+     * <p>事务：数据库事务（@Transactional），只建退款申请，不调用渠道
+     */
     @Transactional
     public RefundView customerApply(Order order, CustomerRefundRequest req) {
         if (!(order.getStatus() == OrderStatus.MAKING || order.getStatus() == OrderStatus.READY
                 || order.getStatus() == OrderStatus.DONE)) {
             throw new BusinessException(ErrorCode.CONFLICT, "当前订单状态不支持申请退款");
         }
-        if (!withinAfterSaleWindow(order)) {
+        if (!calculator.withinAfterSaleWindow(order, afterSaleHours(order))) {
             throw new BusinessException(ErrorCode.CONFLICT, "已超过售后申请时限");
         }
         List<RefundItem> items = new ArrayList<>();
@@ -136,14 +130,17 @@ public class RefundService {
             amount = order.refundableAmount();
         } else {
             type = RefundType.ITEM;
-            amount = buildItems(order, req.items(), items);
+            amount = calculator.buildItems(orderStateService.items(order.getId()), req.items(), items);
         }
         Refund refund = create(order, type, RefundInitiator.CUSTOMER, amount, req.reason(), null,
                 items, RefundStatus.APPLYING);
         return view(refund, order);
     }
 
-    /** 顾客撤回申请：仅 APPLYING */
+    /**
+     * 顾客撤回申请：仅 APPLYING
+     * <p>事务：数据库事务（@Transactional）
+     */
     @Transactional
     public RefundView customerWithdraw(String refundNo, Long customerId) {
         Refund refund = getByNo(refundNo);
@@ -158,7 +155,7 @@ public class RefundService {
     public List<RefundView> listByOrder(Order order) {
         List<Refund> refunds = refundMapper.selectList(Wrappers.<Refund>lambdaQuery()
                 .eq(Refund::getOrderId, order.getId()).orderByDesc(Refund::getId));
-        return views(refunds, Map.of(order.getId(), order));
+        return viewAssembler.views(refunds, Map.of(order.getId(), order));
     }
 
     /** 顾客端视图：不暴露员工身份与渠道原始错误信息 */
@@ -172,7 +169,7 @@ public class RefundService {
                 || order.getStatus() == OrderStatus.DONE)) {
             return false;
         }
-        return withinAfterSaleWindow(order) && order.refundableAmount() > 0 && !hasActiveRefund(order.getId());
+        return calculator.withinAfterSaleWindow(order, afterSaleHours(order)) && order.refundableAmount() > 0 && !hasActiveRefund(order.getId());
     }
 
     // ==================== 商家端 ====================
@@ -196,7 +193,7 @@ public class RefundService {
         List<Long> orderIds = result.getRecords().stream().map(Refund::getOrderId).distinct().toList();
         Map<Long, Order> orders = orderIds.isEmpty() ? Map.of()
                 : orderMapper.selectBatchIds(orderIds).stream().collect(Collectors.toMap(Order::getId, Function.identity()));
-        List<RefundView> views = views(result.getRecords(), orders);
+        List<RefundView> views = viewAssembler.views(result.getRecords(), orders);
         return new PageResult<>(views, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
@@ -208,6 +205,7 @@ public class RefundService {
     /**
      * 商家主动退款：FULL / ITEM 任意员工可对 制作中 / 待送餐 / 已完成 订单操作；
      * CUSTOM 仅店主。直接进入 PROCESSING 并向渠道发起。
+     * <p>事务：数据库事务建退款单；向渠道提交在事务提交之后
      */
     @Transactional
     public RefundView merchantInitiate(Order order, MerchantRefundRequest req, LoginUser staff) {
@@ -229,7 +227,7 @@ public class RefundService {
                 if (req.items() == null || req.items().isEmpty()) {
                     throw new BusinessException(ErrorCode.PARAM_INVALID, "请选择退款菜品");
                 }
-                yield buildItems(order, req.items(), items);
+                yield calculator.buildItems(orderStateService.items(order.getId()), req.items(), items);
             }
             case CUSTOM -> {
                 if (req.amount() == null) {
@@ -244,7 +242,10 @@ public class RefundService {
         return view(refund, order);
     }
 
-    /** 店主同意顾客申请 → PROCESSING 并向渠道发起 */
+    /**
+     * 店主同意顾客申请 → PROCESSING 并向渠道发起
+     * <p>事务：数据库事务改为 PROCESSING；向渠道提交在事务提交之后
+     */
     @Transactional
     public RefundView approve(String refundNo, Long operatorId) {
         Refund refund = getByNo(refundNo);
@@ -259,6 +260,7 @@ public class RefundService {
         return view(refund, order);
     }
 
+    /** 事务：数据库事务（@Transactional） */
     @Transactional
     public RefundView reject(String refundNo, String reason, Long operatorId) {
         Refund refund = getByNo(refundNo);
@@ -271,6 +273,7 @@ public class RefundService {
      * 重试：沿用同一 refund_no，渠道按单号幂等。
      * 允许对「处理中」的退款重试，但先向渠道确认：渠道已成功则直接记成功；渠道仍在处理 / 无法确认则拒绝；
      * 渠道明确失败或查无此单才重新提交。这样持续性故障（配置错误等）下店主也有出口，又不会重复出款。
+     * <p>事务：先向渠道查询（事务外），再用独立新事务改状态；提交渠道在事务提交之后
      */
     public RefundView retry(String refundNo, Long operatorId) {
         Refund refund = getByNo(refundNo);
@@ -318,6 +321,7 @@ public class RefundService {
     /**
      * 线上退款失败后转线下退款并登记（计入已退金额）。
      * 登记前先向渠道确认：渠道其实已退成功（例如结果通知晚到）时自动改为退款成功，避免线上线下各退一次。
+     * <p>事务：先向渠道查询（事务外），再用独立新事务登记线下退款并入账
      */
     public RefundView offline(String refundNo, String remark, Long operatorId) {
         Refund refund = getByNo(refundNo);
@@ -335,7 +339,7 @@ public class RefundService {
                     w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
                             .set(Refund::getFailReason, truncate("线下退款：" + remark, 255))
                             .set(Refund::getOperatorId, operatorId));
-            applyRefunded(refund, order, null);
+            ledger.applyRefunded(refund, order, null);
             return view(refund, orderStateService.getById(refund.getOrderId()));
         });
     }
@@ -375,14 +379,17 @@ public class RefundService {
         return refund;
     }
 
-    /** 向渠道发起退款并回写结果（事务外调用） */
+    /**
+     * 向渠道发起退款并回写结果（事务外调用）
+     * <p>事务：无（调用渠道）；结果回写走 applyResult 的独立新事务
+     */
     public void submitToChannel(Long refundId) {
         Refund refund = refundMapper.selectById(refundId);
         if (refund == null || refund.getStatus() != RefundStatus.PROCESSING) {
             return;
         }
         Order order = orderStateService.getById(refund.getOrderId());
-        Payment payment = successPayment(refund, order);
+        Payment payment = ledger.paymentOf(refund, order);
         if (payment == null) {
             applyResult(refund, RefundResult.failed("找不到成功的支付记录"));
             return;
@@ -407,7 +414,10 @@ public class RefundService {
         applyResult(refund, result);
     }
 
-    /** 主动查询渠道退款结果（定时补偿） */
+    /**
+     * 主动查询渠道退款结果（定时补偿）
+     * <p>事务：无（调用渠道）；结果回写走 applyResult 的独立新事务
+     */
     public void queryAndSync(Refund refund) {
         RefundResult result = queryChannel(refund);
         switch (result.state()) {
@@ -433,7 +443,7 @@ public class RefundService {
     /** 查询渠道侧退款状态；任何异常都视为结果不明确 */
     private RefundResult queryChannel(Refund refund) {
         Order order = orderStateService.getById(refund.getOrderId());
-        Payment payment = successPayment(refund, order);
+        Payment payment = ledger.paymentOf(refund, order);
         if (payment == null) {
             return RefundResult.notFound();
         }
@@ -458,7 +468,10 @@ public class RefundService {
         refundMapper.update(null, w);
     }
 
-    /** 微信退款结果通知 */
+    /**
+     * 微信退款结果通知
+     * <p>事务：无；结果回写走 applyResult 的独立新事务
+     */
     public void onRefundNotify(String refundNo, RefundResult result) {
         Refund refund = refundMapper.selectOne(Wrappers.<Refund>lambdaQuery().eq(Refund::getRefundNo, refundNo));
         if (refund == null) {
@@ -501,7 +514,7 @@ public class RefundService {
                     updated = updateStatus(refund, RefundStatus.FAILED, RefundStatus.SUCCESS, set);
                 }
                 if (updated) {
-                    applyRefunded(refund, order, result.channelRefundNo());
+                    ledger.applyRefunded(refund, order, result.channelRefundNo());
                 }
             }
             case FAILED -> updateStatus(refund, RefundStatus.PROCESSING, RefundStatus.FAILED,
@@ -564,10 +577,10 @@ public class RefundService {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "退款金额必须大于 0");
         }
         if (payment == null) {
-            payment = firstSuccessPayment(order.getId());
+            payment = ledger.firstSuccessPayment(order.getId());
         }
         // 重复支付 / 迟到支付的退款只针对那笔多余的支付单，不占用订单可退余额，也不占订单的进行中退款名额
-        boolean orderScoped = countsForOrder(order, payment);
+        boolean orderScoped = ledger.countsForOrder(order, payment);
         if (orderScoped && amount > order.refundableAmount()) {
             throw new BusinessException(ErrorCode.REFUND_AMOUNT_EXCEEDED);
         }
@@ -601,113 +614,6 @@ public class RefundService {
             refundItemMapper.insert(item);
         }
         return refund;
-    }
-
-    /** 校验按菜品退款的明细并计算金额 */
-    private long buildItems(Order order, List<CustomerRefundRequest.ItemInput> inputs, List<RefundItem> out) {
-        Map<Long, OrderItem> items = orderStateService.items(order.getId()).stream()
-                .collect(Collectors.toMap(OrderItem::getId, Function.identity()));
-        Map<Long, Integer> merged = new LinkedHashMap<>();
-        for (CustomerRefundRequest.ItemInput in : inputs) {
-            merged.merge(in.orderItemId(), in.quantity(), Integer::sum);
-        }
-        long total = 0;
-        for (Map.Entry<Long, Integer> e : merged.entrySet()) {
-            OrderItem item = items.get(e.getKey());
-            if (item == null) {
-                throw new BusinessException(ErrorCode.PARAM_INVALID, "退款菜品不属于该订单");
-            }
-            if (e.getValue() > item.refundableQty()) {
-                throw new BusinessException(ErrorCode.PARAM_INVALID,
-                        "「" + item.getDishName() + "」可退数量不足（可退 " + item.refundableQty() + " 份）");
-            }
-            RefundItem ri = new RefundItem();
-            ri.setOrderItemId(item.getId());
-            ri.setQuantity(e.getValue());
-            ri.setAmount(item.getUnitPrice() * e.getValue());
-            out.add(ri);
-            total += ri.getAmount();
-        }
-        return total;
-    }
-
-    private boolean withinAfterSaleWindow(Order order) {
-        if (order.getStatus() != OrderStatus.DONE) {
-            return true;
-        }
-        Store store = storeService.getRequired(order.getStoreId());
-        int hours = store.getAfterSaleHours() == null ? 24 : store.getAfterSaleHours();
-        // 从送达（完成）时间起算；老数据无 doneAt 时退回下单时间
-        OffsetDateTime base = order.getDoneAt() != null ? order.getDoneAt() : order.getCreatedAt();
-        return base.plusHours(hours).isAfter(OffsetDateTime.now());
-    }
-
-    private Payment successPayment(Refund refund, Order order) {
-        if (refund.getPaymentId() != null) {
-            Payment p = paymentMapper.selectById(refund.getPaymentId());
-            if (p != null) {
-                return p;
-            }
-        }
-        return firstSuccessPayment(order.getId());
-    }
-
-    /** 订单最早的一笔成功支付 = 订单实际入账的那笔；其后的成功支付都是重复支付 */
-    private Payment firstSuccessPayment(Long orderId) {
-        return paymentMapper.selectOne(Wrappers.<Payment>lambdaQuery()
-                .eq(Payment::getOrderId, orderId)
-                .eq(Payment::getStatus, PaymentStatus.SUCCESS)
-                .orderByAsc(Payment::getId)
-                .last("LIMIT 1"));
-    }
-
-    /**
-     * 该退款是否计入订单的已退金额 / 退款状态。
-     * 已关闭订单的迟到支付、以及重复支付的那笔，退的是订单之外的多余款项，不动订单记账。
-     */
-    private boolean countsForOrder(Order order, Payment payment) {
-        if (payment == null) {
-            return true;
-        }
-        if (order.getStatus() == OrderStatus.CLOSED) {
-            return false;
-        }
-        Payment first = firstSuccessPayment(order.getId());
-        return first == null || first.getId().equals(payment.getId());
-    }
-
-    /** 退款成功 / 线下登记后累加已退金额并重算订单退款状态 */
-    private void applyRefunded(Refund refund, Order order, String channelRefundNo) {
-        long amount = refund.getAmount();
-        Payment payment = refund.getPaymentId() == null ? null : paymentMapper.selectById(refund.getPaymentId());
-        if (payment != null) {
-            paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
-                    .setSql("refunded_amount = refunded_amount + " + amount)
-                    .set(Payment::getUpdatedAt, OffsetDateTime.now())
-                    .eq(Payment::getId, payment.getId()));
-        }
-        boolean orderScoped = refund.getOrderScoped() == null || refund.getOrderScoped();
-        if (orderScoped) {
-            // 在一条 UPDATE 里累加并重算状态（SET 中引用的列是更新前的值），避免并发退款下按内存旧值算错
-            orderMapper.update(null, Wrappers.<Order>lambdaUpdate()
-                    .setSql("refunded_amount = refunded_amount + " + amount)
-                    .setSql("refund_status = CASE WHEN refunded_amount + " + amount + " >= pay_amount THEN 'FULL' ELSE 'PARTIAL' END")
-                    .set(Order::getUpdatedAt, OffsetDateTime.now())
-                    .eq(Order::getId, order.getId()));
-            for (RefundItem ri : refundItemMapper.selectList(Wrappers.<RefundItem>lambdaQuery().eq(RefundItem::getRefundId, refund.getId()))) {
-                orderItemMapper.update(null, Wrappers.<OrderItem>lambdaUpdate()
-                        .setSql("refunded_qty = refunded_qty + " + ri.getQuantity())
-                        .eq(OrderItem::getId, ri.getOrderItemId()));
-            }
-            Order fresh = orderMapper.selectById(order.getId());
-            order.setRefundedAmount(fresh.getRefundedAmount());
-            order.setRefundStatus(fresh.getRefundStatus());
-        }
-        refund.setStatus(refund.getStatus() == RefundStatus.OFFLINE ? RefundStatus.OFFLINE : RefundStatus.SUCCESS);
-        refund.setChannelRefundNo(channelRefundNo);
-        refund.setSuccessAt(OffsetDateTime.now());
-        log.info("订单 {} 退款 {} 已完成 金额={} 累计已退={} 退款状态={}", order.getOrderNo(), refund.getRefundNo(), amount,
-                order.getRefundedAmount(), order.getRefundStatus());
     }
 
     private static String truncate(String s, int max) {
@@ -767,53 +673,14 @@ public class RefundService {
         }
     }
 
+    private int afterSaleHours(Order order) {
+        Store store = storeService.getRequired(order.getStoreId());
+        return store.getAfterSaleHours() == null ? 24 : store.getAfterSaleHours();
+    }
+
     // ==================== 视图 ====================
 
     public RefundView view(Refund refund, Order order) {
-        return views(List.of(refund), Map.of(order.getId(), order)).get(0);
-    }
-
-    public List<RefundView> views(List<Refund> refunds, Map<Long, Order> orders) {
-        if (refunds.isEmpty()) {
-            return List.of();
-        }
-        List<Long> refundIds = refunds.stream().map(Refund::getId).toList();
-        Map<Long, List<RefundItem>> itemsByRefund = refundItemMapper.selectList(Wrappers.<RefundItem>lambdaQuery()
-                        .in(RefundItem::getRefundId, refundIds)).stream()
-                .collect(Collectors.groupingBy(RefundItem::getRefundId));
-        List<Long> orderItemIds = itemsByRefund.values().stream().flatMap(Collection::stream)
-                .map(RefundItem::getOrderItemId).distinct().toList();
-        Map<Long, OrderItem> orderItems = orderItemIds.isEmpty() ? Map.of()
-                : orderItemMapper.selectBatchIds(orderItemIds).stream().collect(Collectors.toMap(OrderItem::getId, Function.identity()));
-        Map<Long, String> staffNames = staffNames(refunds.stream().map(Refund::getOperatorId).filter(java.util.Objects::nonNull).distinct().toList());
-
-        List<RefundView> result = new ArrayList<>();
-        for (Refund r : refunds) {
-            Order order = orders.get(r.getOrderId());
-            List<RefundView.RefundItemView> items = itemsByRefund.getOrDefault(r.getId(), List.of()).stream()
-                    .map(ri -> {
-                        OrderItem oi = orderItems.get(ri.getOrderItemId());
-                        return new RefundView.RefundItemView(ri.getOrderItemId(),
-                                oi == null ? "-" : oi.getDishName(), oi == null ? null : oi.getSpecDesc(),
-                                ri.getQuantity(), ri.getAmount());
-                    }).toList();
-            result.add(new RefundView(r.getId(), r.getRefundNo(), order == null ? null : order.getOrderNo(),
-                    order == null ? null : order.getTableCode(), r.getType(), r.getInitiator(), r.getAmount(),
-                    r.getReason(), r.getRejectReason(), r.getStatus(), r.getFailReason(), r.getChannelRefundNo(),
-                    r.getOperatorId(), staffNames.get(r.getOperatorId()), r.getCreatedAt(), r.getSuccessAt(), items));
-        }
-        return result;
-    }
-
-    /** 员工 ID → 姓名。返回 HashMap（允许 get(null)，系统 / 顾客操作的 operatorId 为空） */
-    public Map<Long, String> staffNames(Collection<Long> staffIds) {
-        Map<Long, String> names = new HashMap<>();
-        if (staffIds == null || staffIds.isEmpty()) {
-            return names;
-        }
-        for (Staff s : staffMapper.selectBatchIds(staffIds)) {
-            names.put(s.getId(), s.getName());
-        }
-        return names;
+        return viewAssembler.view(refund, order);
     }
 }

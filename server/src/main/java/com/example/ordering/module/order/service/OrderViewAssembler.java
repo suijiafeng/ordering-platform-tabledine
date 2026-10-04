@@ -30,6 +30,8 @@ import java.util.stream.Collectors;
 @Component
 public class OrderViewAssembler {
 
+    private final com.example.ordering.module.staff.service.StaffDirectory staffDirectory;
+
     private final OrderStateService orderStateService;
     private final OrderItemMapper orderItemMapper;
     private final PayService payService;
@@ -37,7 +39,9 @@ public class OrderViewAssembler {
     private final StoreService storeService;
 
     public OrderViewAssembler(OrderStateService orderStateService, OrderItemMapper orderItemMapper,
-                              PayService payService, RefundService refundService, StoreService storeService) {
+                              PayService payService, RefundService refundService, StoreService storeService,
+                              com.example.ordering.module.staff.service.StaffDirectory staffDirectory) {
+        this.staffDirectory = staffDirectory;
         this.orderStateService = orderStateService;
         this.orderItemMapper = orderItemMapper;
         this.payService = payService;
@@ -84,7 +88,7 @@ public class OrderViewAssembler {
         Payment payment = payService.latestPayment(order.getId());
         List<RefundView> refunds = customerView ? refundService.listByOrderForCustomer(order) : refundService.listByOrder(order);
         List<OrderStatusLog> logs = orderStateService.logs(order.getId());
-        Map<Long, String> staffNames = refundService.staffNames(logs.stream()
+        Map<Long, String> staffNames = staffDirectory.namesOf(logs.stream()
                 .filter(l -> l.getOperatorType() == OperatorType.MERCHANT && l.getOperatorId() != null)
                 .map(OrderStatusLog::getOperatorId).distinct().toList());
         Store store = storeService.getRequired(order.getStoreId());
