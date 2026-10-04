@@ -13,7 +13,8 @@ import { ignoreShownError } from '../../utils/errors'
 function QrThumb({ url }: { url: string }) {
   const [src, setSrc] = useState<string>()
   useEffect(() => {
-    qrDataUrl(url, 240).then(setSrc)
+    // 二维码生成失败只是缩略图不显示，不影响列表
+    qrDataUrl(url, 240).then(setSrc).catch(() => setSrc(undefined))
   }, [url])
   return src ? <Image src={src} width={56} height={56} /> : null
 }
@@ -115,11 +116,11 @@ export default function TablesPage() {
               <Popconfirm
                 title="重置桌码？"
                 description="旧桌码会立即失效，需要重新打印张贴。"
-                onConfirm={async () => { await resetTableQr(r.id); message.success('已重置，请重新打印'); load() }}
+                onConfirm={async () => { await resetTableQr(r.id); message.success('已重置，请重新打印'); void load() }}
               >
                 <Button type="link" size="small">重置</Button>
               </Popconfirm>
-              <Popconfirm title={`删除桌台 ${r.code}？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteTable(r.id); load() }}>
+              <Popconfirm title={`删除桌台 ${r.code}？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteTable(r.id); void load() }}>
                 <Button type="link" size="small" danger>删除</Button>
               </Popconfirm>
             </>

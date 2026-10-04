@@ -46,13 +46,13 @@ export default function OrderList() {
   }, [])
 
   useDidShow(() => {
-    load(1)
+    void load(1)
   })
   usePullDownRefresh(() => {
-    load(1)
+    void load(1)
   })
   useReachBottom(() => {
-    if (!loading && list.length < total) load(page + 1)
+    if (!loading && list.length < total) void load(page + 1)
   })
 
   if (loaded && list.length === 0) {

@@ -117,11 +117,23 @@ public class OrderStateService {
         order.setStatus(to);
         order.setUpdatedAt(now);
         switch (to) {
-            case PAID -> { if (order.getPaidAt() == null) { order.setPaidAt(now); } }
-            case MAKING -> { order.setAcceptedAt(now); if (order.getPaidAt() == null) { order.setPaidAt(now); } }
+            case PAID -> {
+                if (order.getPaidAt() == null) {
+                    order.setPaidAt(now);
+                }
+            }
+            case MAKING -> {
+                order.setAcceptedAt(now);
+                if (order.getPaidAt() == null) {
+                    order.setPaidAt(now);
+                }
+            }
             case READY -> order.setReadyAt(now);
             case DONE -> order.setDoneAt(now);
-            case CLOSED, CANCELLED -> { order.setCancelledAt(now); order.setCancelReason(remark); }
+            case CLOSED, CANCELLED -> {
+                order.setCancelledAt(now);
+                order.setCancelReason(remark);
+            }
             default -> { }
         }
         return true;

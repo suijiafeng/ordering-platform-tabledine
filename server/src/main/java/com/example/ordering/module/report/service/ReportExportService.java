@@ -161,18 +161,37 @@ public class ReportExportService {
     }
 
     private static String platform(String p) {
-        return switch (p) { case "WECHAT" -> "微信"; case "ALIPAY" -> "支付宝"; default -> p; };
+        return switch (p) {
+            case "WECHAT" -> "微信";
+            case "ALIPAY" -> "支付宝";
+            default -> p;
+        };
     }
 
     private static String refundStatusOfOrder(String s) {
-        return switch (s) { case "NONE" -> "无"; case "PARTIAL" -> "部分退款"; case "FULL" -> "全额退款"; default -> s; };
+        return switch (s) {
+            case "NONE" -> "无";
+            case "PARTIAL" -> "部分退款";
+            case "FULL" -> "全额退款";
+            default -> s;
+        };
     }
 
     private static String refundType(String s) {
-        return switch (s) { case "FULL" -> "整单"; case "ITEM" -> "按菜品"; case "CUSTOM" -> "自定义金额"; default -> s; };
+        return switch (s) {
+            case "FULL" -> "整单";
+            case "ITEM" -> "按菜品";
+            case "CUSTOM" -> "自定义金额";
+            default -> s;
+        };
     }
 
     private static String initiator(String s) {
-        return switch (s) { case "CUSTOMER" -> "顾客"; case "MERCHANT" -> "商家"; case "SYSTEM" -> "系统"; default -> s; };
+        return switch (s) {
+            case "CUSTOMER" -> "顾客";
+            case "MERCHANT" -> "商家";
+            case "SYSTEM" -> "系统";
+            default -> s;
+        };
     }
 }

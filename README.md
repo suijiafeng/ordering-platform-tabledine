@@ -90,6 +90,9 @@ npm run dev:alipay           # 支付宝开发者工具导入 miniapp/dist/alipa
 
 ## 关键约定
 
+编码规范见 [docs/编码规范.md](docs/编码规范.md)；提交前运行 `mvn verify`（含 Checkstyle）与两端 `npm run lint`。
+
+
 - **金额**：全部以「分」为单位的整数（`BIGINT`）
 - **错误码**：见 `server/.../common/ErrorCode.java`（与需求文档 §11.1 一致）
 - **数据库变更**：只通过 Flyway 新增 `V{n}__xxx.sql`，不改已执行的脚本，不手改生产库

@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import Taro from '@tarojs/taro'
 import { Input, Text, View } from '@tarojs/components'
 import type { OrderItemView } from '../api/types'
 import { formatYuan } from '../utils/money'
 import Stepper from './Stepper'
 import './RefundPopup.css'
+import { toast } from '../utils/toast'
 
 interface Props {
   items: OrderItemView[]
@@ -39,15 +39,15 @@ export default function RefundPopup({ items, refundableAmount, onClose, onSubmit
 
   const submit = () => {
     if (selected.length === 0) {
-      Taro.showToast({ title: '请选择要退的菜品', icon: 'none' })
+      toast('请选择要退的菜品')
       return
     }
     if (!reason.trim()) {
-      Taro.showToast({ title: '请填写退款原因', icon: 'none' })
+      toast('请填写退款原因')
       return
     }
     if (overLimit) {
-      Taro.showToast({ title: `所选金额超过可退余额 ¥${formatYuan(refundableAmount)}`, icon: 'none' })
+      toast(`所选金额超过可退余额 ¥${formatYuan(refundableAmount)}`)
       return
     }
     onSubmit(

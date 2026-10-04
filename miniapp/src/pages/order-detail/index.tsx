@@ -9,6 +9,7 @@ import { payOrder } from '../../utils/pay'
 import './index.css'
 import { ignoreShownError } from '../../utils/errors'
 import { useOrderPolling } from '../../hooks/useOrderPolling'
+import { toast } from '../../utils/toast'
 
 /** 订单详情：状态与退款进度自动刷新（见 useOrderPolling）；支持继续支付、取消、申请退款、撤回退款 */
 export default function OrderDetailPage() {
@@ -32,8 +33,8 @@ export default function OrderDetailPage() {
 
   const onPay = () => runOrderAction(async () => {
     const outcome = await payOrder(orderNo)
-    if (outcome === 'cancel') Taro.showToast({ title: '已取消支付', icon: 'none' })
-    if (outcome === 'fail') Taro.showToast({ title: '支付未完成，请重试', icon: 'none' })
+    if (outcome === 'cancel') toast('已取消支付')
+    if (outcome === 'fail') toast('支付未完成，请重试')
   })
 
   const onCancel = async () => {
@@ -42,14 +43,14 @@ export default function OrderDetailPage() {
       title: '取消订单',
       content: paid ? '取消后将原路全额退款，确认取消？' : '确认取消该订单？',
     })
-    if (confirm) runOrderAction(() => cancelOrder(orderNo))
+    if (confirm) void runOrderAction(() => cancelOrder(orderNo))
   }
 
   const onRefundSubmit = (reason: string, selection: { orderItemId: number; quantity: number }[]) => {
     setRefundOpen(false)
-    runOrderAction(async () => {
+    void runOrderAction(async () => {
       await applyRefund(orderNo, reason, selection)
-      Taro.showToast({ title: '已提交，等待商家审核', icon: 'none' })
+      toast('已提交，等待商家审核')
     })
   }
 
@@ -58,9 +59,9 @@ export default function OrderDetailPage() {
     const pages = Taro.getCurrentPages()
     const prev = pages[pages.length - 2]
     if (prev && String(prev.route ?? '').includes('order-list')) {
-      Taro.navigateBack()
+      void Taro.navigateBack()
     } else {
-      Taro.redirectTo({ url: '/pages/order-list/index' })
+      void Taro.redirectTo({ url: '/pages/order-list/index' })
     }
   }
 

@@ -15,7 +15,6 @@ import com.example.ordering.module.table.mapper.DiningTableMapper;
 import com.example.ordering.security.LoginUser;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;

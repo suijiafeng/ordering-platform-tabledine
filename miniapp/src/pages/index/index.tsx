@@ -13,6 +13,7 @@ import { formatYuan, imageUrl } from '../../utils/money'
 import { defaultSelection, hasOptions } from '../../utils/price'
 import { extractQrToken, parseTokenFromLink } from '../../utils/scene'
 import './index.css'
+import { toast } from '../../utils/toast'
 
 /**
  * 点餐首页：扫码解析桌台 → 加载菜单 → 左侧分类 / 右侧菜品 → 规格弹层 → 购物车。
@@ -46,7 +47,7 @@ export default function Index() {
     setActiveCat((c) => c ?? m.categories[0]?.id ?? null)
     const removed = reconcile(m)
     if (removed.length) {
-      Taro.showToast({ title: `${removed.join('、')} 已售罄或已变更，已移出购物车`, icon: 'none', duration: 2500 })
+      toast(`${removed.join('、')} 已售罄或已变更，已移出购物车`, 2500)
     }
   }, [reconcile])
 
@@ -54,13 +55,13 @@ export default function Index() {
     const token = extractQrToken(router.params as Record<string, unknown>) ?? pendingToken
     if (token) {
       setPendingToken(null)
-      loadTable(token)
+      void loadTable(token)
     } else if (!current) {
       restoreLast()
     } else {
       // 从确认订单页返回（下单被拒：售罄 / 下架 / 打烊）或长时间停留后回到前台：
       // 刷新店铺营业状态与菜单，购物车按最新菜单对账，否则会反复撞同一个错误
-      refreshCurrent(current)
+      void refreshCurrent(current)
     }
   })
 
@@ -78,7 +79,7 @@ export default function Index() {
 
   useEffect(() => {
     if (current) {
-      Taro.setNavigationBarTitle({ title: current.storeName })
+      void Taro.setNavigationBarTitle({ title: current.storeName })
       bindStore(current.storeId)
       loadMenu(current.storeId).then(() => setError(null)).catch(() => setError('菜单加载失败，点击重试'))
     }
@@ -89,10 +90,10 @@ export default function Index() {
       const res = await Taro.scanCode({ onlyFromCamera: true })
       const token = parseTokenFromLink(res.result)
       if (!token) {
-        Taro.showToast({ title: '不是本店的桌码', icon: 'none' })
+        toast('不是本店的桌码')
         return
       }
-      loadTable(token)
+      void loadTable(token)
     } catch {
       // 用户取消扫码
     }
@@ -111,7 +112,7 @@ export default function Index() {
     const item = items.find((i) => i.dishId === dish.id)
     if (!item) return
     if (hasOptions(dish) && items.filter((i) => i.dishId === dish.id).length > 1) {
-      Taro.showToast({ title: '多种规格请在购物车中调整', icon: 'none' })
+      toast('多种规格请在购物车中调整')
       return
     }
     changeQty(item.key, -1)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { App, Button, Card, Checkbox, Col, Drawer, Form, Input, InputNumber, Row, Select, Space, Spin, Switch, Typography } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { createDish, getDish, updateDish } from '../../api/menu'
@@ -40,6 +40,10 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // onClose 由父组件内联传入，放进下方 effect 的依赖会让表单在父组件每次重渲染时被重置；用 ref 持有最新回调
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     if (!open) {
       return
@@ -76,7 +80,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
           })),
         })
       })
-      .catch(() => onClose())
+      .catch(() => onCloseRef.current())
       .finally(() => setLoading(false))
   }, [open, dishId, defaultCategoryId, categories, form])
 

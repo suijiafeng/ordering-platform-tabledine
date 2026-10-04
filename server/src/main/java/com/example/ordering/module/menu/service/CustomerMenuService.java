@@ -9,7 +9,6 @@ import com.example.ordering.module.menu.entity.Dish;
 import com.example.ordering.module.menu.mapper.CategoryMapper;
 import com.example.ordering.module.menu.mapper.DishMapper;
 import com.example.ordering.module.store.service.StoreService;
-import com.example.ordering.module.menu.service.MerchantMenuService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;

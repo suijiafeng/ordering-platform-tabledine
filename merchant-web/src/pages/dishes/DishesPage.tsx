@@ -162,7 +162,7 @@ export default function DishesPage() {
           render: (_: unknown, r: DishItem) => (
             <Space>
               <Button type="link" size="small" onClick={() => setDrawer({ open: true, dishId: r.id })}>编辑</Button>
-              <Popconfirm title={`删除「${r.name}」？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteDish(r.id); loadDishes() }}>
+              <Popconfirm title={`删除「${r.name}」？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteDish(r.id); void loadDishes() }}>
                 <Button type="link" size="small" danger>删除</Button>
               </Popconfirm>
             </Space>
@@ -219,7 +219,7 @@ export default function DishesPage() {
         categories={categories}
         defaultCategoryId={categoryId}
         onClose={() => setDrawer({ open: false, dishId: null })}
-        onSaved={() => { setDrawer({ open: false, dishId: null }); loadDishes() }}
+        onSaved={() => { setDrawer({ open: false, dishId: null }); void loadDishes() }}
       />
     </Row>
   )

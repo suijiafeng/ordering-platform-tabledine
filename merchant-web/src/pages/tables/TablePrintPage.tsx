@@ -22,7 +22,7 @@ export default function TablePrintPage() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+    void (async () => {
       setLoadError(false)
       try {
         const [all, store] = await Promise.all([listTables(), fetchStore()])

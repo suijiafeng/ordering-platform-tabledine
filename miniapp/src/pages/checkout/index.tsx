@@ -9,6 +9,7 @@ import { formatYuan } from '../../utils/money'
 import { payOrder } from '../../utils/pay'
 import { ignoreShownError } from '../../utils/errors'
 import './index.css'
+import { toast } from '../../utils/toast'
 
 /**
  * 确认订单：明细、就餐人数、备注、应付金额。
@@ -26,7 +27,7 @@ export default function Checkout() {
 
   const submit = async () => {
     if (submitting || !table?.qrToken) {
-      if (!table?.qrToken) Taro.showToast({ title: '桌码已失效，请重新扫码', icon: 'none' })
+      if (!table?.qrToken) toast('桌码已失效，请重新扫码')
       return
     }
     setSubmitting(true)
@@ -48,15 +49,15 @@ export default function Checkout() {
       requestId.current = `${Date.now()}${Math.random().toString(36).slice(2, 10)}`
       useCartStore.getState().clear()
       const outcome = await payOrder(orderNo)
-      if (outcome === 'cancel') Taro.showToast({ title: '已取消支付，可在订单中继续支付', icon: 'none' })
-      if (outcome === 'fail') Taro.showToast({ title: '支付未完成，可在订单中重试', icon: 'none' })
+      if (outcome === 'cancel') toast('已取消支付，可在订单中继续支付')
+      if (outcome === 'fail') toast('支付未完成，可在订单中重试')
     } catch (e) {
       // 请求层已提示。下单失败：保留 requestId，重试时服务端按它幂等，不会重复下单；
       // 发起支付失败：订单已创建，finally 里照样跳到详情页，可在那里继续支付
       ignoreShownError(e)
     } finally {
       setSubmitting(false)
-      if (orderNo) Taro.redirectTo({ url: `/pages/order-detail/index?orderNo=${orderNo}` })
+      if (orderNo) void Taro.redirectTo({ url: `/pages/order-detail/index?orderNo=${orderNo}` })
     }
   }
 

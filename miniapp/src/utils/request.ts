@@ -1,6 +1,7 @@
 import Taro from '@tarojs/taro'
 import { ApiError, UNAUTHORIZED, httpErrorToResponse } from './apiError'
 import { clearToken, ensureLogin } from './auth'
+import { toast } from './toast'
 
 export interface ApiResult<T> {
   code: number
@@ -47,7 +48,7 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
     const recovered = httpErrorToResponse<ApiResult<T>>(e)
     if (!recovered) {
       if (!silent) {
-        Taro.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
+        toast('网络异常，请稍后重试')
       }
       throw new ApiError(-1, '网络异常')
     }
@@ -64,7 +65,7 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
   if (code !== 0) {
     const message = body?.message || '请求失败'
     if (!silent) {
-      Taro.showToast({ title: message, icon: 'none' })
+      toast(message)
     }
     throw new ApiError(code, message, res.statusCode)
   }
@@ -81,7 +82,7 @@ async function loginOrFail(force: boolean, silent: boolean): Promise<string> {
   } catch (e) {
     const err = e instanceof ApiError ? e : new ApiError(-1, (e as Error)?.message || '登录失败')
     if (!silent) {
-      Taro.showToast({ title: err.message, icon: 'none' })
+      toast(err.message)
     }
     throw err
   }

@@ -2,6 +2,7 @@ import Taro from '@tarojs/taro'
 import { create } from 'zustand'
 import type { MenuDish, MenuView } from '../api/types'
 import { calcUnitPrice, describeSelection, type Selection, validateSelection } from '../utils/price'
+import { toast } from '../utils/toast'
 
 export interface CartItem {
   /** 同一菜品 + 同一规格加料组合视为同一项 */
@@ -64,7 +65,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       existing.quantity = Math.min(MAX_QTY_PER_ITEM, existing.quantity + quantity)
     } else {
       if (items.length >= MAX_LINES) {
-        Taro.showToast({ title: `单笔订单最多 ${MAX_LINES} 种菜品`, icon: 'none' })
+        toast(`单笔订单最多 ${MAX_LINES} 种菜品`)
         return
       }
       items.push({

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import Taro from '@tarojs/taro'
 import { Image, ScrollView, Text, View } from '@tarojs/components'
 import type { MenuDish } from '../api/types'
 import { formatYuan, imageUrl } from '../utils/money'
 import { calcUnitPrice, defaultSelection, describeSelection, type Selection, validateSelection } from '../utils/price'
 import Stepper from './Stepper'
 import './SpecPopup.css'
+import { toast } from '../utils/toast'
 
 interface Props {
   dish: MenuDish | null
@@ -49,7 +49,7 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
           // 单选加料组：直接替换
           return { ...s, addonItemIds: [...s.addonItemIds.filter((id) => !groupItemIds.includes(id)), itemId] }
         }
-        Taro.showToast({ title: `${groupName}最多选 ${max} 项`, icon: 'none' })
+        toast(`${groupName}最多选 ${max} 项`)
         return s
       }
       return { ...s, addonItemIds: [...s.addonItemIds, itemId] }
@@ -59,7 +59,7 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
   const confirm = () => {
     const err = validateSelection(dish, sel)
     if (err) {
-      Taro.showToast({ title: err, icon: 'none' })
+      toast(err)
       return
     }
     onConfirm(dish, sel, qty)
