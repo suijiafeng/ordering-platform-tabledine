@@ -98,7 +98,7 @@ npm run dev:alipay           # 支付宝开发者工具导入 miniapp/dist/alipa
 ## 生产部署（概要）
 
 1. 服务器安装 Docker，域名解析到服务器，完成 ICP 备案
-2. `cp deploy/.env.example deploy/.env` 并填写（`JWT_SECRET` 用 `openssl rand -base64 48` 生成）
+2. `cp deploy/.env.example deploy/.env` 并填写（`JWT_SECRET` 用 `openssl rand -base64 48` 生成；支付参数见 [docs/上线清单.md](docs/上线清单.md)）
 3. 替换 `deploy/nginx/conf.d/ordering.conf` 中的域名
 4. 首次签发证书（nginx 启动前）：
    ```bash
