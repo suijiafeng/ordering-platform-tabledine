@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Drawer, Layout, Menu, Space, Tag, Typography, theme as antdTheme } from 'antd'
+import { Badge, Button, Drawer, Layout, Menu, Space, Typography, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
@@ -15,7 +15,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
-import ChangePasswordButton from '../components/ChangePasswordButton'
+import UserMenu from '../components/UserMenu'
 import ThemeToggle from '../components/ThemeToggle'
 import { useOrderPoll } from '../hooks/useOrderPoll'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -43,7 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
 export default function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { staff, logout } = useAuthStore()
+  const staff = useAuthStore((s) => s.staff)
   const isOwner = staff?.role === 'OWNER'
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -83,11 +83,6 @@ export default function MainLayout() {
     .filter((k) => (k === '/' ? location.pathname === '/' : location.pathname.startsWith(k)))
     .slice(-1)
 
-  const onLogout = () => {
-    logout()
-    navigate('/login', { replace: true })
-  }
-
   const menu = (
     <Menu
       mode="inline"
@@ -112,14 +107,12 @@ export default function MainLayout() {
             <Typography.Text strong>点餐后台</Typography.Text>
           </Space>
           <Space size={4}>
-            <Tag color={isOwner ? 'gold' : 'blue'} style={{ marginInlineEnd: 0 }}>{staff?.name}</Tag>
             <ThemeToggle size="small" />
-            <Button type="link" size="small" onClick={onLogout}>退出</Button>
+            <UserMenu compact />
           </Space>
         </Layout.Header>
         <Drawer placement="left" open={menuOpen} onClose={() => setMenuOpen(false)} width={240} styles={{ body: { padding: 0 } }} title="点餐后台">
           {menu}
-          <div style={{ padding: 12 }}><ChangePasswordButton /></div>
         </Drawer>
         <Layout.Content style={{ padding: 12 }}>
           <Outlet />
@@ -138,12 +131,9 @@ export default function MainLayout() {
       </Layout.Sider>
       <Layout>
         <Layout.Header style={{ background: token.colorBgContainer, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingInline: 24, boxShadow: `0 1px 0 ${token.colorSplit}` }}>
-          <Space>
-            <Typography.Text>{staff?.name}</Typography.Text>
-            <Tag color={isOwner ? 'gold' : 'blue'}>{isOwner ? '店主' : '店员'}</Tag>
+          <Space size={8}>
             <ThemeToggle />
-            <ChangePasswordButton />
-            <Button type="link" onClick={onLogout}>退出</Button>
+            <UserMenu />
           </Space>
         </Layout.Header>
         <Layout.Content style={{ padding: 24 }}>
