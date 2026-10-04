@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import MainLayout from './layouts/MainLayout'
 import LoginPage from './pages/login/LoginPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
-import PlaceholderPage from './pages/placeholder/PlaceholderPage'
+import StaffPage from './pages/staff/StaffPage'
 import DishesPage from './pages/dishes/DishesPage'
 import TablesPage from './pages/tables/TablesPage'
 import TablePrintPage from './pages/tables/TablePrintPage'
@@ -46,7 +46,7 @@ export const router = createBrowserRouter([
       { path: 'dishes', element: <DishesPage /> },
       { path: 'tables', element: <TablesPage /> },
       { path: 'reports', element: <RequireOwner><ReportsPage /></RequireOwner> },
-      { path: 'staff', element: <RequireOwner><PlaceholderPage title="员工管理" week="V1" /></RequireOwner> },
+      { path: 'staff', element: <RequireOwner><StaffPage /></RequireOwner> },
       { path: 'settings', element: <RequireOwner><SettingsPage /></RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],

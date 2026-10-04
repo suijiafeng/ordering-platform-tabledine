@@ -12,6 +12,15 @@ export interface StaffProfile {
   role: 'OWNER' | 'STAFF'
 }
 
+export interface StaffItem {
+  id: number
+  username: string
+  name: string
+  role: 'OWNER' | 'STAFF'
+  enabled: boolean
+  createdAt: string
+}
+
 export interface StaffTokenResponse {
   accessToken: string
   expiresIn: number

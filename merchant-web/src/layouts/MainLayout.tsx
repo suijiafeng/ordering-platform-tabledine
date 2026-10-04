@@ -14,6 +14,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
+import ChangePasswordButton from '../components/ChangePasswordButton'
 import { useOrderPoll } from '../hooks/useOrderPoll'
 
 interface NavItem {
@@ -89,6 +90,7 @@ export default function MainLayout() {
           <Space>
             <Typography.Text>{staff?.name}</Typography.Text>
             <Tag color={isOwner ? 'gold' : 'blue'}>{isOwner ? '店主' : '店员'}</Tag>
+            <ChangePasswordButton />
             <Button
               type="link"
               onClick={() => {
