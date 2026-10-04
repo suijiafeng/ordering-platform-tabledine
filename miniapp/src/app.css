@@ -47,25 +47,31 @@ page, body {
   body {
     background: #e9ebef;
   }
+  /* Taro 的页面容器是绝对定位：left / right 都设 0 后 margin: auto 才能居中 */
   .taro_page {
     max-width: 640px;
+    left: 0;
+    right: 0;
     margin: 0 auto;
     background: var(--bg-page);
     box-shadow: 0 0 32px rgba(0, 0, 0, 0.08);
   }
   .cart-bar,
-  .co-bar,
-  .popup,
-  .cart-panel,
-  .rp,
-  .me-popup {
+  .co-bar {
     max-width: 640px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .cart-bar {
     left: 0;
     right: 0;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+  .cart-bar {
     width: calc(640px - 48px);
+  }
+  /* NutUI 底部弹层（规格 / 购物车 / 退款 / 改密）：与页面同宽并居中；遮罩仍全屏 */
+  .nut-popup.nut-popup-bottom {
+    width: 640px;
+    left: 50%;
+    margin-left: -320px;
   }
 }
