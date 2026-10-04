@@ -27,8 +27,9 @@ export const fetchOrders = (page: number, pageSize = 20) =>
 export const cancelOrder = (orderNo: string, reason?: string) =>
   request<OrderDetail>({ url: `/api/v1/c/orders/${orderNo}/cancel`, method: 'POST', data: { reason } })
 
-export const applyRefund = (orderNo: string, reason: string) =>
-  request<RefundView>({ url: `/api/v1/c/orders/${orderNo}/refunds`, method: 'POST', data: { reason } })
+/** items 为空 = 整单退款（退全部可退余额） */
+export const applyRefund = (orderNo: string, reason: string, items: { orderItemId: number; quantity: number }[] = []) =>
+  request<RefundView>({ url: `/api/v1/c/orders/${orderNo}/refunds`, method: 'POST', data: { reason, items } })
 
 export const withdrawRefund = (refundNo: string) =>
   request<RefundView>({ url: `/api/v1/c/refunds/${refundNo}/withdraw`, method: 'POST' })

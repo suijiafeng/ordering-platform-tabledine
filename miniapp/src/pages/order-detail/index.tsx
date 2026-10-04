@@ -3,6 +3,7 @@ import Taro, { useDidHide, useDidShow, useRouter } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 import { applyRefund, cancelOrder, fetchOrder, withdrawRefund } from '../../api/order'
 import type { OrderDetail } from '../../api/types'
+import RefundPopup from '../../components/RefundPopup'
 import { formatYuan } from '../../utils/money'
 import { formatTime, ORDER_STATUS_TEXT, REFUND_STATUS_TEXT } from '../../utils/order'
 import { payOrder } from '../../utils/pay'
@@ -15,6 +16,7 @@ export default function OrderDetailPage() {
   const { orderNo = '' } = useRouter().params
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [busy, setBusy] = useState(false)
+  const [refundOpen, setRefundOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout>>()
   const visible = useRef(false)
 
@@ -77,20 +79,12 @@ export default function OrderDetailPage() {
     if (confirm) run(() => cancelOrder(orderNo))
   }
 
-  const onRefund = async () => {
-    const res = await Taro.showModal({
-      title: '申请退款',
-      content: '',
-      editable: true,
-      placeholderText: '请填写退款原因',
-    } as Taro.showModal.Option)
-    const reason = ((res as { content?: string }).content ?? '').trim()
-    if (!res.confirm) return
-    if (!reason) {
-      Taro.showToast({ title: '请填写退款原因', icon: 'none' })
-      return
-    }
-    run(() => applyRefund(orderNo, reason))
+  const onRefundSubmit = (reason: string, selection: { orderItemId: number; quantity: number }[]) => {
+    setRefundOpen(false)
+    run(async () => {
+      await applyRefund(orderNo, reason, selection)
+      Taro.showToast({ title: '已提交，等待商家审核', icon: 'none' })
+    })
   }
 
   const onWithdraw = (refundNo: string) => run(() => withdrawRefund(refundNo))
@@ -156,9 +150,10 @@ export default function OrderDetailPage() {
         {order.status === 'PENDING_PAY' && <View className='od-btn primary' onClick={onPay}><Text>继续支付 ¥{formatYuan(order.payAmount)}</Text></View>}
         {order.canCancel && <View className='od-btn' onClick={onCancel}><Text>取消订单</Text></View>}
         {activeApplying && <View className='od-btn' onClick={() => onWithdraw(activeApplying.refundNo)}><Text>撤回退款申请</Text></View>}
-        {order.canApplyRefund && <View className='od-btn' onClick={onRefund}><Text>申请退款</Text></View>}
+        {order.canApplyRefund && <View className='od-btn' onClick={() => setRefundOpen(true)}><Text>申请退款</Text></View>}
         <View className='od-btn' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}><Text>全部订单</Text></View>
       </View>
+      {refundOpen && <RefundPopup items={order.items} onClose={() => setRefundOpen(false)} onSubmit={onRefundSubmit} />}
     </View>
   )
 }
