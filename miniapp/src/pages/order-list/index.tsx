@@ -1,8 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
 import Taro, { useDidShow, usePullDownRefresh, useReachBottom } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
+import { Button, Empty, Tag } from '@nutui/nutui-react-taro'
 import { fetchOrders } from '../../api/order'
 import type { OrderSummary } from '../../api/types'
+import PageShell from '../../components/PageShell'
 import { formatYuan } from '../../utils/money'
 import { formatCountdown, formatTime, orderStatusText } from '../../utils/order'
 import { useCountdown } from '../../hooks/useCountdown'
@@ -10,13 +12,19 @@ import './index.css'
 
 const PAGE_SIZE = 20
 
-/** 待支付订单的剩余时间；到期后提示即将关闭（列表不轮询，进入详情或下拉刷新才更新状态） */
+/** 待支付订单的剩余时间；到期后提示即将关闭 */
 function PendingPayHint({ payExpireAt }: { payExpireAt: string | null }) {
   const left = useCountdown(payExpireAt)
   if (left == null) return null
   return left > 0
     ? <Text className='ol-countdown'>剩余 {formatCountdown(left)} 支付</Text>
     : <Text className='ol-countdown expired'>支付已超时，订单即将关闭</Text>
+}
+
+function statusTagType(s: OrderSummary['status']): 'primary' | 'success' | 'default' {
+  if (s === 'DONE') return 'success'
+  if (s === 'CLOSED' || s === 'CANCELLED') return 'default'
+  return 'primary'
 }
 
 /** 我的订单：按时间倒序，下拉刷新，触底加载更多 */
@@ -55,50 +63,50 @@ export default function OrderList() {
     }
   }, [])
 
-  useDidShow(() => {
-    void load(1)
-  })
-  usePullDownRefresh(() => {
-    void load(1)
-  })
+  useDidShow(() => { void load(1) })
+  usePullDownRefresh(() => { void load(1) })
   useReachBottom(() => {
     if (!loading && list.length < total) void load(page + 1)
   })
 
   if (loaded && list.length === 0) {
     return (
-      <View className='ol-empty' onClick={() => failed && load(1)}>
-        <Text>{failed ? '加载失败，点击重试' : '暂无订单'}</Text>
-      </View>
+      <PageShell>
+        <Empty
+          status={failed ? 'error' : 'empty'}
+          description={failed ? '加载失败' : '暂无订单'}
+          actions={failed ? [{ text: '重试', type: 'primary', onClick: () => () => load(1) }] : []}
+        />
+      </PageShell>
     )
   }
 
   return (
-    <View className='ol-page'>
-      {list.map((o) => (
-        <View key={o.orderNo} className='ol-card' onClick={() => Taro.navigateTo({ url: `/pages/order-detail/index?orderNo=${o.orderNo}` })}>
-          <View className='ol-head'>
-            <Text className='ol-time'>{formatTime(o.createdAt)} · 桌号 {o.tableCode}</Text>
-            <Text className={`ol-status s-${o.status}`}>{orderStatusText(o.status)}</Text>
-          </View>
-          <Text className='ol-dishes'>
-            {o.items.slice(0, 3).map((i) => `${i.dishName}x${i.quantity}`).join('、')}
-            {o.itemCount > 3 ? ' 等' : ''}
-          </Text>
-          <View className='ol-foot'>
-            {o.status === 'PENDING_PAY' ? <PendingPayHint payExpireAt={o.payExpireAt} /> : <View />}
-            <View className='ol-foot-right'>
-              <Text className='ol-count'>共 {o.itemCount} 件</Text>
-              <Text className='ol-amount'>¥{formatYuan(o.payAmount)}</Text>
+    <PageShell>
+      <View className='ol-page'>
+        {list.map((o) => (
+          <View key={o.orderNo} className='ol-card' onClick={() => Taro.navigateTo({ url: `/pages/order-detail/index?orderNo=${o.orderNo}` })}>
+            <View className='ol-head'>
+              <Text className='ol-time'>{formatTime(o.createdAt)} · 桌号 {o.tableCode}</Text>
+              <Tag type={statusTagType(o.status)} plain={statusTagType(o.status) === 'default'}>{orderStatusText(o.status)}</Tag>
             </View>
+            <Text className='ol-dishes'>
+              {o.items.slice(0, 3).map((i) => `${i.dishName}x${i.quantity}`).join('、')}
+              {o.itemCount > 3 ? ' 等' : ''}
+            </Text>
+            <View className='ol-foot'>
+              {o.status === 'PENDING_PAY' ? <PendingPayHint payExpireAt={o.payExpireAt} /> : <View />}
+              <View className='ol-foot-right'>
+                <Text className='ol-count'>共 {o.itemCount} 件</Text>
+                <Text className='ol-amount'>¥{formatYuan(o.payAmount)}</Text>
+              </View>
+            </View>
+            {o.refundedAmount > 0 && <Text className='ol-refunded'>已退款 ¥{formatYuan(o.refundedAmount)}</Text>}
+            {o.status === 'PENDING_PAY' && <Button type='primary' block size='small' style={{ marginTop: '16px' }}>去支付</Button>}
           </View>
-          {o.refundedAmount > 0 && <Text className='ol-refunded'>已退款 ¥{formatYuan(o.refundedAmount)}</Text>}
-          {o.status === 'PENDING_PAY' && (
-            <View className='ol-pay-btn'><Text>去支付</Text></View>
-          )}
-        </View>
-      ))}
-      {loaded && list.length >= total && list.length > 0 && <Text className='ol-end'>没有更多了</Text>}
-    </View>
+        ))}
+        {loaded && list.length >= total && list.length > 0 && <Text className='ol-end'>没有更多了</Text>}
+      </View>
+    </PageShell>
   )
 }

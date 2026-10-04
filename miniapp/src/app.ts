@@ -2,6 +2,7 @@ import { PropsWithChildren } from 'react'
 import { useDidShow, useLaunch } from '@tarojs/taro'
 import { extractQrToken } from './utils/scene'
 import { useTableStore } from './store/table'
+import '@nutui/nutui-react-taro/dist/style.css'
 import './app.css'
 
 /**

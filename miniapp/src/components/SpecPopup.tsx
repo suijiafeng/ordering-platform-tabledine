@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Image, ScrollView, Text, View } from '@tarojs/components'
+import { Button, InputNumber, Popup } from '@nutui/nutui-react-taro'
 import type { MenuDish } from '../api/types'
 import { formatYuan, imageUrl } from '../utils/money'
 import { calcUnitPrice, defaultSelection, describeSelection, type Selection, validateSelection } from '../utils/price'
-import Stepper from './Stepper'
 import './SpecPopup.css'
 import { toast } from '../utils/toast'
 
@@ -25,10 +25,6 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
     }
   }, [dish])
 
-  if (!dish) {
-    return null
-  }
-
   const pickSpec = (groupItemIds: number[], itemId: number, required: boolean) => {
     setSel((s) => {
       const others = s.specItemIds.filter((id) => !groupItemIds.includes(id))
@@ -46,7 +42,6 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
       const chosenInGroup = s.addonItemIds.filter((id) => groupItemIds.includes(id))
       if (chosenInGroup.length >= max) {
         if (max === 1) {
-          // 单选加料组：直接替换
           return { ...s, addonItemIds: [...s.addonItemIds.filter((id) => !groupItemIds.includes(id)), itemId] }
         }
         toast(`${groupName}最多选 ${max} 项`)
@@ -57,6 +52,7 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
   }
 
   const confirm = () => {
+    if (!dish) return
     const err = validateSelection(dish, sel)
     if (err) {
       toast(err)
@@ -65,71 +61,62 @@ export default function SpecPopup({ dish, onClose, onConfirm }: Props) {
     onConfirm(dish, sel, qty)
   }
 
-  const unitPrice = calcUnitPrice(dish, sel)
-  const { specDesc, addonDesc } = describeSelection(dish, sel)
+  const unitPrice = dish ? calcUnitPrice(dish, sel) : 0
+  const { specDesc, addonDesc } = dish ? describeSelection(dish, sel) : { specDesc: '', addonDesc: '' }
 
   return (
-    <View className='popup-mask' onClick={onClose} catchMove>
-      <View className='popup' onClick={(e) => e.stopPropagation()}>
-        <View className='popup-head'>
-          {dish.image ? <Image className='popup-img' src={imageUrl(dish.image)} mode='aspectFill' /> : <View className='popup-img' />}
-          <View className='popup-title'>
-            <Text className='popup-name'>{dish.name}</Text>
-            {dish.description && <Text className='popup-intro'>{dish.description}</Text>}
-            <Text className='popup-price'>¥{formatYuan(unitPrice)}</Text>
-            <Text className='popup-desc'>{[specDesc, addonDesc].filter(Boolean).join(' · ')}</Text>
+    <Popup visible={dish !== null} position='bottom' round closeable onClose={onClose} className='spec-popup'>
+      {dish && (
+        <View className='popup'>
+          <View className='popup-head'>
+            {dish.image ? <Image className='popup-img' src={imageUrl(dish.image)} mode='aspectFill' /> : <View className='popup-img' />}
+            <View className='popup-title'>
+              <Text className='popup-name'>{dish.name}</Text>
+              {dish.description && <Text className='popup-intro'>{dish.description}</Text>}
+              <Text className='popup-price'>¥{formatYuan(unitPrice)}</Text>
+              <Text className='popup-desc'>{[specDesc, addonDesc].filter(Boolean).join(' · ')}</Text>
+            </View>
           </View>
-          <Text className='popup-close' onClick={onClose}>×</Text>
-        </View>
 
-        <ScrollView scrollY className='popup-body'>
-          {dish.specGroups.map((g) => {
-            const ids = g.items.map((i) => i.id)
-            return (
-              <View key={`s${g.id}`} className='group'>
-                <Text className='group-title'>{g.name}{g.required ? '' : '（可不选）'}</Text>
-                <View className='chips'>
-                  {g.items.map((i) => (
-                    <View
-                      key={i.id}
-                      className={`chip ${sel.specItemIds.includes(i.id) ? 'active' : ''}`}
-                      onClick={() => pickSpec(ids, i.id, g.required)}
-                    >
-                      <Text>{i.name}{i.priceDelta ? ` ${i.priceDelta > 0 ? '+' : '-'}¥${formatYuan(Math.abs(i.priceDelta))}` : ''}</Text>
-                    </View>
-                  ))}
+          <ScrollView scrollY className='popup-body'>
+            {dish.specGroups.map((g) => {
+              const ids = g.items.map((i) => i.id)
+              return (
+                <View key={`s${g.id}`} className='group'>
+                  <Text className='group-title'>{g.name}{g.required ? '' : '（可不选）'}</Text>
+                  <View className='chips'>
+                    {g.items.map((i) => (
+                      <View key={i.id} className={`chip ${sel.specItemIds.includes(i.id) ? 'active' : ''}`} onClick={() => pickSpec(ids, i.id, g.required)}>
+                        <Text>{i.name}{i.priceDelta ? ` ${i.priceDelta > 0 ? '+' : '-'}¥${formatYuan(Math.abs(i.priceDelta))}` : ''}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
-            )
-          })}
-          {dish.addonGroups.map((g) => {
-            const ids = g.items.map((i) => i.id)
-            return (
-              <View key={`a${g.id}`} className='group'>
-                <Text className='group-title'>{g.name}（最多选 {g.maxCount} 项）</Text>
-                <View className='chips'>
-                  {g.items.map((i) => (
-                    <View
-                      key={i.id}
-                      className={`chip ${sel.addonItemIds.includes(i.id) ? 'active' : ''}`}
-                      onClick={() => toggleAddon(ids, i.id, g.maxCount, g.name)}
-                    >
-                      <Text>{i.name}{i.priceDelta ? ` +¥${formatYuan(i.priceDelta)}` : ''}</Text>
-                    </View>
-                  ))}
+              )
+            })}
+            {dish.addonGroups.map((g) => {
+              const ids = g.items.map((i) => i.id)
+              return (
+                <View key={`a${g.id}`} className='group'>
+                  <Text className='group-title'>{g.name}（最多选 {g.maxCount} 项）</Text>
+                  <View className='chips'>
+                    {g.items.map((i) => (
+                      <View key={i.id} className={`chip ${sel.addonItemIds.includes(i.id) ? 'active' : ''}`} onClick={() => toggleAddon(ids, i.id, g.maxCount, g.name)}>
+                        <Text>{i.name}{i.priceDelta ? ` +¥${formatYuan(i.priceDelta)}` : ''}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
-            )
-          })}
-        </ScrollView>
+              )
+            })}
+          </ScrollView>
 
-        <View className='popup-foot'>
-          <Stepper value={qty} compact={false} onMinus={() => setQty((q) => Math.max(1, q - 1))} onPlus={() => setQty((q) => Math.min(99, q + 1))} />
-          <View className='popup-confirm' onClick={confirm}>
-            <Text>加入购物车 ¥{formatYuan(unitPrice * qty)}</Text>
+          <View className='popup-foot'>
+            <InputNumber value={qty} min={1} max={99} onChange={(v) => setQty(Number(v) || 1)} />
+            <Button type='primary' size='large' onClick={confirm}>加入购物车 ¥{formatYuan(unitPrice * qty)}</Button>
           </View>
         </View>
-      </View>
-    </View>
+      )}
+    </Popup>
   )
 }

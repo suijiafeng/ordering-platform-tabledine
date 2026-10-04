@@ -1,127 +1,15 @@
-.popup-mask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  background: var(--mask);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-}
-
-.popup {
-  background: #fff;
-  border-radius: 24px 24px 0 0;
-  padding: 32px 32px 48px;
-}
-
-.popup-head {
-  display: flex;
-  position: relative;
-}
-
-.popup-img {
-  width: 160px;
-  height: 160px;
-  border-radius: 12px;
-  background: var(--bg-muted);
-  flex-shrink: 0;
-}
-
-.popup-title {
-  display: flex;
-  flex-direction: column;
-  margin-left: 24px;
-  flex: 1;
-}
-
-.popup-name {
-  font-size: 34px;
-  font-weight: 600;
-}
-
-.popup-price {
-  color: var(--price);
-  font-size: 36px;
-  font-weight: 600;
-  margin-top: 12px;
-}
-
-.popup-desc {
-  color: var(--text-3);
-  font-size: 24px;
-  margin-top: 8px;
-}
-
-.popup-intro {
-  color: var(--text-2);
-  font-size: 24px;
-  line-height: 1.5;
-  margin-top: 8px;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
-
-.popup-close {
-  position: absolute;
-  right: 0;
-  top: -12px;
-  font-size: 48px;
-  color: var(--text-3);
-  padding: 0 8px;
-}
-
-.popup-body {
-  max-height: 600px;
-  margin-top: 24px;
-}
-
-.group {
-  margin-bottom: 24px;
-}
-
-.group-title {
-  font-size: 28px;
-  color: var(--text-2);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  margin-top: 16px;
-}
-
-.chip {
-  padding: 12px 28px;
-  margin: 0 16px 16px 0;
-  border-radius: 32px;
-  background: var(--bg-muted);
-  font-size: 26px;
-  border: 2px solid var(--bg-muted);  /* 与底色同色：未选中时不显示描边，选中后由 .active 换成品牌色 */
-}
-
-.chip.active {
-  background: var(--brand-bg);
-  border-color: var(--brand);
-  color: var(--brand);
-}
-
-.popup-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 16px;
-}
-
-.popup-confirm {
-  background: var(--brand);
-  color: #fff;
-  border-radius: 40px;
-  padding: 20px 40px;
-  font-size: 30px;
-  font-weight: 600;
-}
+.popup { padding: 32px 32px calc(24px + env(safe-area-inset-bottom)); }
+.popup-head { display: flex; padding-right: 48px; }
+.popup-img { width: 160px; height: 160px; border-radius: 12px; background: var(--bg-muted); flex-shrink: 0; }
+.popup-title { display: flex; flex-direction: column; margin-left: 24px; flex: 1; min-width: 0; }
+.popup-name { font-size: 34px; font-weight: 600; }
+.popup-intro { color: var(--text-2); font-size: 24px; line-height: 1.5; margin-top: 8px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.popup-price { color: var(--price); font-size: 36px; font-weight: 600; margin-top: 12px; }
+.popup-desc { color: var(--text-3); font-size: 24px; margin-top: 8px; }
+.popup-body { max-height: 600px; margin-top: 24px; }
+.group { margin-bottom: 24px; }
+.group-title { font-size: 28px; color: var(--text-2); }
+.chips { display: flex; flex-wrap: wrap; margin-top: 16px; }
+.chip { padding: 12px 28px; margin: 0 16px 16px 0; border-radius: 32px; background: var(--bg-muted); font-size: 26px; border: 2px solid var(--bg-muted); }
+.chip.active { background: var(--brand-bg); border-color: var(--brand); color: var(--brand); }
+.popup-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }

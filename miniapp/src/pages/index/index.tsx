@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
-import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
+import { Image, ScrollView, Text, View } from '@tarojs/components'
+import { Badge, Button, InputNumber, SearchBar } from '@nutui/nutui-react-taro'
 import { fetchMenu } from '../../api/menu'
 import { resolveQr } from '../../api/customer'
 import type { MenuDish, MenuView } from '../../api/types'
 import CartBar from '../../components/CartBar'
+import PageShell from '../../components/PageShell'
 import SpecPopup from '../../components/SpecPopup'
-import Stepper from '../../components/Stepper'
 import { dishQty, useCartStore } from '../../store/cart'
 import { useTableStore } from '../../store/table'
 import { formatYuan, imageUrl } from '../../utils/money'
@@ -62,8 +63,7 @@ export default function Index() {
     } else if (!current) {
       restoreLast()
     } else {
-      // 从确认订单页返回（下单被拒：售罄 / 下架 / 打烊）或长时间停留后回到前台：
-      // 刷新店铺营业状态与菜单，购物车按最新菜单对账，否则会反复撞同一个错误
+      // 从确认订单页返回或长时间停留后回到前台：刷新营业状态与菜单，购物车按最新菜单对账
       void refreshCurrent(current)
     }
   })
@@ -121,28 +121,32 @@ export default function Index() {
     changeQty(item.key, -1)
   }
 
-  const renderDish = (d: MenuDish) => (
-    <View key={d.id} className={`dish ${d.soldOut ? 'sold-out' : ''}`}>
-      {d.image ? <Image className='dish-img' src={imageUrl(d.image)} mode='aspectFill' lazyLoad /> : <View className='dish-img' />}
-      <View className='dish-info'>
-        <Text className='dish-name'>{d.name}</Text>
-        {d.description && <Text className='dish-desc'>{d.description}</Text>}
-        <View className='dish-bottom'>
-          <Text className='dish-price'>¥{formatYuan(d.price)}{hasOptions(d) ? '起' : ''}</Text>
-          {d.soldOut ? (
-            <Text className='muted'>已售罄</Text>
-          ) : hasOptions(d) ? (
-            <View className='spec-btn' onClick={() => tapAdd(d)}>
-              <Text>选规格</Text>
-              {dishQty(items, d.id) > 0 && <Text className='spec-badge'>{dishQty(items, d.id)}</Text>}
-            </View>
-          ) : (
-            <Stepper value={dishQty(items, d.id)} onMinus={() => tapMinus(d)} onPlus={() => tapAdd(d)} />
-          )}
+  const renderDish = (d: MenuDish) => {
+    const qty = dishQty(items, d.id)
+    return (
+      <View key={d.id} className={`dish ${d.soldOut ? 'sold-out' : ''}`}>
+        {d.image ? <Image className='dish-img' src={imageUrl(d.image)} mode='aspectFill' lazyLoad /> : <View className='dish-img' />}
+        <View className='dish-info'>
+          <Text className='dish-name'>{d.name}</Text>
+          {d.description && <Text className='dish-desc'>{d.description}</Text>}
+          <View className='dish-bottom'>
+            <Text className='dish-price'>¥{formatYuan(d.price)}{hasOptions(d) ? '起' : ''}</Text>
+            {d.soldOut ? (
+              <Text className='muted'>已售罄</Text>
+            ) : hasOptions(d) ? (
+              <Badge value={qty > 0 ? qty : undefined}>
+                <Button type='primary' size='small' onClick={() => tapAdd(d)}>选规格</Button>
+              </Badge>
+            ) : qty > 0 ? (
+              <InputNumber value={qty} min={0} max={99} onChange={(v) => (Number(v) > qty ? tapAdd(d) : tapMinus(d))} />
+            ) : (
+              <Button type='primary' size='small' shape='round' onClick={() => tapAdd(d)}>＋</Button>
+            )}
+          </View>
         </View>
       </View>
-    </View>
-  )
+    )
+  }
 
   const trimmedKeyword = keyword.trim().toLowerCase()
   const matchedDishes = trimmedKeyword
@@ -153,113 +157,98 @@ export default function Index() {
   // ---------- 未扫码 ----------
   if (!current) {
     return (
-      <View className='empty-page'>
-        <Text className='empty-title'>请扫描桌上的二维码点餐</Text>
-        {error && <Text className='warn'>{error}</Text>}
-        {isH5 ? (
-          <>
-            <Text className='h5-intro'>用手机相机或浏览器扫描桌上的二维码即可打开菜单；下单时登录会员账号，从账户余额支付。</Text>
+      <PageShell>
+        <View className='empty-page'>
+          <Text className='empty-title'>请扫描桌上的二维码点餐</Text>
+          {error && <Text className='warn'>{error}</Text>}
+          {isH5 ? (
+            <>
+              <Text className='h5-intro'>用手机相机或浏览器扫描桌上的二维码即可打开菜单；下单时登录会员账号，从账户余额支付。</Text>
+              {loadingTable && <Text className='muted'>正在加载桌台…</Text>}
+              {process.env.NODE_ENV === 'development' && <Button type='primary' loading={loadingTable} onClick={() => loadTable('dev-table-a1')}>打开开发桌台 A1</Button>}
+            </>
+          ) : (
+            <Button type='primary' size='large' loading={loadingTable} onClick={handleScan}>扫一扫</Button>
+          )}
+          <View className='header-links'>
+            <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
             <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/me/index' })}>我的账户</Text>
-            {loadingTable && <Text className='muted'>正在加载桌台…</Text>}
-            {error && <Button onClick={() => {
-              const token = extractQrToken(router.params as Record<string, unknown>)
-              if (token) void loadTable(token)
-            }}>重试</Button>}
-            {process.env.NODE_ENV === 'development' && <Button className='scan-btn' onClick={() => loadTable('dev-table-a1')} loading={loadingTable}>打开开发桌台 A1</Button>}
-          </>
-        ) : (
-          <>
-            <Button className='scan-btn' onClick={handleScan} loading={loadingTable}>扫一扫</Button>
-            <View className='header-links'>
-              <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
-              <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/me/index' })}>我的账户</Text>
-            </View>
-          </>
-        )}
-      </View>
+          </View>
+        </View>
+      </PageShell>
     )
   }
 
   return (
-    <View className='page'>
-      <View className='header'>
-        <View>
-          <Text className='store-name'>{current.storeName}</Text>
-          <Text className='table-tag'>桌号 {current.tableCode}</Text>
+    <PageShell>
+      <View className='page'>
+        <View className='header'>
+          <View>
+            <Text className='store-name'>{current.storeName}</Text>
+            <Text className='table-tag'>桌号 {current.tableCode}</Text>
+          </View>
+          <View className='header-links'>
+            <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
+            <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/me/index' })}>我的账户</Text>
+          </View>
         </View>
-        <View className='header-links'>
-          <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/order-list/index' })}>我的订单</Text>
-          <Text className='link' onClick={() => Taro.navigateTo({ url: '/pages/me/index' })}>我的账户</Text>
-        </View>
-      </View>
-      {!current.storeOpen && <View className='closed-tip'><Text>店铺已打烊，暂不能下单</Text></View>}
-      {error && (
-        <View className='closed-tip' onClick={() => loadMenu(current.storeId).then(() => setError(null)).catch(() => {})}>
-          <Text>{error}</Text>
-        </View>
-      )}
+        {!current.storeOpen && <View className='closed-tip'><Text>店铺已打烊，暂不能下单</Text></View>}
+        {error && (
+          <View className='closed-tip' onClick={() => loadMenu(current.storeId).then(() => setError(null)).catch(() => {})}>
+            <Text>{error}</Text>
+          </View>
+        )}
 
-      <View className='search-bar'>
-        <Input
-          className='search-input'
-          type='text'
-          confirmType='search'
-          placeholder='搜索菜品'
-          placeholderClass='search-placeholder'
-          value={keyword}
-          onInput={(e) => setKeyword(e.detail.value)}
-        />
-        {keyword && <Text className='search-clear' onClick={() => setKeyword('')}>×</Text>}
-      </View>
+        <SearchBar shape='round' placeholder='搜索菜品' value={keyword} onChange={(v) => setKeyword(v)} onClear={() => setKeyword('')} />
 
-      {trimmedKeyword ? (
-        <ScrollView scrollY className='search-result'>
-          {matchedDishes.length === 0
-            ? <Text className='muted center'>没有找到「{keyword.trim()}」相关菜品</Text>
-            : matchedDishes.map(renderDish)}
-          <View style={{ height: '200px' }} />
-        </ScrollView>
-      ) : (
-        <View className='menu'>
-          <ScrollView scrollY className='cats'>
-            {menu?.categories.map((c) => {
-              const qty = c.dishes.reduce((s, d) => s + dishQty(items, d.id), 0)
-              return (
-                <View
-                  key={c.id}
-                  className={`cat ${activeCat === c.id ? 'active' : ''}`}
-                  onClick={() => { setActiveCat(c.id); setScrollTarget(`cat-${c.id}`) }}
-                >
-                  <Text>{c.name}</Text>
-                  {qty > 0 && <Text className='cat-badge'>{qty}</Text>}
-                </View>
-              )
-            })}
-          </ScrollView>
-
-          <ScrollView scrollY className='dishes' scrollIntoView={scrollTarget} scrollWithAnimation>
-            {menu && menu.categories.length === 0 && <Text className='muted center'>暂无菜品</Text>}
-            {menu?.categories.map((c) => (
-              <View key={c.id} id={`cat-${c.id}`}>
-                <Text className='cat-title'>{c.name}</Text>
-                {c.dishes.map(renderDish)}
-              </View>
-            ))}
+        {trimmedKeyword ? (
+          <ScrollView scrollY className='search-result'>
+            {matchedDishes.length === 0
+              ? <Text className='muted center'>没有找到「{keyword.trim()}」相关菜品</Text>
+              : matchedDishes.map(renderDish)}
             <View style={{ height: '200px' }} />
           </ScrollView>
-        </View>
-      )}
+        ) : (
+          <View className='menu'>
+            <ScrollView scrollY className='cats'>
+              {menu?.categories.map((c) => {
+                const qty = c.dishes.reduce((s, d) => s + dishQty(items, d.id), 0)
+                return (
+                  <View
+                    key={c.id}
+                    className={`cat ${activeCat === c.id ? 'active' : ''}`}
+                    onClick={() => { setActiveCat(c.id); setScrollTarget(`cat-${c.id}`) }}
+                  >
+                    <Badge value={qty > 0 ? qty : undefined}><Text>{c.name}</Text></Badge>
+                  </View>
+                )
+              })}
+            </ScrollView>
 
-      <CartBar
-        disabled={!current.storeOpen}
-        disabledText='已打烊'
-        onCheckout={() => Taro.navigateTo({ url: '/pages/checkout/index' })}
-      />
-      <SpecPopup
-        dish={specDish}
-        onClose={() => setSpecDish(null)}
-        onConfirm={(dish, sel, qty) => { add(dish, sel, qty); setSpecDish(null) }}
-      />
-    </View>
+            <ScrollView scrollY className='dishes' scrollIntoView={scrollTarget} scrollWithAnimation>
+              {menu && menu.categories.length === 0 && <Text className='muted center'>暂无菜品</Text>}
+              {menu?.categories.map((c) => (
+                <View key={c.id} id={`cat-${c.id}`}>
+                  <Text className='cat-title'>{c.name}</Text>
+                  {c.dishes.map(renderDish)}
+                </View>
+              ))}
+              <View style={{ height: '200px' }} />
+            </ScrollView>
+          </View>
+        )}
+
+        <CartBar
+          disabled={!current.storeOpen}
+          disabledText='已打烊'
+          onCheckout={() => Taro.navigateTo({ url: '/pages/checkout/index' })}
+        />
+        <SpecPopup
+          dish={specDish}
+          onClose={() => setSpecDish(null)}
+          onConfirm={(dish, sel, qty) => { add(dish, sel, qty); setSpecDish(null) }}
+        />
+      </View>
+    </PageShell>
   )
 }

@@ -34,34 +34,9 @@
   padding: 16px 32px;
 }
 
-.search-bar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  margin: 16px 24px;
-  padding: 0 28px;
-  height: 68px;
-  border-radius: 34px;
-  background: var(--bg-muted);
-}
 
-.search-input {
-  flex: 1;
-  height: 68px;
-  font-size: 26px;
-  color: var(--text);
-}
 
-.search-placeholder {
-  color: var(--text-4);
-}
 
-.search-clear {
-  font-size: 40px;
-  line-height: 1;
-  color: var(--text-4);
-  padding: 0 4px 4px 16px;
-}
 
 .search-result {
   flex: 1;
@@ -96,21 +71,6 @@
   font-weight: 600;
 }
 
-.cat-badge {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  min-width: 30px;
-  height: 30px;
-  line-height: 30px;
-  border-radius: 15px;
-  background: var(--danger);
-  color: #fff;
-  font-size: 20px;
-  text-align: center;
-  padding: 0 6px;
-  box-sizing: border-box;
-}
 
 .dishes {
   flex: 1;
@@ -178,30 +138,7 @@
   font-weight: 600;
 }
 
-.spec-btn {
-  position: relative;
-  background: var(--brand);
-  color: #fff;
-  font-size: 24px;
-  padding: 8px 20px;
-  border-radius: 24px;
-}
 
-.spec-badge {
-  position: absolute;
-  top: -12px;
-  right: -12px;
-  min-width: 30px;
-  height: 30px;
-  line-height: 30px;
-  border-radius: 15px;
-  background: var(--danger);
-  color: #fff;
-  font-size: 20px;
-  text-align: center;
-  padding: 0 6px;
-  box-sizing: border-box;
-}
 
 .muted {
   color: var(--text-3);
@@ -242,7 +179,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: 240px;
+  gap: 32px;
+  padding: 240px 48px 0;
+  text-align: center;
 }
 
 .empty-title {
@@ -250,12 +189,6 @@
   font-weight: 600;
 }
 
-.scan-btn {
-  margin: 48px 0 32px;
-  width: 400px;
-  background: var(--brand);
-  color: #fff;
-}
 
 .h5-intro {
   margin: 32px;

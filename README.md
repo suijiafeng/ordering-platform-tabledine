@@ -5,7 +5,7 @@
 | 目录 | 说明 |
 |---|---|
 | `server/` | 后端：Spring Boot 3.3 + MyBatis-Plus + PostgreSQL 16 + Flyway |
-| `miniapp/` | 顾客端：Taro 4 + React 18 + TS，构建为微信、支付宝小程序 |
+| `miniapp/` | 顾客端：Taro 4 + React 18 + TS + NutUI React Taro，一套代码构建微信小程序、支付宝小程序、H5 |
 | `merchant-web/` | 商家端：Vite 6 + React 18 + Ant Design 5 |
 | `deploy/` | docker-compose、Nginx、浏览器匿名菜单页 |
 | `docs/` | 需求分析 v1.2、工程化设计文档 |
@@ -91,6 +91,7 @@ npm run dev:alipay           # 支付宝开发者工具导入 miniapp/dist/alipa
 - 开发者工具中勾选「不校验合法域名」
 - 模拟扫码：在编译模式里给首页加启动参数 `token=dev-table-a1`，或 `q=https%3A%2F%2Fexample.com%2Fq%2Fdev-table-a1`（微信）/ `qrCode=https://example.com/q/dev-table-a1`（支付宝）
 - 登录：小程序与 H5 一样用会员账号（开发种子 `13800000001 / staff123`），不再静默登录
+- UI：`@nutui/nutui-react-taro`（按钮、步进器、搜索框、弹层、对话框、轻提示、步骤条、单元格等），三端同一套组件；每个页面根节点用 `components/PageShell` 包裹（注入主题色，并挂载本页的 Toast / Dialog，`utils/toast.ts`、`utils/dialog.ts` 依赖它）；`config/index.ts` 对 `@nutui` 的样式按 375 设计稿换算，业务样式仍按 750
 - 真机预览：把 `miniapp/.env.development` 中的地址改成电脑的局域网 IP
 
 ### 5. H5 点餐（浏览器）

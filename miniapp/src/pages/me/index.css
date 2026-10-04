@@ -8,6 +8,7 @@
 .me-balance-label { display: block; font-size: 22px; color: rgba(255, 255, 255, 0.8); }
 .me-balance-value { display: block; font-size: 52px; font-weight: 700; color: var(--on-brand); margin-top: 4px; line-height: 1.1; }
 .me-hint { display: block; font-size: 22px; color: var(--text-3); line-height: 1.6; margin: -4px 8px 20px; }
+.me-page .nut-cell-group { margin-bottom: 20px; }
 .me-actions { display: flex; gap: 16px; margin-bottom: 20px; }
 .me-btn { flex: 1; text-align: center; padding: 22px 0; border-radius: 16px; background: var(--bg-card); font-size: 26px; color: var(--text); }
 .me-btn.primary { background: var(--brand); color: var(--on-brand); font-weight: 600; margin-top: 24px; border-radius: 48px; }
@@ -24,6 +25,6 @@
 .me-txn-delta.credit { color: var(--success); }
 .me-txn-after { display: block; font-size: 22px; color: var(--text-4); margin-top: 6px; }
 .me-mask { position: fixed; left: 0; right: 0; top: 0; bottom: 0; background: var(--mask); z-index: 100; display: flex; flex-direction: column; justify-content: flex-end; }
-.me-popup { background: var(--bg-card); border-radius: 24px 24px 0 0; padding: 32px 32px 48px; }
+.me-popup { padding: 32px 32px calc(48px + env(safe-area-inset-bottom)); }
 .me-input { height: 92px; padding: 0 28px; border-radius: 20px; background: var(--bg-muted); font-size: 30px; margin-top: 16px; }
 .me-placeholder { color: var(--text-4); }

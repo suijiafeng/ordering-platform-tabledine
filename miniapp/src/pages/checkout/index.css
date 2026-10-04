@@ -79,11 +79,9 @@
 .co-textarea {
   flex: 1;
   margin-left: 32px;
-  height: 120px;
-  font-size: 28px;
   background: var(--bg-muted);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 8px 16px;
 }
 
 .co-bar {
@@ -106,18 +104,6 @@
   font-weight: 600;
 }
 
-.co-submit {
-  background: var(--brand);
-  color: #fff;
-  padding: 20px 64px;
-  border-radius: 40px;
-  font-size: 32px;
-  font-weight: 600;
-}
-
-.co-submit.disabled {
-  background: var(--disabled);
-}
 
 .co-empty {
   display: flex;
@@ -127,7 +113,3 @@
   color: var(--text-3);
 }
 
-.co-link {
-  margin-top: 24px;
-  color: var(--brand);
-}

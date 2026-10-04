@@ -7,11 +7,15 @@ export default defineConfig<'webpack5'>(async (merge) => {
   const baseConfig: UserConfigExport<'webpack5'> = {
     projectName: 'ordering-miniapp',
     date: '2026-10-04',
-    designWidth: 750,
+    // NutUI React Taro 的样式按 375 设计稿编写，其余文件仍按 750（rpx 口径）
+    designWidth(input?: string | number | { file?: string }) {
+      const file = typeof input === 'object' ? input?.file : undefined
+      return file?.replace(/\\+/g, '/').includes('@nutui') ? 375 : 750
+    },
     deviceRatio: {
       640: 2.34 / 2,
       750: 1,
-      375: 2,
+      375: 2 / 1,
       828: 1.81 / 2,
     },
     sourceRoot: 'src',
