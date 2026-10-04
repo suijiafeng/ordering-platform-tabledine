@@ -8,3 +8,10 @@ app:
   auth:
     mock-enabled: true
     max-login-failures: 3
+  rate-limit:
+    enabled: false
+  storage:
+    local-dir: ${java.io.tmpdir}/ordering-test-uploads
+    serve-local: true
+  qr:
+    base-url: https://test.example.com/q/

@@ -1,0 +1,191 @@
+package com.example.ordering.menu;
+
+import com.example.ordering.support.AbstractIntegrationTest;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+class MenuIntegrationTest extends AbstractIntegrationTest {
+
+    @Test
+    void ownerCreatesDishAndCustomerSeesIt() throws Exception {
+        String owner = ownerToken();
+        long categoryId = createCategory(owner, "测试分类-" + System.nanoTime());
+
+        Map<String, Object> dish = dishBody(categoryId, "测试拿铁", 2000L);
+        MvcResult r = mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dish)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dish.price").value(2000))
+                .andExpect(jsonPath("$.data.specGroups[0].items.length()").value(2))
+                .andExpect(jsonPath("$.data.addonGroups[0].maxCount").value(2))
+                .andReturn();
+        long dishId = data(r).path("dish").path("id").asLong();
+
+        JsonNode menuDish = findMenuDish(dishId);
+        assertThat(menuDish).isNotNull();
+        assertThat(menuDish.path("soldOut").asBoolean()).isFalse();
+        assertThat(menuDish.path("specGroups").get(0).path("items").get(1).path("priceDelta").asLong()).isEqualTo(500);
+
+        // 修改：去掉加料组，规格整体替换
+        Map<String, Object> updated = dishBody(categoryId, "测试拿铁（改）", 2200L);
+        updated.put("addonGroups", List.of());
+        mvc.perform(authed(put("/api/v1/m/dishes/" + dishId), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(updated)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dish.name").value("测试拿铁（改）"))
+                .andExpect(jsonPath("$.data.addonGroups.length()").value(0));
+        Integer activeSpecGroups = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM dish_spec_group WHERE dish_id = ? AND deleted = 0", Integer.class, dishId);
+        assertThat(activeSpecGroups).isEqualTo(1);
+
+        // 下架后顾客端不可见
+        mvc.perform(authed(patch("/api/v1/m/dishes/" + dishId + "/status"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("status", 0)))
+                .andExpect(status().isOk());
+        assertThat(findMenuDish(dishId)).isNull();
+    }
+
+    @Test
+    void staffCanToggleSoldOutButCannotEditMenu() throws Exception {
+        String staff = staffToken();
+        // 种子菜品 1：红烧肉
+        mvc.perform(authed(patch("/api/v1/m/dishes/1/sold-out"), staff)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("soldOut", true)))
+                .andExpect(status().isOk());
+        assertThat(findMenuDish(1L).path("soldOut").asBoolean()).isTrue();
+
+        mvc.perform(authed(patch("/api/v1/m/dishes/1/sold-out"), staff)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("soldOut", false)))
+                .andExpect(status().isOk());
+
+        mvc.perform(authed(post("/api/v1/m/categories"), staff)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("name", "店员不能建")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(40301));
+
+        // 查看菜品列表所有员工可用
+        mvc.perform(authed(get("/api/v1/m/dishes"), staff))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").isNumber());
+    }
+
+    @Test
+    void stockZeroShowsSoldOutAndNullRestores() throws Exception {
+        String owner = ownerToken();
+        mvc.perform(authed(put("/api/v1/m/dishes/2/stock"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":0}"))
+                .andExpect(status().isOk());
+        assertThat(findMenuDish(2L).path("soldOut").asBoolean()).isTrue();
+
+        mvc.perform(authed(put("/api/v1/m/dishes/2/stock"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":null}"))
+                .andExpect(status().isOk());
+        assertThat(findMenuDish(2L).path("soldOut").asBoolean()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT stock_quantity FROM dish WHERE id = 2", Integer.class)).isNull();
+    }
+
+    @Test
+    void validationRules() throws Exception {
+        String owner = ownerToken();
+        long categoryId = createCategory(owner, "校验分类-" + System.nanoTime());
+
+        // 加料组最多可选数量超过加料项数量
+        Map<String, Object> bad = dishBody(categoryId, "坏菜品", 100L);
+        bad.put("addonGroups", List.of(Map.of("name", "小料", "maxCount", 5,
+                "items", List.of(Map.of("name", "珍珠", "priceDelta", 100)))));
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(bad)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value(42201));
+
+        // 价格为负
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dishBody(categoryId, "负价", -1L))))
+                .andExpect(jsonPath("$.code").value(42201));
+
+        // 分类下有菜品时不能删除
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dishBody(categoryId, "占位菜", 100L))))
+                .andExpect(status().isOk());
+        mvc.perform(authed(delete("/api/v1/m/categories/" + categoryId), owner))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(40901));
+    }
+
+    @Test
+    void otherStoresDataIsInvisible() throws Exception {
+        jdbc.update("INSERT INTO store (id, name) VALUES (900, '隔壁店') ON CONFLICT (id) DO NOTHING");
+        jdbc.update("INSERT INTO category (id, store_id, name) VALUES (900, 900, '隔壁分类') ON CONFLICT (id) DO NOTHING");
+        jdbc.update("INSERT INTO dish (id, store_id, category_id, name, price) VALUES (900, 900, 900, '隔壁菜', 100) "
+                + "ON CONFLICT (id) DO NOTHING");
+        String owner = ownerToken();
+
+        mvc.perform(authed(get("/api/v1/m/dishes/900"), owner))
+                .andExpect(status().isNotFound());
+        mvc.perform(authed(patch("/api/v1/m/dishes/900/sold-out"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("soldOut", true)))
+                .andExpect(status().isNotFound());
+        assertThat(jdbc.queryForObject("SELECT is_sold_out FROM dish WHERE id = 900", Boolean.class)).isFalse();
+
+        JsonNode categories = getData("/api/v1/m/categories", owner);
+        for (JsonNode c : categories) {
+            assertThat(c.path("id").asLong()).isNotEqualTo(900L);
+        }
+        // 用本店分类挂隔壁菜品：分类校验同样受门店隔离
+        mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dishBody(900L, "越权", 100L))))
+                .andExpect(status().isNotFound());
+        assertThat(findMenuDish(900L)).isNull();
+    }
+
+    // ---------- helpers ----------
+
+    private long createCategory(String owner, String name) throws Exception {
+        MvcResult r = mvc.perform(authed(post("/api/v1/m/categories"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("name", name)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return data(r).path("id").asLong();
+    }
+
+    private static Map<String, Object> dishBody(long categoryId, String name, long price) {
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("categoryId", categoryId);
+        body.put("name", name);
+        body.put("price", price);
+        body.put("specGroups", List.of(Map.of("name", "杯型", "required", true, "items", List.of(
+                Map.of("name", "中杯", "priceDelta", 0, "isDefault", true),
+                Map.of("name", "大杯", "priceDelta", 500)))));
+        body.put("addonGroups", List.of(Map.of("name", "加料", "maxCount", 2, "items", List.of(
+                Map.of("name", "燕麦", "priceDelta", 300),
+                Map.of("name", "浓缩", "priceDelta", 400)))));
+        return body;
+    }
+
+    /** 在门店 1 的顾客端菜单里查找菜品，找不到返回 null */
+    private JsonNode findMenuDish(long dishId) throws Exception {
+        MvcResult r = mvc.perform(get("/api/v1/c/stores/1/menu")).andExpect(status().isOk()).andReturn();
+        for (JsonNode c : data(r).path("categories")) {
+            for (JsonNode d : c.path("dishes")) {
+                if (d.path("id").asLong() == dishId) {
+                    return d;
+                }
+            }
+        }
+        return null;
+    }
+}

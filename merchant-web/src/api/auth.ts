@@ -1,5 +1,5 @@
 import { request } from '../utils/request'
-import type { StaffProfile, StaffTokenResponse, StoreDetail } from './types'
+import type { StaffProfile, StaffTokenResponse } from './types'
 
 export function login(username: string, password: string) {
   return request<StaffTokenResponse>({
@@ -14,6 +14,4 @@ export function fetchMe() {
   return request<StaffProfile>({ url: '/api/v1/m/auth/me' })
 }
 
-export function fetchStore() {
-  return request<StoreDetail>({ url: '/api/v1/m/store' })
-}
+export { fetchStore } from './store'

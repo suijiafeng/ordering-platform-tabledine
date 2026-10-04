@@ -20,6 +20,34 @@ public class AppProperties {
     private Alipay alipay = new Alipay();
     private Cors cors = new Cors();
     private Bootstrap bootstrap = new Bootstrap();
+    private Qr qr = new Qr();
+    private Storage storage = new Storage();
+    private RateLimit rateLimit = new RateLimit();
+
+    @Data
+    public static class Qr {
+        /** 桌码链接前缀，完整链接 = baseUrl + qrToken；需与小程序后台配置的普通二维码规则一致 */
+        private String baseUrl = "https://ordering.example.com/q/";
+    }
+
+    @Data
+    public static class Storage {
+        /** 本地存储目录（生产为 Docker 卷 /data/uploads） */
+        private String localDir = "/data/uploads";
+        /** 对外访问路径前缀（生产由 Nginx 提供静态访问） */
+        private String publicPath = "/uploads/";
+        /** 由后端直接提供静态访问（仅开发环境，生产交给 Nginx） */
+        private boolean serveLocal = false;
+        /** 主图最长边像素 */
+        private int maxSize = 1080;
+        /** 缩略图最长边像素 */
+        private int thumbSize = 400;
+    }
+
+    @Data
+    public static class RateLimit {
+        private boolean enabled = true;
+    }
 
     @Data
     public static class Jwt {

@@ -11,7 +11,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
@@ -48,9 +51,16 @@ public class GlobalExceptionHandler {
         return build(ErrorCode.PARAM_INVALID, msg);
     }
 
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Result<Void>> handleUploadSize(MaxUploadSizeExceededException e) {
+        return build(ErrorCode.PARAM_INVALID, "文件过大");
+    }
+
     @ExceptionHandler({
+            HandlerMethodValidationException.class,
             HttpMessageNotReadableException.class,
             MissingServletRequestParameterException.class,
+            MissingServletRequestPartException.class,
             MethodArgumentTypeMismatchException.class
     })
     public ResponseEntity<Result<Void>> handleBadRequest(Exception e) {

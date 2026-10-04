@@ -2,6 +2,7 @@ package com.example.ordering.ratelimit;
 
 import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
+import com.example.ordering.config.AppProperties;
 import com.example.ordering.security.LoginUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,10 +19,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class RateLimitInterceptor implements HandlerInterceptor {
 
     private final Map<String, Window> windows = new ConcurrentHashMap<>();
+    private final boolean enabled;
+
+    public RateLimitInterceptor(AppProperties appProperties) {
+        this.enabled = appProperties.getRateLimit().isEnabled();
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        if (!(handler instanceof HandlerMethod hm)) {
+        if (!enabled || !(handler instanceof HandlerMethod hm)) {
             return true;
         }
         RateLimit limit = hm.getMethodAnnotation(RateLimit.class);
