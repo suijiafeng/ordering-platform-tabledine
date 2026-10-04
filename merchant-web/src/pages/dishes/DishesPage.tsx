@@ -24,11 +24,16 @@ export default function DishesPage() {
   const [drawer, setDrawer] = useState<{ open: boolean; dishId: number | null }>({ open: false, dishId: null })
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   // 错误提示均由 request 统一弹出，这里吞掉 rejection 避免 Unhandled promise rejection
   const loadCategories = useCallback(() => listCategories().then(setCategories).catch(() => {}), [])
 =======
   const loadCategories = useCallback(() => listCategories().then(setCategories), [])
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+  // 错误提示均由 request 统一弹出，这里吞掉 rejection 避免 Unhandled promise rejection
+  const loadCategories = useCallback(() => listCategories().then(setCategories).catch(() => {}), [])
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 
   const loadDishes = useCallback(async () => {
     setLoading(true)
@@ -36,6 +41,9 @@ export default function DishesPage() {
       const res = await listDishes({ categoryId: categoryId ?? undefined, keyword: keyword || undefined, page, pageSize: PAGE_SIZE })
       setData({ list: res.list, total: res.total })
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
       // 删除当前页最后一条后页码越界：回退到最后一页
       const lastPage = Math.max(1, Math.ceil(res.total / PAGE_SIZE))
       if (page > lastPage) {
@@ -43,14 +51,18 @@ export default function DishesPage() {
       }
     } catch {
       // 已统一提示
+<<<<<<< HEAD
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     } finally {
       setLoading(false)
     }
   }, [categoryId, keyword, page])
 
   useEffect(() => {
+<<<<<<< HEAD
 <<<<<<< HEAD
     void loadCategories()
   }, [loadCategories])
@@ -64,6 +76,13 @@ export default function DishesPage() {
   useEffect(() => {
     loadDishes()
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+    void loadCategories()
+  }, [loadCategories])
+
+  useEffect(() => {
+    void loadDishes()
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   }, [loadDishes])
 
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? '-'

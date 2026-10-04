@@ -133,6 +133,9 @@ export interface StoreUpdateRequest {
   afterSaleHours: number
 }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 
 // ==================== 订单 / 支付 / 退款 ====================
 
@@ -288,5 +291,8 @@ export interface DashboardToday {
   topDishes: { dishName: string; quantity: number; amount: number }[]
   daily: { date: string; netIncome: number; orderCount: number }[]
 }
+<<<<<<< HEAD
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)

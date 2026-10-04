@@ -61,6 +61,9 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
 
     @Test
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     void clearingDescriptionAndImagePersists() throws Exception {
         String owner = ownerToken();
         long categoryId = createCategory(owner, "清空测试-" + System.nanoTime());
@@ -89,8 +92,11 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+<<<<<<< HEAD
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     void staffCanToggleSoldOutButCannotEditMenu() throws Exception {
         String staff = staffToken();
         // 种子菜品 1：红烧肉

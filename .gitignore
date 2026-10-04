@@ -19,6 +19,9 @@ deploy/.env
 deploy/secrets/
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 Claude outputs/
 
 # 杂项
@@ -26,7 +29,10 @@ Claude outputs/
 
 # Claude 本地构建协作目录
 .claude-build/
+<<<<<<< HEAD
 =======
 # 杂项
 *.whl
 >>>>>>> 38621df (chore: 移除误提交的 bcrypt 安装包)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)

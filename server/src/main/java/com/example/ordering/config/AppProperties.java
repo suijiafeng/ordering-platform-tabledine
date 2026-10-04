@@ -24,6 +24,9 @@ public class AppProperties {
     private Storage storage = new Storage();
     private RateLimit rateLimit = new RateLimit();
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     private Pay pay = new Pay();
     private WechatPay wechatPay = new WechatPay();
 
@@ -55,8 +58,11 @@ public class AppProperties {
         private String platformPublicKey;
         private String apiBase = "https://api.mch.weixin.qq.com";
     }
+<<<<<<< HEAD
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 
     @Data
     public static class Qr {

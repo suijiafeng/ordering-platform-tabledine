@@ -76,22 +76,32 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
         })
       })
 <<<<<<< HEAD
+<<<<<<< HEAD
       .catch(() => onClose())
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+      .catch(() => onClose())
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
       .finally(() => setLoading(false))
   }, [open, dishId, defaultCategoryId, categories, form])
 
   const submit = async () => {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     // 校验不通过时 antd 会 reject 一个字段错误对象，不是异常，直接返回即可
     const v = await form.validateFields().catch(() => null)
     if (!v) {
       return
     }
+<<<<<<< HEAD
 =======
     const v = await form.validateFields()
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     const body: DishSaveRequest = {
       categoryId: v.categoryId,
       name: v.name.trim(),
@@ -124,10 +134,15 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       message.success('已保存')
       onSaved()
 <<<<<<< HEAD
+<<<<<<< HEAD
     } catch {
       // 保持抽屉打开供用户修改；错误提示已由 request 统一弹出
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+    } catch {
+      // 保持抽屉打开供用户修改；错误提示已由 request 统一弹出
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     } finally {
       setSaving(false)
     }

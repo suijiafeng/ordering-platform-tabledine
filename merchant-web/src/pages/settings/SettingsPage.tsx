@@ -1,10 +1,15 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { useCallback, useEffect, useState } from 'react'
 import { App, Button, Card, Col, Form, Input, InputNumber, Result, Row, Space, Spin, Switch, Typography } from 'antd'
 =======
 import { useEffect, useState } from 'react'
 import { App, Button, Card, Col, Form, Input, InputNumber, Row, Space, Spin, Switch, Typography } from 'antd'
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+import { useCallback, useEffect, useState } from 'react'
+import { App, Button, Card, Col, Form, Input, InputNumber, Result, Row, Space, Spin, Switch, Typography } from 'antd'
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 import { fetchStore, setBusinessStatus, updateStore } from '../../api/store'
 import type { StoreDetail, StoreUpdateRequest } from '../../api/types'
 import ImageUpload from '../../components/ImageUpload'
@@ -14,6 +19,7 @@ export default function SettingsPage() {
   const { message, modal } = App.useApp()
   const [form] = Form.useForm<StoreUpdateRequest>()
   const [store, setStore] = useState<StoreDetail | null>(null)
+<<<<<<< HEAD
 <<<<<<< HEAD
   const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -35,16 +41,31 @@ export default function SettingsPage() {
   }, [load])
 
 =======
+=======
+  const [loadError, setLoadError] = useState(false)
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    fetchStore().then((s) => {
+  const load = useCallback(async () => {
+    setLoadError(false)
+    try {
+      const s = await fetchStore()
       setStore(s)
       form.setFieldsValue(s)
-    })
+    } catch {
+      // 错误提示已由 request 统一弹出，这里只切换到可重试的错误态，避免永久转圈
+      setLoadError(true)
+    }
   }, [form])
 
+<<<<<<< HEAD
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+  useEffect(() => {
+    void load()
+  }, [load])
+
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   const toggleOpen = (open: boolean) => {
     modal.confirm({
       title: open ? '开始营业？' : '暂停营业？',
@@ -55,13 +76,19 @@ export default function SettingsPage() {
 
   const save = async () => {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     const v = await form.validateFields().catch(() => null)
     if (!v) {
       return
     }
+<<<<<<< HEAD
 =======
     const v = await form.validateFields()
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
     setSaving(true)
     try {
       const s = await updateStore(v)
@@ -74,11 +101,17 @@ export default function SettingsPage() {
   }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   if (loadError) {
     return <Result status="error" title="店铺信息加载失败" extra={<Button type="primary" onClick={load}>重试</Button>} />
   }
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+  if (loadError) {
+    return <Result status="error" title="店铺信息加载失败" extra={<Button type="primary" onClick={load}>重试</Button>} />
+  }
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
   if (!store) {
     return <Spin />
   }

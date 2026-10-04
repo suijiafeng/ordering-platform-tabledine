@@ -9,12 +9,18 @@ import TablesPage from './pages/tables/TablesPage'
 import TablePrintPage from './pages/tables/TablePrintPage'
 import SettingsPage from './pages/settings/SettingsPage'
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 import OrdersPage from './pages/orders/OrdersPage'
 import KitchenPage from './pages/kitchen/KitchenPage'
 import RefundsPage from './pages/refunds/RefundsPage'
 import ReportsPage from './pages/reports/ReportsPage'
+<<<<<<< HEAD
 =======
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
 import { useAuthStore } from './store/auth'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -44,6 +50,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardPage /> },
 <<<<<<< HEAD
+<<<<<<< HEAD
       { path: 'orders', element: <OrdersPage /> },
       { path: 'kitchen', element: <KitchenPage /> },
       { path: 'refunds', element: <RequireOwner><RefundsPage /></RequireOwner> },
@@ -58,6 +65,14 @@ export const router = createBrowserRouter([
       { path: 'tables', element: <TablesPage /> },
       { path: 'reports', element: <RequireOwner><PlaceholderPage title="数据看板" week="第 4 周" /></RequireOwner> },
 >>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
+=======
+      { path: 'orders', element: <OrdersPage /> },
+      { path: 'kitchen', element: <KitchenPage /> },
+      { path: 'refunds', element: <RequireOwner><RefundsPage /></RequireOwner> },
+      { path: 'dishes', element: <DishesPage /> },
+      { path: 'tables', element: <TablesPage /> },
+      { path: 'reports', element: <RequireOwner><ReportsPage /></RequireOwner> },
+>>>>>>> 2b17451 (feat: 添加订单管理与后厨队列功能)
       { path: 'staff', element: <RequireOwner><PlaceholderPage title="员工管理" week="V1" /></RequireOwner> },
       { path: 'settings', element: <RequireOwner><SettingsPage /></RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },
