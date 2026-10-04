@@ -130,8 +130,8 @@ export default function OrdersPage() {
     <Card
       title="订单管理"
       extra={
-        <Space>
-          <Input.Search allowClear placeholder="订单号 / 桌号" style={{ width: 200 }} onSearch={(v) => { setKeyword(v.trim()); setPage(1) }} />
+        <Space wrap>
+          <Input.Search allowClear placeholder="订单号 / 桌号" style={{ width: 180 }} onSearch={(v) => { setKeyword(v.trim()); setPage(1) }} />
           <DatePicker value={date} onChange={(d) => { setDate(d); setPage(1) }} placeholder="下单日期" allowClear />
           <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
         </Space>
@@ -145,6 +145,7 @@ export default function OrdersPage() {
       <Table<OrderSummary>
         rowKey="id"
         size="middle"
+        scroll={{ x: 'max-content' }}
         loading={loading}
         columns={columns}
         dataSource={data.list}

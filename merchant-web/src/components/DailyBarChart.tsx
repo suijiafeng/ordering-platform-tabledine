@@ -12,9 +12,9 @@ interface Point {
  * 近 7 天实收柱状图（单一序列，无需图例）：细柱、顶部 4px 圆角、悬停提示、最高值直接标注。
  * 同页提供表格视图作为无障碍 / 数据查看入口。
  */
-export default function DailyBarChart({ data, height = 180 }: { data: Point[]; height?: number }) {
+/** width 是 viewBox 逻辑宽度：窄屏传小一点，缩放后文字才不会太小 */
+export default function DailyBarChart({ data, height = 180, width = 640 }: { data: Point[]; height?: number; width?: number }) {
   const [hover, setHover] = useState<number | null>(null)
-  const width = 640
   const padL = 56
   const padR = 16
   const padT = 20

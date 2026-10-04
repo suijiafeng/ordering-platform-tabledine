@@ -160,7 +160,7 @@ export default function DishesPage() {
 
   return (
     <Row gutter={16}>
-      <Col xs={24} md={7} lg={6}>
+      <Col xs={24} lg={7} xl={6}>
         <CategoryPanel
           categories={categories}
           selectedId={categoryId}
@@ -169,7 +169,7 @@ export default function DishesPage() {
           onChanged={loadCategories}
         />
       </Col>
-      <Col xs={24} md={17} lg={18}>
+      <Col xs={24} lg={17} xl={18}>
         <Card
           title={categoryId === null ? '全部菜品' : categoryName(categoryId)}
           extra={
@@ -190,6 +190,7 @@ export default function DishesPage() {
           }
         >
           <Table<DishItem>
+            scroll={{ x: 'max-content' }}
             rowKey="id"
             size="middle"
             loading={loading}

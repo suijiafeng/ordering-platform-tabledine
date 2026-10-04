@@ -132,7 +132,7 @@ export default function TablesPage() {
     <Card
       title="桌台管理"
       extra={
-        <Space>
+        <Space wrap>
           <Button
             icon={<PrinterOutlined />}
             disabled={tables.length === 0}
@@ -146,6 +146,7 @@ export default function TablesPage() {
       }
     >
       <Table<TableItem>
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         loading={loading}
         columns={columns}

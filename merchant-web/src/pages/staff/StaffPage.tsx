@@ -115,7 +115,7 @@ export default function StaffPage() {
       <Typography.Paragraph type="secondary">
         店员可以接单、拒单、出餐、送达、沽清和查看订单；退款审核、菜品桌台维护、店铺设置、看板与导出仅店主可用。
       </Typography.Paragraph>
-      <Table rowKey="id" columns={columns} dataSource={list} loading={loading} pagination={false} />
+      <Table rowKey="id" columns={columns} dataSource={list} loading={loading} pagination={false} scroll={{ x: 'max-content' }} />
 
       <Modal
         title={isNew ? '新建店员' : '编辑员工'}

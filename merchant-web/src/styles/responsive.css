@@ -1,0 +1,35 @@
+/* 窄屏适配：antd 组件默认按桌面排版，这里只做最小必要的覆盖 */
+@media (max-width: 767.98px) {
+  /* Card 标题 + 右侧工具栏（搜索 / 按钮）换行堆叠，而不是把标题挤成竖排 */
+  .ant-card-head-wrapper {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 8px 0;
+  }
+  /* 标题独占第一行（否则 flex:1 的标题会被占满整行的 extra 挤成 0 宽）；antd 的 CSS-in-JS 选择器更长，需要 !important */
+  .ant-card-head-title {
+    flex: 1 0 100% !important;
+  }
+  .ant-card-extra {
+    margin-inline-start: 0;
+    width: 100%;
+    padding-top: 0;
+  }
+  .ant-card-extra .ant-space {
+    flex-wrap: wrap;
+  }
+  .ant-card-body {
+    padding: 16px 12px;
+  }
+  .ant-card-head {
+    padding: 0 12px;
+  }
+  /* 列表里的操作按钮本来就很小，手机上再紧凑一点 */
+  .ant-table-wrapper .ant-table.ant-table-middle .ant-table-cell {
+    padding: 10px 8px;
+  }
+  /* 统计数字在半宽卡片里别太大 */
+  .ant-statistic-content {
+    font-size: 20px;
+  }
+}

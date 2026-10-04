@@ -121,8 +121,8 @@ export default function KitchenPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Space size="large">
+      <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
+        <Space size="large" wrap>
           <Typography.Title level={4} style={{ margin: 0 }}>后厨队列</Typography.Title>
           <Typography.Text type="secondary">待接单 {pending.length} · 制作中 {making.length} · 每 5 秒刷新</Typography.Text>
         </Space>

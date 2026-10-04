@@ -70,22 +70,22 @@ export default function SettingsPage() {
       <Card title="店铺信息与业务参数" extra={<Button type="primary" loading={saving} onClick={save}>保存</Button>}>
         <Form form={form} layout="vertical" style={{ maxWidth: 800 }}>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="name" label="店铺名称" rules={[{ required: true, whitespace: true, message: '请输入店铺名称' }]}>
                 <Input maxLength={64} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="phone" label="联系电话">
                 <Input maxLength={20} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="address" label="地址">
                 <Input maxLength={255} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="businessHours" label="营业时间" extra="仅展示用，如 10:00-22:00">
                 <Input maxLength={64} />
               </Form.Item>
@@ -98,22 +98,22 @@ export default function SettingsPage() {
             <Col span={24}>
               <Typography.Title level={5}>业务参数</Typography.Title>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="autoAccept" label="自动接单" valuePropName="checked" extra="开启后顾客支付成功即进入制作中">
                 <Switch />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="payTimeoutMin" label="未支付自动关单（分钟）" rules={[{ required: true }]}>
                 <InputNumber min={5} max={60} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="acceptTimeoutMin" label="未接单自动退款（分钟）" rules={[{ required: true }]} extra="手动接单模式下生效">
                 <InputNumber min={1} max={60} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="afterSaleHours" label="售后申请时限（小时）" rules={[{ required: true }]}>
                 <InputNumber min={0} max={168} style={{ width: '100%' }} />
               </Form.Item>

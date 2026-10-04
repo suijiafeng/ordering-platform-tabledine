@@ -1,12 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Layout, Menu, Space, Tag, Typography } from 'antd'
+import { Badge, Button, Drawer, Layout, Menu, Space, Tag, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
   BarChartOutlined,
   DashboardOutlined,
   FireOutlined,
+  MenuOutlined,
   OrderedListOutlined,
   QrcodeOutlined,
   RollbackOutlined,
@@ -16,6 +17,7 @@ import {
 import { useAuthStore } from '../store/auth'
 import ChangePasswordButton from '../components/ChangePasswordButton'
 import { useOrderPoll } from '../hooks/useOrderPoll'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 interface NavItem {
   key: string
@@ -42,6 +44,8 @@ export default function MainLayout() {
   const location = useLocation()
   const { staff, logout } = useAuthStore()
   const isOwner = staff?.role === 'OWNER'
+  const isMobile = useIsMobile()
+  const [menuOpen, setMenuOpen] = useState(false)
   // 全局新订单轮询（提示音 + 菜单角标）
   const { counts } = useOrderPoll()
 
@@ -77,13 +81,57 @@ export default function MainLayout() {
     .filter((k) => (k === '/' ? location.pathname === '/' : location.pathname.startsWith(k)))
     .slice(-1)
 
+  const onLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
+
+  const menu = (
+    <Menu
+      mode="inline"
+      selectedKeys={selected}
+      items={items}
+      onClick={({ key }) => {
+        navigate(key)
+        setMenuOpen(false)
+      }}
+    />
+  )
+
+  if (isMobile) {
+    // 手机：顶栏 + 抽屉菜单；内容区留给页面
+    return (
+      <Layout style={{ minHeight: '100vh' }}>
+        <Layout.Header
+          style={{ background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingInline: 12, height: 52, lineHeight: '52px', position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 0 #f0f0f0' }}
+        >
+          <Space>
+            <Button type="text" icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} aria-label="打开菜单" />
+            <Typography.Text strong>点餐后台</Typography.Text>
+          </Space>
+          <Space size={4}>
+            <Tag color={isOwner ? 'gold' : 'blue'} style={{ marginInlineEnd: 0 }}>{staff?.name}</Tag>
+            <Button type="link" size="small" onClick={onLogout}>退出</Button>
+          </Space>
+        </Layout.Header>
+        <Drawer placement="left" open={menuOpen} onClose={() => setMenuOpen(false)} width={240} styles={{ body: { padding: 0 } }} title="点餐后台">
+          {menu}
+          <div style={{ padding: 12 }}><ChangePasswordButton /></div>
+        </Drawer>
+        <Layout.Content style={{ padding: 12 }}>
+          <Outlet />
+        </Layout.Content>
+      </Layout>
+    )
+  }
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Layout.Sider theme="light" width={200} breakpoint="lg" collapsedWidth={64} style={{ minHeight: "100vh" }}>
         <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
           点餐后台
         </div>
-        <Menu mode="inline" selectedKeys={selected} items={items} onClick={({ key }) => navigate(key)} />
+        {menu}
       </Layout.Sider>
       <Layout>
         <Layout.Header style={{ background: '#fff', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingInline: 24 }}>
@@ -91,15 +139,7 @@ export default function MainLayout() {
             <Typography.Text>{staff?.name}</Typography.Text>
             <Tag color={isOwner ? 'gold' : 'blue'}>{isOwner ? '店主' : '店员'}</Tag>
             <ChangePasswordButton />
-            <Button
-              type="link"
-              onClick={() => {
-                logout()
-                navigate('/login', { replace: true })
-              }}
-            >
-              退出
-            </Button>
+            <Button type="link" onClick={onLogout}>退出</Button>
           </Space>
         </Layout.Header>
         <Layout.Content style={{ padding: 24 }}>

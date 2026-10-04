@@ -39,7 +39,7 @@ export default function LoginPage() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
-      <Card style={{ width: 360 }}>
+      <Card style={{ width: '100%', maxWidth: 360, margin: '0 16px' }}>
         <Typography.Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>点餐商家后台</Typography.Title>
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
         <Form<LoginForm> onFinish={onFinish} size="large" autoComplete="off">

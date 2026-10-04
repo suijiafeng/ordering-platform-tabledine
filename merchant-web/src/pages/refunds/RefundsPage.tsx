@@ -154,6 +154,7 @@ export default function RefundsPage() {
         items={TABS.map((t) => ({ key: t.key, label: tabLabel(t) }))}
       />
       <Table<RefundView>
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         size="middle"
         loading={loading}

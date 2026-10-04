@@ -7,9 +7,11 @@ import { exportReport, fetchDashboard } from '../../api/report'
 import type { DashboardToday } from '../../api/types'
 import { fenToYuan, formatYuan } from '../../utils/money'
 import DailyBarChart from '../../components/DailyBarChart'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 /** 数据看板 + 流水导出（店主） */
 export default function ReportsPage() {
+  const isMobile = useIsMobile()
   const { message } = App.useApp()
   const [data, setData] = useState<DashboardToday | null>(null)
   const [error, setError] = useState(false)
@@ -56,14 +58,14 @@ export default function ReportsPage() {
     { title: '金额', dataIndex: 'amount', width: 110, align: 'right', render: (v: number) => formatYuan(v) },
   ]
   const dailyColumns: ColumnsType<DashboardToday['daily'][number]> = [
-    { title: '日期', dataIndex: 'date' },
+    { title: '日期', dataIndex: 'date', width: 110 },
     { title: '订单数', dataIndex: 'orderCount', width: 90, align: 'right' },
     { title: '实收', dataIndex: 'netIncome', width: 120, align: 'right', render: (v: number) => formatYuan(v) },
   ]
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+      <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
         <Typography.Title level={4} style={{ margin: 0 }}>数据看板</Typography.Title>
         <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
       </Space>
@@ -78,7 +80,7 @@ export default function ReportsPage() {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={14}>
           <Card title="近 7 天实收" loading={!data} extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>按支付成功日期统计</Typography.Text>}>
-            {data && <DailyBarChart data={data.daily} />}
+            {data && <DailyBarChart data={data.daily} width={isMobile ? 360 : 640} />}
             {data && <Table size="small" rowKey="date" pagination={false} columns={dailyColumns} dataSource={data.daily} style={{ marginTop: 12 }} />}
           </Card>
         </Col>

@@ -10,6 +10,7 @@ import { useIsOwner } from '../../utils/auth'
 import MoneyText from '../../components/MoneyText'
 import { OrderRefundTag, OrderStatusTag, RefundStatusTag } from '../../components/StatusTag'
 import RefundModal from './RefundModal'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 interface Props {
   orderNo: string | null
@@ -25,6 +26,7 @@ const fmt = (v: string | null | undefined) => (v ? dayjs(v).format('MM-DD HH:mm:
 export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }: Props) {
   const { message } = App.useApp()
   const isOwner = useIsOwner()
+  const isMobile = useIsMobile()
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [acting, setActing] = useState(false)
@@ -151,26 +153,36 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
 
   return (
     <Drawer
-      title={order ? <Space>订单 {order.orderNo} <OrderStatusTag status={order.status} /><OrderRefundTag status={order.refundStatus} /></Space> : '订单详情'}
-      width={760}
+      title={
+        order ? (
+          <Space wrap size={4}>
+            {isMobile ? `桌 ${order.tableCode ?? '-'}` : `订单 ${order.orderNo}`}
+            <OrderStatusTag status={order.status} />
+            <OrderRefundTag status={order.refundStatus} />
+          </Space>
+        ) : '订单详情'
+      }
+      width={isMobile ? '100%' : 760}
       open={open}
       onClose={onClose}
       destroyOnHidden
-      extra={actions()}
+      // 手机上标题栏放不下操作按钮，移到底部固定区
+      extra={isMobile ? undefined : actions()}
+      footer={isMobile && order ? <div style={{ overflowX: 'auto' }}>{actions()}</div> : undefined}
     >
       {!order ? (
         <div style={{ textAlign: 'center', padding: 48 }}><Spin spinning={loading} /></div>
       ) : (
         <>
-          <Descriptions size="small" column={3} bordered>
+          <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} bordered>
             <Descriptions.Item label="桌号"><Typography.Text strong style={{ fontSize: 16 }}>{order.tableCode ?? '-'}</Typography.Text></Descriptions.Item>
             <Descriptions.Item label="人数">{order.peopleCount} 人</Descriptions.Item>
             <Descriptions.Item label="渠道">{PLATFORM[order.platform]}</Descriptions.Item>
             <Descriptions.Item label="下单时间">{fmt(order.createdAt)}</Descriptions.Item>
             <Descriptions.Item label="支付时间">{fmt(order.paidAt)}</Descriptions.Item>
             <Descriptions.Item label="接单时间">{fmt(order.acceptedAt)}</Descriptions.Item>
-            <Descriptions.Item label="备注" span={3}>{order.remark || <Typography.Text type="secondary">无</Typography.Text>}</Descriptions.Item>
-            {order.cancelReason && <Descriptions.Item label="取消原因" span={3}><Typography.Text type="danger">{order.cancelReason}</Typography.Text></Descriptions.Item>}
+            <Descriptions.Item label="备注" span={isMobile ? 1 : 3}>{order.remark || <Typography.Text type="secondary">无</Typography.Text>}</Descriptions.Item>
+            {order.cancelReason && <Descriptions.Item label="取消原因" span={isMobile ? 1 : 3}><Typography.Text type="danger">{order.cancelReason}</Typography.Text></Descriptions.Item>}
           </Descriptions>
 
           <Divider orientation="left" plain>菜品明细</Divider>
@@ -191,7 +203,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
 
           <Divider orientation="left" plain>支付信息</Divider>
           {order.payment ? (
-            <Descriptions size="small" column={2}>
+            <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label="商户单号"><Typography.Text copyable style={{ fontSize: 12 }}>{order.payment.outTradeNo}</Typography.Text></Descriptions.Item>
               <Descriptions.Item label="渠道交易号"><Typography.Text copyable={!!order.payment.transactionNo} style={{ fontSize: 12 }}>{order.payment.transactionNo ?? '-'}</Typography.Text></Descriptions.Item>
               <Descriptions.Item label="状态">
