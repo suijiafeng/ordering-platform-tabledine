@@ -8,6 +8,7 @@ import { fetchStore } from '../../api/store'
 import type { TableItem } from '../../api/types'
 import { downloadTableCard, qrDataUrl } from '../../utils/qrcode'
 import { useIsOwner } from '../../utils/auth'
+import { ignoreShownError } from '../../utils/errors'
 
 function QrThumb({ url }: { url: string }) {
   const [src, setSrc] = useState<string>()
@@ -39,8 +40,8 @@ export default function TablesPage() {
       setTables(list)
       // 删除 / 重置后清理已不存在的选中项，避免「打印选中（N）」计数虚高
       setSelected((prev) => prev.filter((id) => list.some((t) => t.id === id)))
-    } catch {
-      // 错误提示已由 request 统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setLoading(false)
     }
@@ -67,8 +68,8 @@ export default function TablesPage() {
       }
       setEditing(null)
       void load()
-    } catch {
-      // 保持弹窗打开让用户修改；错误提示已统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；保持弹窗打开让用户修改
     } finally {
       setSaving(false)
     }
@@ -85,8 +86,8 @@ export default function TablesPage() {
       message.success(`已新建 ${created.length} 张桌台（已存在的桌号自动跳过）`)
       setBatchOpen(false)
       void load()
-    } catch {
-      // 同上
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setSaving(false)
     }

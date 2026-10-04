@@ -60,13 +60,24 @@ import java.util.stream.Collectors;
  * 退款全流程（需求 §8）：
  * <ul>
  *   <li>顾客申请（APPLYING）→ 店主同意 / 拒绝 / 顾客撤回</li>
- *   <li>商家主动 / 系统自动 → 直接 PROCESSING 并向渠道发起</li>
- *   <li>渠道结果回写：SUCCESS / FAILED；FAILED 可重试（同一 refund_no）或登记线下退款（OFFLINE）</li>
- *   <li>SUCCESS / OFFLINE 时累加 payment.refunded_amount、orders.refunded_amount、order_item.refunded_qty，
- *       并重算 orders.refund_status</li>
+ *   <li>商家主动 / 系统自动 → 直接 PROCESSING，事务提交后向渠道发起</li>
+ *   <li>渠道结果：SUCCESS / FAILED；结果不明确（超时、渠道繁忙）保持 PROCESSING，由补偿任务查询，
+ *       渠道查无此单时用同一 refund_no 重新提交（渠道按单号幂等）</li>
+ *   <li>店主对 PROCESSING / FAILED 重试或登记线下退款前，先向渠道确认该单确实没退成功</li>
+ *   <li>SUCCESS / OFFLINE 时累加 payment.refunded_amount；订单级退款再累加 orders.refunded_amount、
+ *       order_item.refunded_qty 并重算 orders.refund_status</li>
  * </ul>
- * 并发：数据库部分唯一索引 uk_refund_order_active 保证同一订单同一时刻只有一笔 APPLYING / PROCESSING；
- * 状态更新全部为条件更新。渠道调用放在事务提交之后执行，避免长事务与「本地已回滚但渠道已退款」的不一致。
+ * 作用域：order_scoped=true 为订单级退款；false 为迟到 / 重复支付的支付单级退款，不占订单可退余额。
+ * <p>
+ * 并发：部分唯一索引保证同一订单（订单级）/ 同一支付单（支付单级）同一时刻只有一笔
+ * APPLYING / PROCESSING / FAILED（uk_refund_order_active、uk_refund_payment_active）；状态更新全部为条件更新。
+ * <p>
+ * 事务边界：
+ * <ul>
+ *   <li>创建 / 审核退款：调用方的数据库事务（@Transactional）</li>
+ *   <li>向渠道提交：该事务提交之后（afterCommit），不在事务内等待外部系统</li>
+ *   <li>记录渠道结果、店主人工处理：独立新事务（requiresNewTx）</li>
+ * </ul>
  */
 @Slf4j
 @Service
@@ -81,7 +92,8 @@ public class RefundService {
     private final OrderStateService orderStateService;
     private final StoreService storeService;
     private final PayChannelRegistry channels;
-    private final TransactionTemplate tx;
+    /** 独立新事务（REQUIRES_NEW）：渠道结果回写、店主人工处理时使用，见构造器说明 */
+    private final TransactionTemplate requiresNewTx;
     private final String notifyBaseUrl;
 
     public RefundService(RefundMapper refundMapper, RefundItemMapper refundItemMapper, OrderMapper orderMapper,
@@ -99,8 +111,8 @@ public class RefundService {
         this.channels = channels;
         // 独立新事务：渠道结果回写发生在 afterCommit 等时机，此时线程上仍绑定着已提交事务的连接，
         // REQUIRED 会「加入」那个已结束的事务，写入既不原子也依赖连接的 autoCommit 恢复行为
-        this.tx = new TransactionTemplate(txManager);
-        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.requiresNewTx = new TransactionTemplate(txManager);
+        this.requiresNewTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.notifyBaseUrl = appProperties.getPay().getNotifyBaseUrl();
     }
 
@@ -276,7 +288,7 @@ public class RefundService {
             submitToChannel(refund.getId());
             return view(refundMapper.selectById(refund.getId()), orderStateService.getById(refund.getOrderId()));
         }
-        tx.executeWithoutResult(st -> {
+        requiresNewTx.executeWithoutResult(st -> {
             updateStatusOrConflict(refund, RefundStatus.FAILED, RefundStatus.PROCESSING,
                     w -> w.set(Refund::getFailReason, null).set(Refund::getOperatorId, operatorId));
             submitAfterCommit(refund);
@@ -317,7 +329,7 @@ public class RefundService {
             Refund fresh = refundMapper.selectById(refund.getId());
             return view(fresh, orderStateService.getById(fresh.getOrderId()));
         }
-        return tx.execute(st -> {
+        return requiresNewTx.execute(st -> {
             Order order = orderStateService.getById(refund.getOrderId());
             updateStatusOrConflict(refund, from, RefundStatus.OFFLINE,
                     w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
@@ -331,11 +343,26 @@ public class RefundService {
     // ==================== 系统 / 内部 ====================
 
     /**
-     * 全额退款（顾客取消待接单订单、商家拒单 / 整单取消、超时未接单、迟到支付、重复支付）。
-     * 直接 PROCESSING 并在事务提交后向渠道发起。可退余额为 0 时不创建退款单。
+     * 订单级全额退款：顾客取消待接单订单、商家拒单 / 整单取消、超时未接单。退订单的全部可退余额。
+     * <p>事务：加入调用方事务（与订单状态流转一起提交）；渠道调用在事务提交后执行。可退余额为 0 时不创建退款单。
+     *
+     * @param operatorId 操作员工；顾客或系统发起时为 null
      */
     @Transactional
-    public Refund fullRefund(Order order, Payment payment, RefundInitiator initiator, Long operatorId, String reason) {
+    public Refund refundOrder(Order order, RefundInitiator initiator, Long operatorId, String reason) {
+        return createFullRefund(order, null, initiator, operatorId, reason);
+    }
+
+    /**
+     * 支付单级退款：关单后迟到的支付、重复支付。只退那笔多余的支付单，不占用订单可退余额（order_scoped=false）。
+     * <p>事务：加入调用方事务（与支付单入账一起提交）；渠道调用在事务提交后执行。
+     */
+    @Transactional
+    public Refund refundExtraPayment(Order order, Payment extraPayment, String reason) {
+        return createFullRefund(order, extraPayment, RefundInitiator.SYSTEM, null, reason);
+    }
+
+    private Refund createFullRefund(Order order, Payment payment, RefundInitiator initiator, Long operatorId, String reason) {
         long amount = payment != null
                 ? payment.getAmount() - (payment.getRefundedAmount() == null ? 0 : payment.getRefundedAmount())
                 : order.refundableAmount();
@@ -450,7 +477,7 @@ public class RefundService {
         if (result == null || result.state() == RefundResult.State.UNKNOWN || result.state() == RefundResult.State.NOT_FOUND) {
             return;
         }
-        tx.executeWithoutResult(s -> doApplyResult(refund, result));
+        requiresNewTx.executeWithoutResult(s -> doApplyResult(refund, result));
     }
 
     private void doApplyResult(Refund refund, RefundResult result) {

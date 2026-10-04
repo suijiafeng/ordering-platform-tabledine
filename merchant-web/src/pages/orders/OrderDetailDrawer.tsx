@@ -5,11 +5,12 @@ import dayjs from 'dayjs'
 import { acceptOrder, cancelOrder, deliverOrder, getOrder, readyOrder, rejectOrder } from '../../api/order'
 import type { OrderDetail, OrderItemView, RefundView } from '../../api/types'
 import { formatYuan } from '../../utils/money'
-import { OPERATOR_TYPE, ORDER_STATUS, PLATFORM, REFUND_INITIATOR, REFUND_TYPE } from '../../utils/orderStatus'
+import { isRefundUnresolved, OPERATOR_TYPE, ORDER_STATUS, PLATFORM, REFUND_INITIATOR, REFUND_TYPE } from '../../utils/orderStatus'
 import { useIsOwner } from '../../utils/auth'
 import MoneyText from '../../components/MoneyText'
 import { OrderRefundTag, OrderStatusTag, RefundStatusTag } from '../../components/StatusTag'
 import RefundModal from './RefundModal'
+import { ignoreShownError } from '../../utils/errors'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 interface Props {
@@ -45,8 +46,10 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
     setLoading(true)
     try {
       setOrder(await getOrder(orderNo))
-    } catch {
+    } catch (e) {
+      // 打开详情失败（订单不存在 / 无权限）：请求层已提示，关闭抽屉回到列表
       onCloseRef.current()
+      ignoreShownError(e)
     } finally {
       setLoading(false)
     }
@@ -59,14 +62,16 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
     }
   }, [open, load])
 
-  const run = async (fn: () => Promise<OrderDetail>, ok: string) => {
+  const runOrderAction = async (fn: () => Promise<OrderDetail>, ok: string) => {
     setActing(true)
     try {
       setOrder(await fn())
       message.success(ok)
       onChanged?.()
-    } catch {
+    } catch (e) {
+      // 操作失败（通常是状态已被别人改变）：请求层已提示，重新拉取详情让按钮与最新状态一致
       void load()
+      ignoreShownError(e)
     } finally {
       setActing(false)
     }
@@ -82,7 +87,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
     }
     const kind = reasonModal
     setReasonModal(null)
-    await run(() => (kind === 'reject' ? rejectOrder(order.orderNo, reason.trim()) : cancelOrder(order.orderNo, reason.trim())),
+    await runOrderAction(() => (kind === 'reject' ? rejectOrder(order.orderNo, reason.trim()) : cancelOrder(order.orderNo, reason.trim())),
       kind === 'reject' ? '已拒单，退款处理中' : '已取消，退款处理中')
     setReason('')
   }
@@ -128,8 +133,8 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
       return null
     }
     const s = order.status
-    // 后端同一订单同一时刻只允许一笔进行中退款（待审核 / 处理中 / 失败），再发起会被拒
-    const activeRefund = order.refunds.find((r) => r.status === 'APPLYING' || r.status === 'PROCESSING' || r.status === 'FAILED')
+    // 后端同一订单同一时刻只允许一笔未了结的退款，再发起会被拒
+    const activeRefund = order.refunds.find((r) => isRefundUnresolved(r.status))
     const blockedTip = activeRefund ? `已有一笔退款${activeRefund.status === 'APPLYING' ? '待审核' : activeRefund.status === 'PROCESSING' ? '处理中' : '失败待处理'}，请先处理` : undefined
     // 需求 §4：商家主动退款仅店主
     const canRefund = isOwner && (s === 'MAKING' || s === 'READY' || s === 'DONE') && order.refundableAmount > 0
@@ -137,15 +142,15 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
       <Space wrap>
         {s === 'PAID' && (
           <>
-            <Button type="primary" loading={acting} onClick={() => run(() => acceptOrder(order.orderNo), '已接单')}>接单</Button>
+            <Button type="primary" loading={acting} onClick={() => runOrderAction(() => acceptOrder(order.orderNo), '已接单')}>接单</Button>
             <Button danger loading={acting} onClick={() => { setReason(''); setReasonModal('reject') }}>拒单并退款</Button>
           </>
         )}
         {s === 'MAKING' && (
-          <Button type="primary" loading={acting} onClick={() => run(() => readyOrder(order.orderNo), '已出餐')}>出餐完成</Button>
+          <Button type="primary" loading={acting} onClick={() => runOrderAction(() => readyOrder(order.orderNo), '已出餐')}>出餐完成</Button>
         )}
         {s === 'READY' && (
-          <Button type="primary" loading={acting} onClick={() => run(() => deliverOrder(order.orderNo), '已送达')}>送达完成</Button>
+          <Button type="primary" loading={acting} onClick={() => runOrderAction(() => deliverOrder(order.orderNo), '已送达')}>送达完成</Button>
         )}
         {canRefund && <Tooltip title={blockedTip}><Button disabled={!!activeRefund} onClick={() => setRefundOpen(true)}>退款</Button></Tooltip>}
         {isOwner && (s === 'MAKING' || s === 'READY') && (

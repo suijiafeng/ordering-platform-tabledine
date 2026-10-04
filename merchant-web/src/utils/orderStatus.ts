@@ -31,3 +31,8 @@ export const REFUND_INITIATOR: Record<RefundInitiator, string> = { CUSTOMER: '�
 export const PLATFORM: Record<Platform, string> = { WECHAT: '微信', ALIPAY: '支付宝' }
 
 export const OPERATOR_TYPE = { CUSTOMER: '顾客', MERCHANT: '商家', SYSTEM: '系统', PAY_CHANNEL: '支付渠道' } as const
+
+/** 尚未了结的退款：待审核、处理中、失败（失败后仍需重试或线下退款）。与后端 RefundStatus.isUnresolved 一致 */
+export function isRefundUnresolved(status: string): boolean {
+  return status === 'APPLYING' || status === 'PROCESSING' || status === 'FAILED'
+}

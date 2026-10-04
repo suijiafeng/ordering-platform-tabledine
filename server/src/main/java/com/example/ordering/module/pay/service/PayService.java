@@ -19,7 +19,6 @@ import com.example.ordering.module.pay.channel.PayQueryResult;
 import com.example.ordering.module.pay.entity.Payment;
 import com.example.ordering.module.pay.entity.PaymentStatus;
 import com.example.ordering.module.pay.mapper.PaymentMapper;
-import com.example.ordering.module.refund.entity.RefundInitiator;
 import com.example.ordering.module.refund.service.RefundService;
 import com.example.ordering.module.store.entity.Store;
 import com.example.ordering.module.store.service.StoreService;
@@ -108,8 +107,8 @@ public class PayService {
         Store store = storeService.getRequired(order.getStoreId());
         String description = store.getName() + (order.getTableCode() == null ? "" : " 桌号" + order.getTableCode());
         String openId = openId(order.getCustomerId(), channel);
-        PayChannel pc = channels.get(channel);
-        Map<String, Object> params = pc.createPayment(new PayCreateRequest(payment.getOutTradeNo(),
+        PayChannel payChannel = channels.get(channel);
+        Map<String, Object> params = payChannel.createPayment(new PayCreateRequest(payment.getOutTradeNo(),
                 payment.getAmount(), description, openId, order.getPayExpireAt(),
                 notifyBaseUrl + "/api/v1/pay/notify/" + channel.name().toLowerCase()));
         return new PayInitResult(order.getOrderNo(), payment.getOutTradeNo(), channel, payment.getAmount(),
@@ -179,7 +178,7 @@ public class PayService {
         // 走到这里：订单不是待支付 —— 已关闭（迟到回调）或已被另一笔支付入账（重复支付）
         String reason = order.getStatus() == OrderStatus.CLOSED ? "订单已关闭后收到支付，自动退款" : "重复支付，自动退款";
         log.warn("订单 {} 状态为 {}，支付 {} 将自动全额退款", order.getOrderNo(), order.getStatus(), outTradeNo);
-        refundService.fullRefund(order, payment, RefundInitiator.SYSTEM, null, reason);
+        refundService.refundExtraPayment(order, payment, reason);
         return true;
     }
 

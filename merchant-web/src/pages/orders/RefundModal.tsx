@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { refundOrder } from '../../api/order'
 import type { OrderDetail, OrderItemView, RefundType } from '../../api/types'
 import { fenToYuan, formatYuan, yuanToFen } from '../../utils/money'
+import { ignoreShownError } from '../../utils/errors'
 
 interface Props {
   order: OrderDetail | null
@@ -93,8 +94,8 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
       })
       message.success('退款已发起')
       onDone()
-    } catch {
-      // 错误提示已由 request 统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setSaving(false)
     }

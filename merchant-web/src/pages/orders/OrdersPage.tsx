@@ -12,6 +12,7 @@ import { useLatestRequest } from '../../hooks/useLatestRequest'
 import MoneyText from '../../components/MoneyText'
 import { OrderRefundTag, OrderStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from './OrderDetailDrawer'
+import { ignoreShownError } from '../../utils/errors'
 
 const PAGE_SIZE = 20
 
@@ -54,8 +55,8 @@ export default function OrdersPage() {
         pageSize: PAGE_SIZE,
       })
       if (isLatest()) setData({ list: res.list, total: res.total })
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
     }

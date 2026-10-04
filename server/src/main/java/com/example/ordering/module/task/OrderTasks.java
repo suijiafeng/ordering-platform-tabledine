@@ -6,7 +6,7 @@ import com.example.ordering.module.order.entity.OperatorType;
 import com.example.ordering.module.order.entity.Order;
 import com.example.ordering.module.order.entity.OrderStatus;
 import com.example.ordering.module.order.mapper.OrderMapper;
-import com.example.ordering.module.order.service.OrderService;
+import com.example.ordering.module.order.service.CustomerOrderService;
 import com.example.ordering.module.order.service.OrderStateService;
 import com.example.ordering.module.pay.service.PayService;
 import com.example.ordering.module.refund.entity.Refund;
@@ -33,7 +33,7 @@ import java.util.Map;
 public class OrderTasks {
 
     private final OrderMapper orderMapper;
-    private final OrderService orderService;
+    private final CustomerOrderService customerOrderService;
     private final OrderStateService orderStateService;
     private final PayService payService;
     private final RefundService refundService;
@@ -41,11 +41,11 @@ public class OrderTasks {
     private final TransactionTemplate tx;
     private final AppProperties.Pay payProps;
 
-    public OrderTasks(OrderMapper orderMapper, OrderService orderService, OrderStateService orderStateService,
+    public OrderTasks(OrderMapper orderMapper, CustomerOrderService customerOrderService, OrderStateService orderStateService,
                       PayService payService, RefundService refundService, StoreService storeService,
                       TransactionTemplate tx, AppProperties appProperties) {
         this.orderMapper = orderMapper;
-        this.orderService = orderService;
+        this.customerOrderService = customerOrderService;
         this.orderStateService = orderStateService;
         this.payService = payService;
         this.refundService = refundService;
@@ -73,7 +73,7 @@ public class OrderTasks {
                     log.warn("订单 {} 查单结果未确认，暂不关单", order.getOrderNo());
                     continue;
                 }
-                orderService.closeExpired(order, "支付超时自动关闭");
+                customerOrderService.closeExpired(order, "支付超时自动关闭");
             } catch (RuntimeException e) {
                 log.error("关单任务处理订单 {} 失败", order.getOrderNo(), e);
             }
@@ -100,7 +100,7 @@ public class OrderTasks {
                 tx.executeWithoutResult(s -> {
                     if (orderStateService.transition(order, OrderStatus.PAID, OrderStatus.CANCELLED, OperatorType.SYSTEM, null, remark)) {
                         orderStateService.restoreStock(order.getId());
-                        refundService.fullRefund(order, null, RefundInitiator.SYSTEM, null, remark);
+                        refundService.refundOrder(order, RefundInitiator.SYSTEM, null, remark);
                         log.warn("订单 {} 超时未接单，已自动取消并发起退款", order.getOrderNo());
                     }
                 });

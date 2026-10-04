@@ -54,7 +54,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-public class OrderService {
+public class CustomerOrderService {
 
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
@@ -70,7 +70,7 @@ public class OrderService {
     private final RefundService refundService;
     private final TransactionTemplate tx;
 
-    public OrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper, DishMapper dishMapper,
+    public CustomerOrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper, DishMapper dishMapper,
                         DiningTableMapper tableMapper, MenuGroupLoader groupLoader,
                         com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper,
                         com.example.ordering.module.menu.service.MerchantMenuService menuService, StoreService storeService,
@@ -98,16 +98,16 @@ public class OrderService {
         // 幂等：同一顾客同一 clientRequestId 直接返回已有订单
         Order existing = findByClientRequest(user.id(), req.clientRequestId());
         if (existing != null) {
-            return assembler.detail(existing, true);
+            return assembler.customerDetail(existing);
         }
         try {
             Order order = tx.execute(status -> doCreate(user, req));
-            return assembler.detail(order, true);
+            return assembler.customerDetail(order);
         } catch (DuplicateKeyException e) {
             // 并发重复提交：唯一键 (customer_id, client_request_id) 冲突，返回先创建成功的那笔
             Order order = findByClientRequest(user.id(), req.clientRequestId());
             if (order != null) {
-                return assembler.detail(order, true);
+                return assembler.customerDetail(order);
             }
             throw e;
         }
@@ -138,7 +138,7 @@ public class OrderService {
         // 分类被停用（顾客菜单已隐藏）的菜品同样不能下单
         Set<Long> categoryIds = dishes.values().stream().map(Dish::getCategoryId).collect(Collectors.toSet());
         Set<Long> enabledCategories = categoryIds.isEmpty() ? Set.of() : categoryMapper.selectBatchIds(categoryIds).stream()
-                .filter(c -> c.getStatus() != null && c.getStatus() == 1)
+                .filter(com.example.ordering.module.menu.entity.Category::isEnabled)
                 .map(com.example.ordering.module.menu.entity.Category::getId)
                 .collect(Collectors.toSet());
         Map<Long, List<SpecGroupView>> specs = groupLoader.loadSpecGroups(dishIds);
@@ -284,7 +284,7 @@ public class OrderService {
     public OrderDetail mockPay(String orderNo) {
         Order order = ownOrder(orderNo);
         payService.mockPay(order);
-        return assembler.detail(orderStateService.getById(order.getId()), true);
+        return assembler.customerDetail(orderStateService.getById(order.getId()));
     }
 
     /** 顾客取消：待支付 → 关闭（回补库存）；待接单 → 取消 + 自动全额退款（回补库存） */
@@ -301,11 +301,11 @@ public class OrderService {
             orderStateService.transitionOrConflict(order, OrderStatus.PAID, OrderStatus.CANCELLED,
                     OperatorType.CUSTOMER, order.getCustomerId(), remark);
             orderStateService.restoreStock(order.getId());
-            refundService.fullRefund(order, null, RefundInitiator.CUSTOMER, null, remark);
+            refundService.refundOrder(order, RefundInitiator.CUSTOMER, null, remark);
         } else {
             throw new BusinessException(ErrorCode.CONFLICT, "订单已接单，如需退款请申请退款");
         }
-        return assembler.detail(order, true);
+        return assembler.customerDetail(order);
     }
 
     /** 待支付超时关闭（定时任务 / 支付时发现过期），幂等 */
@@ -320,7 +320,7 @@ public class OrderService {
     // ==================== 查询 ====================
 
     public OrderDetail detail(String orderNo) {
-        return assembler.detail(ownOrder(orderNo), true);
+        return assembler.customerDetail(ownOrder(orderNo));
     }
 
     public PageResult<OrderSummary> history(int page, int pageSize) {

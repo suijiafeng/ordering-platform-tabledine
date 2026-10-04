@@ -9,6 +9,7 @@ import { formatYuan } from '../../utils/money'
 import { useIsOwner } from '../../utils/auth'
 import CategoryPanel from './CategoryPanel'
 import DishFormDrawer from './DishFormDrawer'
+import { ignoreShownError } from '../../utils/errors'
 
 const PAGE_SIZE = 20
 
@@ -43,8 +44,8 @@ export default function DishesPage() {
       if (page > lastPage) {
         setPage(lastPage)
       }
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
     }
@@ -142,8 +143,9 @@ export default function DishesPage() {
                     await setDishStock(r.id, next)
                     // 设置限量同时把今日剩余重置为该值
                     patchLocal(r.id, { dailyStock: next, stockQuantity: next })
-                  } catch {
-                    setStockReset((t) => t + 1)  // 已统一提示；回滚显示值
+                  } catch (e) {
+                    setStockReset((t) => t + 1)  // 回滚显示值
+                    ignoreShownError(e)  // 请求层已提示
                   }
                 }
               }}

@@ -8,6 +8,7 @@ import type { DashboardToday, UnconfirmedPayment } from '../../api/types'
 import { fenToYuan, formatYuan } from '../../utils/money'
 import DailyBarChart from '../../components/DailyBarChart'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { ignoreShownError } from '../../utils/errors'
 
 /** 数据看板 + 流水导出（店主） */
 export default function ReportsPage() {
@@ -28,8 +29,10 @@ export default function ReportsPage() {
     setError(false)
     try {
       setData(await fetchDashboard())
-    } catch {
+    } catch (e) {
+      // 首次加载：页面展示错误状态与重试入口（请求层也会提示一次）
       setError(true)
+      ignoreShownError(e)
     } finally {
       setLoading(false)
     }
@@ -44,8 +47,8 @@ export default function ReportsPage() {
     try {
       await exportReport(range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'))
       message.success('已开始下载')
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setExporting(false)
     }

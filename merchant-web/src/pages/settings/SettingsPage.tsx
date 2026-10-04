@@ -3,6 +3,7 @@ import { App, Button, Card, Col, Form, Input, InputNumber, Result, Row, Space, S
 import { fetchStore, setBusinessStatus, updateStore } from '../../api/store'
 import type { StoreDetail, StoreUpdateRequest } from '../../api/types'
 import ImageUpload from '../../components/ImageUpload'
+import { ignoreShownError } from '../../utils/errors'
 
 /** 店铺设置（店主）：营业状态、基本信息、业务参数 */
 export default function SettingsPage() {
@@ -18,8 +19,8 @@ export default function SettingsPage() {
       const s = await fetchStore()
       setStore(s)
       form.setFieldsValue(s)
-    } catch {
-      // 错误提示已由 request 统一弹出，这里只切换到可重试的错误态，避免永久转圈
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示，这里只切换到可重试的错误态，避免永久转圈
       setLoadError(true)
     }
   }, [form])

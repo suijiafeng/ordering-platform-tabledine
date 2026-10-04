@@ -7,6 +7,7 @@ import { cartCount, cartTotal, useCartStore } from '../../store/cart'
 import { useTableStore } from '../../store/table'
 import { formatYuan } from '../../utils/money'
 import { payOrder } from '../../utils/pay'
+import { ignoreShownError } from '../../utils/errors'
 import './index.css'
 
 /**
@@ -49,9 +50,10 @@ export default function Checkout() {
       const outcome = await payOrder(orderNo)
       if (outcome === 'cancel') Taro.showToast({ title: '已取消支付，可在订单中继续支付', icon: 'none' })
       if (outcome === 'fail') Taro.showToast({ title: '支付未完成，可在订单中重试', icon: 'none' })
-    } catch {
-      // 下单失败：request 层已提示，保留 requestId 便于重试幂等；
-      // 发起支付失败：订单已创建，下面照样跳到详情页，可在那里继续支付
+    } catch (e) {
+      // 请求层已提示。下单失败：保留 requestId，重试时服务端按它幂等，不会重复下单；
+      // 发起支付失败：订单已创建，finally 里照样跳到详情页，可在那里继续支付
+      ignoreShownError(e)
     } finally {
       setSubmitting(false)
       if (orderNo) Taro.redirectTo({ url: `/pages/order-detail/index?orderNo=${orderNo}` })

@@ -45,7 +45,7 @@ public class CustomerMenuService {
         merchantMenuService.ensureStockFresh();  // 错过 0 点重置时，顾客看到的售罄状态也要正确
         List<Category> categories = categoryMapper.selectList(Wrappers.<Category>lambdaQuery()
                 .eq(Category::getStoreId, storeId)
-                .eq(Category::getStatus, 1)
+                .eq(Category::getStatus, Category.STATUS_ENABLED)
                 .orderByAsc(Category::getSort, Category::getId));
         List<Dish> dishes = dishMapper.selectList(Wrappers.<Dish>lambdaQuery()
                 .eq(Dish::getStoreId, storeId)

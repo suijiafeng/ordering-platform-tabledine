@@ -7,6 +7,7 @@ import type { OrderStatus, OrderSummary } from '../../api/types'
 import { playNewOrderSound, usePollStore } from '../../hooks/useOrderPoll'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
+import { ignoreShownError } from '../../utils/errors'
 
 const REFRESH_MS = 5000
 /** 超过这个时间仍未接单 / 未出餐 / 未送达，卡片高亮提醒 */
@@ -93,8 +94,8 @@ export default function KitchenPage() {
         await deliverOrder(o.orderNo)
         message.success(`桌 ${o.tableCode ?? ''} 已送达`)
       }
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setActing(null)
       void load()

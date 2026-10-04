@@ -12,6 +12,7 @@ import { useLatestRequest } from '../../hooks/useLatestRequest'
 import MoneyText from '../../components/MoneyText'
 import { RefundStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
+import { ignoreShownError } from '../../utils/errors'
 
 const PAGE_SIZE = 20
 const TABS = [
@@ -45,8 +46,8 @@ export default function RefundsPage() {
     try {
       const res = await listRefunds({ status: status || undefined, page, pageSize: PAGE_SIZE })
       if (isLatest()) setData({ list: res.list, total: res.total })
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
     }
@@ -56,7 +57,7 @@ export default function RefundsPage() {
     void load()
   }, [load])
 
-  const run = async (refundNo: string, fn: () => Promise<RefundView>, ok: string) => {
+  const runRefundAction = async (refundNo: string, fn: () => Promise<RefundView>, ok: string) => {
     setActing(refundNo)
     try {
       const r = await fn()
@@ -70,8 +71,8 @@ export default function RefundsPage() {
       } else {
         message.success(ok)
       }
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setActing(null)
       void load()
@@ -88,7 +89,7 @@ export default function RefundsPage() {
     }
     const { kind, refund } = reasonModal
     setReasonModal(null)
-    await run(refund.refundNo,
+    await runRefundAction(refund.refundNo,
       () => (kind === 'reject' ? rejectRefund(refund.refundNo, reason.trim()) : offlineRefund(refund.refundNo, reason.trim())),
       kind === 'reject' ? '已拒绝' : '已登记线下退款')
     setReason('')
@@ -133,7 +134,7 @@ export default function RefundsPage() {
         <Space size={0} wrap>
           {r.status === 'APPLYING' && (
             <>
-              <Popconfirm title={`同意退款 ¥${(r.amount / 100).toFixed(2)}？`} description="将立即向支付渠道发起原路退款" onConfirm={() => run(r.refundNo, () => approveRefund(r.refundNo), '已同意，退款处理中')}>
+              <Popconfirm title={`同意退款 ¥${(r.amount / 100).toFixed(2)}？`} description="将立即向支付渠道发起原路退款" onConfirm={() => runRefundAction(r.refundNo, () => approveRefund(r.refundNo), '已同意，退款处理中')}>
                 <Button type="link" size="small" loading={acting === r.refundNo}>同意</Button>
               </Popconfirm>
               <Button type="link" size="small" danger onClick={() => { setReason(''); setReasonModal({ kind: 'reject', refund: r }) }}>拒绝</Button>
@@ -142,7 +143,7 @@ export default function RefundsPage() {
           {(r.status === 'FAILED' || r.status === 'PROCESSING') && (
             // 处理中也允许重试 / 线下登记：后端会先向渠道确认该单确实没退成功，渠道已退则自动改为成功
             <>
-              <Button type="link" size="small" loading={acting === r.refundNo} onClick={() => run(r.refundNo, () => retryRefund(r.refundNo), '已重新发起')}>重试</Button>
+              <Button type="link" size="small" loading={acting === r.refundNo} onClick={() => runRefundAction(r.refundNo, () => retryRefund(r.refundNo), '已重新发起')}>重试</Button>
               <Button type="link" size="small" onClick={() => { setReason(''); setReasonModal({ kind: 'offline', refund: r }) }}>登记线下退款</Button>
             </>
           )}

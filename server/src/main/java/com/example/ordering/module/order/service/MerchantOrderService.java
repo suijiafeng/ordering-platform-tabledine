@@ -92,7 +92,7 @@ public class MerchantOrderService {
     }
 
     public OrderDetail detail(String orderNo) {
-        return assembler.detail(orderStateService.getByNo(orderNo), false);
+        return assembler.merchantDetail(orderStateService.getByNo(orderNo));
     }
 
     /** 轮询：since 之后新支付的订单数 + 待处理数量 */
@@ -117,7 +117,7 @@ public class MerchantOrderService {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
         orderStateService.transitionOrConflict(order, OrderStatus.PAID, OrderStatus.MAKING, OperatorType.MERCHANT, staff.id(), "商家接单");
-        return assembler.detail(order, false);
+        return assembler.merchantDetail(order);
     }
 
     /** 拒单：待接单 → 已取消 + 全额退款 + 回补库存（店员可操作） */
@@ -128,22 +128,22 @@ public class MerchantOrderService {
         String remark = StringUtils.hasText(reason) ? "商家拒单：" + reason.trim() : "商家拒单";
         orderStateService.transitionOrConflict(order, OrderStatus.PAID, OrderStatus.CANCELLED, OperatorType.MERCHANT, staff.id(), remark);
         orderStateService.restoreStock(order.getId());
-        refundService.fullRefund(order, null, RefundInitiator.MERCHANT, staff.id(), remark);
-        return assembler.detail(order, false);
+        refundService.refundOrder(order, RefundInitiator.MERCHANT, staff.id(), remark);
+        return assembler.merchantDetail(order);
     }
 
     public OrderDetail ready(String orderNo) {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
         orderStateService.transitionOrConflict(order, OrderStatus.MAKING, OrderStatus.READY, OperatorType.MERCHANT, staff.id(), "出餐完成");
-        return assembler.detail(order, false);
+        return assembler.merchantDetail(order);
     }
 
     public OrderDetail deliver(String orderNo) {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
         orderStateService.transitionOrConflict(order, OrderStatus.READY, OrderStatus.DONE, OperatorType.MERCHANT, staff.id(), "已送达");
-        return assembler.detail(order, false);
+        return assembler.merchantDetail(order);
     }
 
     /** 整单取消（店主）：制作中 / 待送餐 → 已取消 + 全额退款；已开始制作不回补库存 */
@@ -163,8 +163,8 @@ public class MerchantOrderService {
             throw new BusinessException(ErrorCode.CONFLICT, "当前状态不能整单取消");
         }
         orderStateService.transitionOrConflict(order, from, OrderStatus.CANCELLED, OperatorType.MERCHANT, staff.id(), remark);
-        refundService.fullRefund(order, null, RefundInitiator.MERCHANT, staff.id(), remark);
-        return assembler.detail(order, false);
+        refundService.refundOrder(order, RefundInitiator.MERCHANT, staff.id(), remark);
+        return assembler.merchantDetail(order);
     }
 
     /** 商家主动退款 */

@@ -33,6 +33,7 @@ export default function TablePrintPage() {
           setCards(rendered)
         }
       } catch {
+        // 首次加载（含二维码生成）：页面展示错误状态与重试入口
         if (!cancelled) {
           setLoadError(true)
         }

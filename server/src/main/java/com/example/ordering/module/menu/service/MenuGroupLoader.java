@@ -59,7 +59,7 @@ public class MenuGroupLoader {
         Map<Long, List<SpecGroupView>> result = new LinkedHashMap<>();
         for (DishSpecGroup g : groups) {
             List<SpecGroupView.SpecItemView> items = itemsByGroup.getOrDefault(g.getId(), List.of()).stream()
-                    .map(i -> new SpecGroupView.SpecItemView(i.getId(), i.getName(), nz(i.getPriceDelta()),
+                    .map(i -> new SpecGroupView.SpecItemView(i.getId(), i.getName(), zeroIfNull(i.getPriceDelta()),
                             Boolean.TRUE.equals(i.getIsDefault())))
                     .toList();
             result.computeIfAbsent(g.getDishId(), k -> new ArrayList<>())
@@ -87,7 +87,7 @@ public class MenuGroupLoader {
         Map<Long, List<AddonGroupView>> result = new LinkedHashMap<>();
         for (AddonGroup g : groups) {
             List<AddonGroupView.AddonItemView> items = itemsByGroup.getOrDefault(g.getId(), List.of()).stream()
-                    .map(i -> new AddonGroupView.AddonItemView(i.getId(), i.getName(), nz(i.getPriceDelta())))
+                    .map(i -> new AddonGroupView.AddonItemView(i.getId(), i.getName(), zeroIfNull(i.getPriceDelta())))
                     .toList();
             int maxCount = g.getMaxCount() == null ? 1 : g.getMaxCount();
             result.computeIfAbsent(g.getDishId(), k -> new ArrayList<>())
@@ -96,7 +96,7 @@ public class MenuGroupLoader {
         return result;
     }
 
-    private static long nz(Long v) {
+    private static long zeroIfNull(Long v) {
         return v == null ? 0L : v;
     }
 }

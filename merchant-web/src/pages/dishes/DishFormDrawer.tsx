@@ -5,6 +5,7 @@ import { createDish, getDish, updateDish } from '../../api/menu'
 import type { Category, DishSaveRequest } from '../../api/types'
 import ImageUpload from '../../components/ImageUpload'
 import { fenToYuan, yuanToFen } from '../../utils/money'
+import { ignoreShownError } from '../../utils/errors'
 
 interface SpecItemForm { name: string; priceDeltaYuan: number; isDefault: boolean }
 interface SpecGroupForm { name: string; required: boolean; items: SpecItemForm[] }
@@ -116,8 +117,8 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       }
       message.success('已保存')
       onSaved()
-    } catch {
-      // 保持抽屉打开供用户修改；错误提示已由 request 统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；保持抽屉打开供用户修改
     } finally {
       setSaving(false)
     }

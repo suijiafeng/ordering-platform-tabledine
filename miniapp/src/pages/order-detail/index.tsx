@@ -9,6 +9,7 @@ import { formatYuan } from '../../utils/money'
 import { formatTime, orderStatusText, refundStatusText } from '../../utils/order'
 import { payOrder } from '../../utils/pay'
 import './index.css'
+import { ignoreShownError, isRefundUnresolved } from '../../utils/errors'
 
 const POLL_MS = 5000
 
@@ -32,11 +33,14 @@ export default function OrderDetailPage() {
       setLoadFailed(false)
       return o
     } catch (e) {
-      const err = e as ApiError
-      if (err?.code === NOT_FOUND) {
+      // 首次加载 / 轮询：请求带 silent，由页面展示错误状态
+      if (!(e instanceof ApiError)) {
+        throw e
+      }
+      if (e.code === NOT_FOUND) {
         setFatal('订单不存在或不属于当前账号')
-      } else if (err?.statusCode === 401 || err?.code === 40103) {
-        setFatal(err.message || '账号不可用')
+      } else if (e.statusCode === 401 || e.code === 40103) {
+        setFatal(e.message || '账号不可用')
       } else {
         setLoadFailed(true)
       }
@@ -51,8 +55,8 @@ export default function OrderDetailPage() {
     // 请求期间页面可能已离开（onUnload 不触发 onHide），不要再排下一次
     if (!visible.current) return
     // FAILED 在后端同样是「进行中」（商家可重试 / 线下登记），要继续轮询直到有终态
-    const hasActiveRefund = o?.refunds.some((r) => r.status === 'APPLYING' || r.status === 'PROCESSING' || r.status === 'FAILED')
-    const settled = o != null && ['DONE', 'CLOSED', 'CANCELLED'].includes(o.status) && !hasActiveRefund
+    const settled = o != null && ['DONE', 'CLOSED', 'CANCELLED'].includes(o.status)
+      && !o.refunds.some((r) => isRefundUnresolved(r.status))
     // 一次失败不终止轮询，下次自动恢复；不可恢复错误（订单不存在等）则停止
     if (!settled && !fatalRef.current) {
       timer.current = setTimeout(poll, POLL_MS)
@@ -75,21 +79,21 @@ export default function OrderDetailPage() {
     [],
   )
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const runOrderAction = async (fn: () => Promise<unknown>) => {
     if (busy) return
     setBusy(true)
     try {
       await fn()
       await load()
       poll()
-    } catch {
-      // request 层已提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setBusy(false)
     }
   }
 
-  const onPay = () => run(async () => {
+  const onPay = () => runOrderAction(async () => {
     const outcome = await payOrder(orderNo)
     if (outcome === 'cancel') Taro.showToast({ title: '已取消支付', icon: 'none' })
     if (outcome === 'fail') Taro.showToast({ title: '支付未完成，请重试', icon: 'none' })
@@ -101,12 +105,12 @@ export default function OrderDetailPage() {
       title: '取消订单',
       content: paid ? '取消后将原路全额退款，确认取消？' : '确认取消该订单？',
     })
-    if (confirm) run(() => cancelOrder(orderNo))
+    if (confirm) runOrderAction(() => cancelOrder(orderNo))
   }
 
   const onRefundSubmit = (reason: string, selection: { orderItemId: number; quantity: number }[]) => {
     setRefundOpen(false)
-    run(async () => {
+    runOrderAction(async () => {
       await applyRefund(orderNo, reason, selection)
       Taro.showToast({ title: '已提交，等待商家审核', icon: 'none' })
     })
@@ -123,7 +127,7 @@ export default function OrderDetailPage() {
     }
   }
 
-  const onWithdraw = (refundNo: string) => run(() => withdrawRefund(refundNo))
+  const onWithdraw = (refundNo: string) => runOrderAction(() => withdrawRefund(refundNo))
 
   fatalRef.current = fatal != null
 

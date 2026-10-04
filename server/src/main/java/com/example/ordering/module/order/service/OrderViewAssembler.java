@@ -58,7 +58,7 @@ public class OrderViewAssembler {
             List<OrderItem> items = itemsByOrder.getOrDefault(o.getId(), List.of());
             int count = items.stream().mapToInt(OrderItem::getQuantity).sum();
             result.add(new OrderSummary(o.getId(), o.getOrderNo(), o.getStatus(), o.getRefundStatus(), o.getTableCode(),
-                    o.getPlatform(), o.getTotalAmount(), o.getPayAmount(), nz(o.getRefundedAmount()),
+                    o.getPlatform(), o.getTotalAmount(), o.getPayAmount(), zeroIfNull(o.getRefundedAmount()),
                     o.getPeopleCount() == null ? 1 : o.getPeopleCount(), o.getRemark(), count,
                     items.stream().map(OrderItemView::of).toList(),
                     o.getCreatedAt(), o.getPayExpireAt(), o.getPaidAt(), o.getAcceptedAt(), o.getReadyAt()));
@@ -69,7 +69,17 @@ public class OrderViewAssembler {
     /**
      * @param customerView true 时计算顾客端的操作可用性（canCancel / canApplyRefund）
      */
-    public OrderDetail detail(Order order, boolean customerView) {
+    /** 顾客端订单详情：计算可取消 / 可申请退款；隐藏员工身份与渠道原始错误 */
+    public OrderDetail customerDetail(Order order) {
+        return detail(order, true);
+    }
+
+    /** 商家端订单详情：含操作员工与渠道错误信息 */
+    public OrderDetail merchantDetail(Order order) {
+        return detail(order, false);
+    }
+
+    private OrderDetail detail(Order order, boolean customerView) {
         List<OrderItem> items = orderStateService.items(order.getId());
         Payment payment = payService.latestPayment(order.getId());
         List<RefundView> refunds = customerView ? refundService.listByOrderForCustomer(order) : refundService.listByOrder(order);
@@ -84,7 +94,7 @@ public class OrderViewAssembler {
 
         return new OrderDetail(order.getId(), order.getOrderNo(), order.getStatus(), order.getRefundStatus(),
                 order.getStoreId(), store.getName(), order.getTableId(), order.getTableCode(), order.getPlatform(),
-                order.getTotalAmount(), order.getPayAmount(), nz(order.getRefundedAmount()), order.refundableAmount(),
+                order.getTotalAmount(), order.getPayAmount(), zeroIfNull(order.getRefundedAmount()), order.refundableAmount(),
                 order.getPeopleCount() == null ? 1 : order.getPeopleCount(), order.getRemark(),
                 order.getPayExpireAt(), order.getPaidAt(), order.getAcceptedAt(), order.getReadyAt(),
                 order.getDoneAt(), order.getCancelledAt(), order.getCancelReason(), order.getCreatedAt(),
@@ -99,7 +109,7 @@ public class OrderViewAssembler {
                 canCancel, canApplyRefund);
     }
 
-    private static long nz(Long v) {
+    private static long zeroIfNull(Long v) {
         return v == null ? 0 : v;
     }
 }

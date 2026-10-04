@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import { createStaff, listStaff, setStaffEnabled, updateStaff } from '../../api/staff'
 import type { StaffItem } from '../../api/types'
 import { useAuthStore } from '../../store/auth'
+import { ignoreShownError } from '../../utils/errors'
 
 type EditState = 'new' | StaffItem | null
 
@@ -23,8 +24,8 @@ export default function StaffPage() {
     setLoading(true)
     try {
       setList(await listStaff())
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setLoading(false)
     }
@@ -57,8 +58,8 @@ export default function StaffPage() {
       }
       setEditing(null)
       void load()
-    } catch {
-      // 保持弹窗让用户修改
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示；保持弹窗让用户修改
     } finally {
       setSaving(false)
     }
@@ -69,8 +70,8 @@ export default function StaffPage() {
       await setStaffEnabled(s.id, enabled)
       message.success(enabled ? '已启用' : '已停用，该员工会话已失效')
       void load()
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     }
   }
 

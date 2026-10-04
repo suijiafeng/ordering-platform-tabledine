@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { App, Form, Input, Modal } from 'antd'
 import { changeOwnPassword } from '../api/staff'
 import { useAuthStore } from '../store/auth'
+import { ignoreShownError } from '../utils/errors'
 
 /** 修改密码弹窗：成功后服务端已使旧 token 失效，直接退出到登录页 */
 export default function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -22,8 +23,8 @@ export default function ChangePasswordModal({ open, onClose }: { open: boolean; 
       onClose()
       logout()
       navigate('/login', { replace: true })
-    } catch {
-      // 已统一提示
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setSaving(false)
     }

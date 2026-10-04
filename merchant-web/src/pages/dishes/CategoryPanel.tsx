@@ -3,6 +3,7 @@ import { App, Button, Card, Input, List, Modal, Space, Tag, Typography, theme as
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { createCategory, deleteCategory, sortCategories, updateCategory } from '../../api/menu'
 import type { Category } from '../../api/types'
+import { ignoreShownError } from '../../utils/errors'
 
 /** 「全部菜品」占位项（List 需要非空的数据项） */
 const ALL: Category = { id: -1, name: '全部菜品', sort: 0, status: 1 }
@@ -41,8 +42,8 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
       }
       setEditing(null)
       onChanged()
-    } catch {
-      // 错误提示已由 request 统一弹出
+    } catch (e) {
+      ignoreShownError(e)  // 请求层已提示
     } finally {
       setSaving(false)
     }
