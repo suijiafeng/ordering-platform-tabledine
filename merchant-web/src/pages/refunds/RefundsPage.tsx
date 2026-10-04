@@ -60,7 +60,14 @@ export default function RefundsPage() {
     setActing(refundNo)
     try {
       const r = await fn()
-      message.success(r.status === 'FAILED' ? `${ok}，但渠道返回失败：${r.failReason ?? ''}` : ok)
+      if (r.status === 'FAILED') {
+        message.warning(`${ok}，但渠道返回失败：${r.failReason ?? ''}`)
+      } else if (ok === '已登记线下退款' && r.status === 'SUCCESS') {
+        // 登记线下退款前后端会先向渠道确认：渠道其实已退成功时自动改为成功，避免重复退款
+        message.info('渠道显示该笔已原路退款成功，已自动更新为退款成功，无需线下退款')
+      } else {
+        message.success(ok)
+      }
     } catch {
       // 已统一提示
     } finally {

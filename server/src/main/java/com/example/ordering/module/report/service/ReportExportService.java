@@ -44,7 +44,7 @@ public class ReportExportService {
         if (from.isAfter(to)) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "开始日期不能晚于结束日期");
         }
-        if (from.plusDays(92).isBefore(to)) {
+        if (from.plusDays(91).isBefore(to)) {  // 含首尾共 92 天
             throw new BusinessException(ErrorCode.PARAM_INVALID, "单次最多导出 92 天");
         }
         Long storeId = LoginUser.currentStaff().storeId();
@@ -65,9 +65,11 @@ public class ReportExportService {
                 """, storeId, start, end);
         List<Map<String, Object>> refunds = jdbc.queryForList("""
                 SELECT r.order_id, r.refund_no, r.created_at, r.type, r.initiator, r.amount, r.status, r.success_at,
-                       r.channel_refund_no, r.reason, r.fail_reason, r.reject_reason, s.name AS operator_name
+                       r.channel_refund_no, r.reason, r.fail_reason, r.reject_reason, s.name AS operator_name,
+                       p.out_trade_no AS refund_out_trade_no, p.transaction_no AS refund_transaction_no
                 FROM refund r
                 LEFT JOIN staff s ON s.id = r.operator_id
+                LEFT JOIN payment p ON p.id = r.payment_id
                 WHERE r.store_id = ? AND r.order_id IN (SELECT id FROM orders WHERE store_id = ? AND created_at >= ? AND created_at < ?)
                 ORDER BY r.order_id, r.id
                 """, storeId, storeId, start, end);
@@ -92,7 +94,10 @@ public class ReportExportService {
                 String extra = r.get("fail_reason") != null ? "；失败：" + r.get("fail_reason")
                         : r.get("reject_reason") != null ? "；拒绝：" + r.get("reject_reason") : "";
                 row(sb, "退款", o.get("order_no"), time(r.get("created_at")), o.get("table_code"), "", "", "", "", "",
-                        platform(str(o.get("platform"))), "", o.get("out_trade_no"), o.get("transaction_no"),
+                        // 退款行展示该退款实际对应的支付单（重复支付的退款对应的不是订单首笔支付）
+                        platform(str(o.get("platform"))), "",
+                        r.get("refund_out_trade_no") != null ? r.get("refund_out_trade_no") : o.get("out_trade_no"),
+                        r.get("refund_out_trade_no") != null ? r.get("refund_transaction_no") : o.get("transaction_no"),
                         r.get("refund_no"), refundType(str(r.get("type"))), initiator(str(r.get("initiator"))),
                         yuan(r.get("amount")), REFUND_STATUS.getOrDefault(str(r.get("status")), str(r.get("status"))),
                         time(r.get("success_at")), r.get("channel_refund_no"), reason + extra, r.get("operator_name"), "");

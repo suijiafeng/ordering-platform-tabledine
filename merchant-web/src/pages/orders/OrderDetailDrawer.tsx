@@ -128,7 +128,8 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
       return null
     }
     const s = order.status
-    const canRefund = (s === 'MAKING' || s === 'READY' || s === 'DONE') && order.refundableAmount > 0
+    // 需求 §4：商家主动退款仅店主
+    const canRefund = isOwner && (s === 'MAKING' || s === 'READY' || s === 'DONE') && order.refundableAmount > 0
     return (
       <Space wrap>
         {s === 'PAID' && (

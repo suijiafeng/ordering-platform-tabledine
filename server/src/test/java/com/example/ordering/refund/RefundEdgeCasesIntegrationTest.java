@@ -64,27 +64,95 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void channelExceptionMarksRefundFailedSoMerchantCanRecover() throws Exception {
+    void channelTimeoutStaysProcessingAndIsResubmittedByCompensation() throws Exception {
         String owner = ownerToken();
-        String customer = customerToken("WECHAT", "mock:throw-" + UUID.randomUUID());
-        String orderNo = createOrder(customer, null);
-        payMock(customer, orderNo);
-        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
+        String orderNo = acceptedOrder();
+        // 首次提交时请求没到达渠道（mock-throw）：不能判失败，保持处理中
+        String refundNo = merchantFullRefund(owner, orderNo, "mock-throw 渠道超时");
+        assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");
+        // 补偿：渠道查无此单 → 用同一退款单号重新提交 → 成功
+        expireRefundQueryWindow(refundNo);
+        tasks.compensateRefunds();
+        assertThat(refundStatus(refundNo)).isEqualTo("SUCCESS");
+        assertThat(getData("/api/v1/m/orders/" + orderNo, owner).path("refundStatus").asText()).isEqualTo("FULL");
+    }
 
-        MvcResult r = mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "FULL", "reason", "mock-throw 渠道超时"))))
-                .andExpect(status().isOk()).andReturn();
-        String refundNo = data(r).path("refundNo").asText();
-        // 不再永久停留在 PROCESSING，而是 FAILED，店主可重试 / 线下登记
-        mvc.perform(authed(get("/api/v1/m/refunds/" + refundNo), owner))
-                .andExpect(jsonPath("$.data.status").value("FAILED"))
-                .andExpect(jsonPath("$.data.failReason").value(org.hamcrest.Matchers.containsString("渠道调用异常")));
+    @Test
+    void lostResponseIsReconciledFromChannelNotRefundedTwice() throws Exception {
+        String owner = ownerToken();
+        String orderNo = acceptedOrder();
+        // 渠道其实已退款成功，但响应超时丢失（mock-lost）
+        String refundNo = merchantFullRefund(owner, orderNo, "mock-lost 响应丢失");
+        assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");
+        // 处理中不能登记线下退款（只有失败才行）
+        mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/offline"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("remark", "现金退还")))
+                .andExpect(status().isConflict());
+        expireRefundQueryWindow(refundNo);
+        tasks.compensateRefunds();
+        assertThat(refundStatus(refundNo)).isEqualTo("SUCCESS");
+        assertThat(jdbc.queryForObject("SELECT refunded_amount FROM orders WHERE order_no = ?", Long.class, orderNo)).isEqualTo(3800);
+    }
+
+    @Test
+    void lateChannelSuccessCorrectsFailedAndBlocksOfflineDoubleRefund() throws Exception {
+        String owner = ownerToken();
+        String orderNo = acceptedOrder();
+        String refundNo = merchantFullRefund(owner, orderNo, "退款测试");
+        // 构造「本地判为失败、渠道其实成功」：直接把本地状态改成 FAILED
+        jdbc.update("UPDATE refund SET status = 'FAILED' WHERE refund_no = ?", refundNo);
+        jdbc.update("UPDATE orders SET refunded_amount = 0, refund_status = 'NONE' WHERE order_no = ?", orderNo);
+        jdbc.update("UPDATE payment SET refunded_amount = 0 WHERE order_id = (SELECT id FROM orders WHERE order_no = ?)", orderNo);
+        // 店主点线下退款：先向渠道确认，发现已成功 → 自动改为成功，不再线下退
+        mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/offline"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("remark", "现金退还")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+        assertThat(jdbc.queryForObject("SELECT refunded_amount FROM orders WHERE order_no = ?", Long.class, orderNo)).isEqualTo(3800);
+    }
+
+    @Test
+    void definiteChannelFailureCanStillBeSettledOffline() throws Exception {
+        String owner = ownerToken();
+        String orderNo = acceptedOrder();
+        String refundNo = merchantFullRefund(owner, orderNo, "mock-fail 余额不足");
+        assertThat(refundStatus(refundNo)).isEqualTo("FAILED");
         mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/offline"), owner)
                         .contentType(MediaType.APPLICATION_JSON).content(json("remark", "现金退还")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("OFFLINE"));
-        assertThat(getData("/api/v1/m/orders/" + orderNo, owner).path("refundStatus").asText()).isEqualTo("FULL");
+    }
+
+    @Test
+    void staffCannotInitiateMerchantRefund() throws Exception {
+        String orderNo = acceptedOrder();
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), staffToken())
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("type", "FULL", "reason", "店员想退"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void duplicatePaymentRefundIsNotBlockedByPendingOrderRefund() throws Exception {
+        String owner = ownerToken();
+        String customer = customerToken("WECHAT", "mock:dup-" + UUID.randomUUID());
+        String orderNo = createOrder(customer, null);
+        payMock(customer, orderNo);
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
+        // 顾客有一笔待审核的退款申请（占用订单的进行中退款名额）
+        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/refunds"), customer)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("reason", "想退"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPLYING"));
+        // 此时第二笔支付（重复支付）成功到账
+        Long orderId = jdbc.queryForObject("SELECT id FROM orders WHERE order_no = ?", Long.class, orderNo);
+        String dupTradeNo = orderNo + "D";
+        jdbc.update("INSERT INTO payment (order_id, out_trade_no, channel, amount, status) VALUES (?, ?, 'WECHAT', 3800, 'PENDING')",
+                orderId, dupTradeNo);
+        assertThat(payService.onPaySuccess(dupTradeNo, "DUP-TXN-" + orderNo, 3800, OffsetDateTime.now())).isTrue();
+        // 重复支付入账并被自动退回；订单记账与顾客的申请都不受影响
+        assertThat(jdbc.queryForObject("SELECT status FROM payment WHERE out_trade_no = ?", String.class, dupTradeNo)).isEqualTo("SUCCESS");
+        assertThat(jdbc.queryForObject("SELECT refunded_amount FROM payment WHERE out_trade_no = ?", Long.class, dupTradeNo)).isEqualTo(3800);
+        assertThat(jdbc.queryForObject("SELECT refunded_amount FROM orders WHERE order_no = ?", Long.class, orderNo)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM refund WHERE order_id = ? AND status = 'APPLYING'", Integer.class, orderId)).isEqualTo(1);
     }
 
     @Test
@@ -144,6 +212,29 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
     private void payMock(String customer, String orderNo) throws Exception {
         mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer)).andExpect(status().isOk());
         mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/mock-pay"), customer)).andExpect(status().isOk());
+    }
+
+    private String acceptedOrder() throws Exception {
+        String customer = customerToken("WECHAT", "mock:acc-" + UUID.randomUUID());
+        String orderNo = createOrder(customer, null);
+        payMock(customer, orderNo);
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), ownerToken())).andExpect(status().isOk());
+        return orderNo;
+    }
+
+    private String merchantFullRefund(String owner, String orderNo, String reason) throws Exception {
+        MvcResult r = mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("type", "FULL", "reason", reason))))
+                .andExpect(status().isOk()).andReturn();
+        return data(r).path("refundNo").asText();
+    }
+
+    private String refundStatus(String refundNo) {
+        return jdbc.queryForObject("SELECT status FROM refund WHERE refund_no = ?", String.class, refundNo);
+    }
+
+    private void expireRefundQueryWindow(String refundNo) {
+        jdbc.update("UPDATE refund SET updated_at = now() - interval '1 hour' WHERE refund_no = ?", refundNo);
     }
 
     private String orderStatus(String orderNo) {

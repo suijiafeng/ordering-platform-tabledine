@@ -41,6 +41,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
@@ -85,7 +87,7 @@ public class RefundService {
     public RefundService(RefundMapper refundMapper, RefundItemMapper refundItemMapper, OrderMapper orderMapper,
                          OrderItemMapper orderItemMapper, PaymentMapper paymentMapper, StaffMapper staffMapper,
                          OrderStateService orderStateService, StoreService storeService,
-                         PayChannelRegistry channels, TransactionTemplate tx, AppProperties appProperties) {
+                         PayChannelRegistry channels, PlatformTransactionManager txManager, AppProperties appProperties) {
         this.refundMapper = refundMapper;
         this.refundItemMapper = refundItemMapper;
         this.orderMapper = orderMapper;
@@ -95,7 +97,10 @@ public class RefundService {
         this.orderStateService = orderStateService;
         this.storeService = storeService;
         this.channels = channels;
-        this.tx = tx;
+        // 独立新事务：渠道结果回写发生在 afterCommit 等时机，此时线程上仍绑定着已提交事务的连接，
+        // REQUIRED 会「加入」那个已结束的事务，写入既不原子也依赖连接的 autoCommit 恢复行为
+        this.tx = new TransactionTemplate(txManager);
+        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.notifyBaseUrl = appProperties.getPay().getNotifyBaseUrl();
     }
 
@@ -196,11 +201,9 @@ public class RefundService {
         if (!(order.getStatus().isActivePaid() || order.getStatus() == OrderStatus.DONE)) {
             throw new BusinessException(ErrorCode.CONFLICT, "当前订单状态不支持退款");
         }
-        if (req.type() == RefundType.CUSTOM && !staff.isOwner()) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "自定义金额退款仅店主可操作");
-        }
-        if (req.type() != RefundType.FULL && !staff.isOwner()) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "部分退款仅店主可操作");
+        // 需求 §4：商家主动退款仅店主（拒单产生的退款除外，走 reject）
+        if (!staff.isOwner()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "主动退款仅店主可操作");
         }
         List<RefundItem> items = new ArrayList<>();
         long amount = switch (req.type()) {
@@ -257,17 +260,35 @@ public class RefundService {
         return view(refund, orderStateService.getById(refund.getOrderId()));
     }
 
-    /** 线上退款失败后转线下退款并登记（计入已退金额） */
-    @Transactional
+    /**
+     * 线上退款失败后转线下退款并登记（计入已退金额）。
+     * 登记前先向渠道确认：渠道其实已退成功（例如结果通知晚到）时自动改为退款成功，避免线上线下各退一次。
+     */
     public RefundView offline(String refundNo, String remark, Long operatorId) {
         Refund refund = getByNo(refundNo);
-        Order order = orderStateService.getById(refund.getOrderId());
-        updateStatusOrConflict(refund, RefundStatus.FAILED, RefundStatus.OFFLINE,
-                w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
-                        .set(Refund::getFailReason, "线下退款：" + remark)
-                        .set(Refund::getOperatorId, operatorId));
-        applyRefunded(refund, order, null);
-        return view(refund, order);
+        if (refund.getStatus() != RefundStatus.FAILED) {
+            throw new BusinessException(ErrorCode.CONFLICT, "退款单状态已变化，请刷新后重试");
+        }
+        RefundResult channel = queryChannel(refund);
+        switch (channel.state()) {
+            case SUCCESS -> {
+                applyResult(refund, channel);
+                Refund fresh = refundMapper.selectById(refund.getId());
+                return view(fresh, orderStateService.getById(fresh.getOrderId()));
+            }
+            case PROCESSING -> throw new BusinessException(ErrorCode.CONFLICT, "渠道显示该退款仍在处理中，请稍后再试");
+            case UNKNOWN -> throw new BusinessException(ErrorCode.CONFLICT, "暂时无法确认渠道退款状态，请稍后再试");
+            default -> { /* FAILED / NOT_FOUND：渠道确实没有退款，可以线下退 */ }
+        }
+        return tx.execute(st -> {
+            Order order = orderStateService.getById(refund.getOrderId());
+            updateStatusOrConflict(refund, RefundStatus.FAILED, RefundStatus.OFFLINE,
+                    w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
+                            .set(Refund::getFailReason, truncate("线下退款：" + remark, 255))
+                            .set(Refund::getOperatorId, operatorId));
+            applyRefunded(refund, order, null);
+            return view(refund, orderStateService.getById(refund.getOrderId()));
+        });
     }
 
     // ==================== 系统 / 内部 ====================
@@ -309,10 +330,14 @@ public class RefundService {
                     payment.getTransactionNo(), refund.getAmount(), payment.getAmount(), refund.getReason(),
                     notifyBaseUrl + "/api/v1/pay/notify/wechat-refund"));
         } catch (RuntimeException e) {
-            // 渠道调用异常（超时 / 5xx / 配置错误）：标记失败，店主可重试或登记线下退款。
-            // 重试沿用同一 refund_no，若渠道其实已受理，重试时会直接返回该单结果，不会重复退款。
-            log.warn("退款 {} 渠道调用异常: {}", refund.getRefundNo(), e.getMessage());
-            applyResult(refund, RefundResult.failed("渠道调用异常：" + e.getMessage()));
+            // 渠道调用异常（超时 / 5xx）：渠道可能已经受理并退款，绝不能判为失败（否则店主可能再线下退一次）。
+            // 保持处理中，由补偿任务查询：查到结果就回写，查无此单再用同一单号重新提交（渠道幂等）。
+            log.warn("退款 {} 渠道调用异常，等待补偿查询: {}", refund.getRefundNo(), e.getMessage());
+            touch(refund, "渠道调用异常，系统将自动重试");
+            return;
+        }
+        if (result == null || result.state() == RefundResult.State.UNKNOWN) {
+            touch(refund, "渠道结果未确认，系统将自动查询");
             return;
         }
         applyResult(refund, result);
@@ -320,21 +345,53 @@ public class RefundService {
 
     /** 主动查询渠道退款结果（定时补偿） */
     public void queryAndSync(Refund refund) {
+        RefundResult result = queryChannel(refund);
+        switch (result.state()) {
+            case NOT_FOUND -> {
+                // 渠道没收到这笔退款（请求没到达 / 支付宝未受理）：用同一退款单号重新提交，渠道按单号幂等
+                log.info("退款 {} 渠道查无此单，重新提交", refund.getRefundNo());
+                submitToChannel(refund.getId());
+            }
+            case UNKNOWN -> {
+                touch(refund, null);  // 本轮查不到结果：刷新时间，让其他退款单先被处理
+                if (refund.getCreatedAt() != null && refund.getCreatedAt().isBefore(OffsetDateTime.now().minusHours(24))) {
+                    log.error("退款 {} 已处理超过 24 小时仍无法确认结果，请人工到渠道商户平台核对", refund.getRefundNo());
+                }
+            }
+            case PROCESSING -> {
+                applyResult(refund, result);
+                touch(refund, null);
+            }
+            default -> applyResult(refund, result);
+        }
+    }
+
+    /** 查询渠道侧退款状态；任何异常都视为结果不明确 */
+    private RefundResult queryChannel(Refund refund) {
         Order order = orderStateService.getById(refund.getOrderId());
         Payment payment = successPayment(refund, order);
         if (payment == null) {
-            return;
+            return RefundResult.notFound();
         }
         try {
-            RefundResult result = channels.get(payment.getChannel()).queryRefund(refund.getRefundNo(), payment.getOutTradeNo());
-            if (result == null || result.state() == RefundResult.State.UNKNOWN) {
-                // 已超过补偿查询间隔仍查不到：渠道未受理过该退款单，标记失败让店主重试（同单号幂等）
-                result = RefundResult.failed("渠道查询无此退款记录，请重试或登记线下退款");
-            }
-            applyResult(refund, result);
+            RefundResult r = channels.get(payment.getChannel()).queryRefund(refund.getRefundNo(), payment.getOutTradeNo());
+            return r == null ? RefundResult.unknown() : r;
         } catch (RuntimeException e) {
             log.warn("退款 {} 查询失败: {}", refund.getRefundNo(), e.getMessage());
+            return RefundResult.unknown();
         }
+    }
+
+    /** 刷新处理中退款单的 updated_at（补偿任务按它轮转），可选记录提示 */
+    private void touch(Refund refund, String note) {
+        var w = Wrappers.<Refund>lambdaUpdate()
+                .set(Refund::getUpdatedAt, OffsetDateTime.now())
+                .eq(Refund::getId, refund.getId())
+                .eq(Refund::getStatus, RefundStatus.PROCESSING);
+        if (note != null) {
+            w.set(Refund::getFailReason, note);
+        }
+        refundMapper.update(null, w);
     }
 
     /** 微信退款结果通知 */
@@ -353,7 +410,7 @@ public class RefundService {
      * 保证退款单状态与订单 / 支付单记账在同一事务内提交。
      */
     public void applyResult(Refund refund, RefundResult result) {
-        if (result == null || result.state() == RefundResult.State.UNKNOWN) {
+        if (result == null || result.state() == RefundResult.State.UNKNOWN || result.state() == RefundResult.State.NOT_FOUND) {
             return;
         }
         tx.executeWithoutResult(s -> doApplyResult(refund, result));
@@ -363,9 +420,13 @@ public class RefundService {
         Order order = orderStateService.getById(refund.getOrderId());
         switch (result.state()) {
             case SUCCESS -> {
-                boolean updated = updateStatus(refund, RefundStatus.PROCESSING, RefundStatus.SUCCESS,
+                java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Refund>> set =
                         w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
-                                .set(Refund::getChannelRefundNo, result.channelRefundNo()));
+                                .set(Refund::getChannelRefundNo, result.channelRefundNo())
+                                .set(Refund::getFailReason, null);
+                // 渠道的成功以渠道为准：已被判为 FAILED 的（例如成功通知晚于失败结论）也纠正为成功
+                boolean updated = updateStatus(refund, RefundStatus.PROCESSING, RefundStatus.SUCCESS, set)
+                        || updateStatus(refund, RefundStatus.FAILED, RefundStatus.SUCCESS, set);
                 if (updated) {
                     applyRefunded(refund, order, result.channelRefundNo());
                 }
@@ -387,7 +448,7 @@ public class RefundService {
         return refundMapper.selectList(Wrappers.<Refund>lambdaQuery()
                 .eq(Refund::getStatus, RefundStatus.PROCESSING)
                 .lt(Refund::getUpdatedAt, before)
-                .orderByAsc(Refund::getId)
+                .orderByAsc(Refund::getUpdatedAt)  // 每轮处理后会刷新 updated_at，避免同一批卡住的单永远排在最前
                 .last("LIMIT 100"));
     }
 
@@ -399,9 +460,11 @@ public class RefundService {
                 .last("LIMIT 100"));
     }
 
+    /** 订单级进行中退款（与 uk_refund_order_active 一致；支付单级自动退款不占名额） */
     public boolean hasActiveRefund(Long orderId) {
         return refundMapper.selectCount(Wrappers.<Refund>lambdaQuery()
                 .eq(Refund::getOrderId, orderId)
+                .eq(Refund::getOrderScoped, true)
                 .in(Refund::getStatus, RefundStatus.APPLYING, RefundStatus.PROCESSING, RefundStatus.FAILED)) > 0;
     }
 
@@ -430,18 +493,23 @@ public class RefundService {
         if (payment == null) {
             payment = firstSuccessPayment(order.getId());
         }
-        // 重复支付 / 迟到支付的退款只针对那笔多余的支付单，不占用订单可退余额
-        if (countsForOrder(order, payment) && amount > order.refundableAmount()) {
+        // 重复支付 / 迟到支付的退款只针对那笔多余的支付单，不占用订单可退余额，也不占订单的进行中退款名额
+        boolean orderScoped = countsForOrder(order, payment);
+        if (orderScoped && amount > order.refundableAmount()) {
             throw new BusinessException(ErrorCode.REFUND_AMOUNT_EXCEEDED);
         }
-        if (hasActiveRefund(order.getId())) {
+        if (orderScoped && hasActiveRefund(order.getId())) {
             throw new BusinessException(ErrorCode.REFUND_IN_PROGRESS);
+        }
+        if (!orderScoped && payment != null && amount > payment.getAmount() - (payment.getRefundedAmount() == null ? 0 : payment.getRefundedAmount())) {
+            throw new BusinessException(ErrorCode.REFUND_AMOUNT_EXCEEDED);
         }
         Refund refund = new Refund();
         refund.setRefundNo(OrderNoGenerator.refundNo());
         refund.setStoreId(order.getStoreId());
         refund.setOrderId(order.getId());
         refund.setPaymentId(payment == null ? null : payment.getId());
+        refund.setOrderScoped(orderScoped);
         refund.setType(type);
         refund.setInitiator(initiator);
         refund.setAmount(amount);
@@ -543,7 +611,8 @@ public class RefundService {
                     .set(Payment::getUpdatedAt, OffsetDateTime.now())
                     .eq(Payment::getId, payment.getId()));
         }
-        if (countsForOrder(order, payment)) {
+        boolean orderScoped = refund.getOrderScoped() == null || refund.getOrderScoped();
+        if (orderScoped) {
             // 在一条 UPDATE 里累加并重算状态（SET 中引用的列是更新前的值），避免并发退款下按内存旧值算错
             orderMapper.update(null, Wrappers.<Order>lambdaUpdate()
                     .setSql("refunded_amount = refunded_amount + " + amount)
@@ -576,7 +645,12 @@ public class RefundService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    submitToChannel(id);
+                    // 业务事务已提交，渠道调用的任何异常都不能再抛给调用方（否则接口 500 但数据已落库）
+                    try {
+                        submitToChannel(id);
+                    } catch (RuntimeException e) {
+                        log.error("退款 {} 提交渠道异常，等待补偿任务处理", id, e);
+                    }
                 }
             });
         } else {

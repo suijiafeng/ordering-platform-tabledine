@@ -379,7 +379,9 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
         payMock(customer, orderNo);
 
-        mvc.perform(authed(get("/api/v1/m/dashboard/today"), staff))
+        // 需求 §4：数据看板仅店主
+        mvc.perform(authed(get("/api/v1/m/dashboard/today"), staff)).andExpect(status().isForbidden());
+        mvc.perform(authed(get("/api/v1/m/dashboard/today"), owner))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
                 .andExpect(jsonPath("$.data.paidAmount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(3800)))

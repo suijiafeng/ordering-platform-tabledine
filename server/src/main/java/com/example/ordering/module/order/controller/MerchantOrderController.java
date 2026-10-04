@@ -100,7 +100,8 @@ public class MerchantOrderController {
         return Result.ok(service.cancel(orderNo, req.reason()));
     }
 
-    @Operation(summary = "商家主动退款（整单 / 按菜品 / 自定义金额）")
+    @Operation(summary = "商家主动退款（整单 / 按菜品 / 自定义金额，仅店主）")
+    @PreAuthorize("hasRole('OWNER')")
     @PostMapping("/{orderNo}/refunds")
     public Result<RefundView> refund(@PathVariable String orderNo, @Valid @RequestBody MerchantRefundRequest req) {
         return Result.ok(service.refund(orderNo, req));

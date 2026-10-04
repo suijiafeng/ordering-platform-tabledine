@@ -181,7 +181,8 @@ public class WechatPayChannel implements PayChannel {
         requireConfigured();
         HttpResponse<String> resp = send("GET", "/v3/refund/domestic/refunds/" + refundNo, null);
         if (resp.statusCode() == 404) {
-            return RefundResult.unknown();
+            // RESOURCE_NOT_EXISTS：微信没收到这笔退款申请，可用同一 out_refund_no 重新提交
+            return RefundResult.notFound();
         }
         return toRefundResult(parseOk(resp, ErrorCode.REFUND_CHANNEL_ERROR));
     }

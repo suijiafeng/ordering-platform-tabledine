@@ -149,8 +149,9 @@ public class AlipayChannel implements PayChannel {
         if ("REFUND_SUCCESS".equals(resp.path("refund_status").asText(""))) {
             return RefundResult.success(resp.path("trade_no").asText(null));
         }
-        // 查询成功但无 refund_status：退款单不存在或仍在处理
-        return RefundResult.processing(null);
+        // 支付宝文档：未返回 refund_status 表示「退款请求未收到或退款失败」。
+        // 两种情况都可以用同一 out_request_no 重新提交：已退过的会返回成功（fund_change=N），不会重复出款。
+        return RefundResult.notFound();
     }
 
     @Override

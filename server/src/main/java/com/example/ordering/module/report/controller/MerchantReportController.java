@@ -33,6 +33,7 @@ public class MerchantReportController {
     }
 
     @Operation(summary = "今日看板：实收、订单量、退款、待处理、菜品排行、近 7 天")
+    @PreAuthorize("hasRole('OWNER')")
     @GetMapping("/dashboard/today")
     public Result<DashboardToday> today() {
         return Result.ok(dashboardService.today());

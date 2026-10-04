@@ -109,6 +109,10 @@ class OrderTasksIntegrationTest extends AbstractIntegrationTest {
         jdbc.update("UPDATE refund SET updated_at = now() - interval '1 hour' WHERE refund_no = ?", refundNo);
         tasks.compensateRefunds();
         assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");
+        // 每轮处理后 updated_at 被刷新（让其他退款单轮到），下一轮需再次超过查询间隔
+        tasks.compensateRefunds();
+        assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");
+        jdbc.update("UPDATE refund SET updated_at = now() - interval '1 hour' WHERE refund_no = ?", refundNo);
         tasks.compensateRefunds();
         assertThat(refundStatus(refundNo)).isEqualTo("SUCCESS");
         assertThat(jdbc.queryForObject("SELECT refund_status FROM orders WHERE order_no = ?", String.class, orderNo)).isEqualTo("FULL");

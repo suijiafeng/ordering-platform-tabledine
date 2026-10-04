@@ -21,6 +21,8 @@ public class Refund {
     private Long storeId;
     private Long orderId;
     private Long paymentId;
+    /** 是否计入订单已退金额；false = 重复 / 迟到支付的自动退款，只针对那笔支付单 */
+    private Boolean orderScoped;
     private RefundType type;
     private RefundInitiator initiator;
     private Long amount;

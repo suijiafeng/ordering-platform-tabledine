@@ -22,13 +22,15 @@ export default function DashboardPage() {
 
   const load = useCallback(() => {
     fetchStore().then(setStore).catch(() => setStore(null))
+    // 营收数据仅店主可见（店员只看待接单 / 制作中，来自全局轮询）
+    if (!isOwner) return
     fetchDashboard()
       .then((s) => {
         setStats(s)
         setStatsError(false)
       })
       .catch(() => setStatsError(true))  // 保留上次数据；首次失败时显示重试，不要一直骨架屏
-  }, [])
+  }, [isOwner])
 
   useEffect(() => {
     load()
@@ -36,7 +38,7 @@ export default function DashboardPage() {
 
   // 轮询计数变化时刷新概览（新订单 / 退款）
   useEffect(() => {
-    if (counts) {
+    if (counts && isOwner) {
       fetchDashboard().then(setStats).catch(() => {})
     }
   }, [counts?.pendingAcceptCount, counts?.applyingRefundCount]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -68,18 +70,18 @@ export default function DashboardPage() {
           <Alert type="error" showIcon message="今日概览加载失败" action={<Button size="small" onClick={load}>重试</Button>} />
         </Col>
       )}
-      <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" /></Card></Col>
-      <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>
+      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" /></Card></Col>}
+      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>}
       <Col xs={12} lg={6}>
         <Card hoverable onClick={() => navigate('/orders?status=PAID')}>
           <Statistic title="待接单" value={pendingAccept} valueStyle={{ color: pendingAccept > 0 ? token.colorWarning : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 制作中 {making}</Typography.Text>} />
         </Card>
       </Col>
-      <Col xs={12} lg={6}>
-        <Card hoverable={isOwner} onClick={() => isOwner && navigate('/refunds?status=APPLYING')}>
+      {isOwner && <Col xs={12} lg={6}>
+        <Card hoverable onClick={() => navigate('/refunds?status=APPLYING')}>
           <Statistic title="待处理退款" value={applying + failed} valueStyle={{ color: applying + failed > 0 ? token.colorError : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 今日退款 ¥{fenToYuan(stats?.refundedAmount).toFixed(2)}</Typography.Text>} />
         </Card>
-      </Col>
+      </Col>}
       <Col xs={24} lg={16}>
         <Card title="门店信息" extra={isOwner && <Button type="link" size="small" onClick={() => navigate('/settings')}>店铺设置</Button>}>
           {store ? (
