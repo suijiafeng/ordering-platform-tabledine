@@ -91,7 +91,9 @@ public class ReportExportService {
                     "", "", "", "", "", "", "", "", "", o.get("remark"));
             for (Map<String, Object> r : refundsByOrder.getOrDefault(o.get("id"), List.of())) {
                 String reason = str(r.get("reason"));
-                String extra = r.get("fail_reason") != null ? "；失败：" + r.get("fail_reason")
+                String status = str(r.get("status"));
+                String extra = r.get("fail_reason") != null
+                        ? ("FAILED".equals(status) ? "；失败：" : "OFFLINE".equals(status) ? "；" : "；系统提示：") + r.get("fail_reason")
                         : r.get("reject_reason") != null ? "；拒绝：" + r.get("reject_reason") : "";
                 row(sb, "退款", o.get("order_no"), time(r.get("created_at")), o.get("table_code"), "", "", "", "", "",
                         // 退款行展示该退款实际对应的支付单（重复支付的退款对应的不是订单首笔支付）

@@ -84,12 +84,11 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
         // 渠道其实已退款成功，但响应超时丢失（mock-lost）
         String refundNo = merchantFullRefund(owner, orderNo, "mock-lost 响应丢失");
         assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");
-        // 处理中不能登记线下退款（只有失败才行）
+        // 店主此时想登记线下退款：后端先向渠道确认，发现渠道已退成功 → 直接纠正为成功，不会再退一次
         mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/offline"), owner)
                         .contentType(MediaType.APPLICATION_JSON).content(json("remark", "现金退还")))
-                .andExpect(status().isConflict());
-        expireRefundQueryWindow(refundNo);
-        tasks.compensateRefunds();
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
         assertThat(refundStatus(refundNo)).isEqualTo("SUCCESS");
         assertThat(jdbc.queryForObject("SELECT refunded_amount FROM orders WHERE order_no = ?", Long.class, orderNo)).isEqualTo(3800);
     }
@@ -109,6 +108,52 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"));
         assertThat(jdbc.queryForObject("SELECT refunded_amount FROM orders WHERE order_no = ?", Long.class, orderNo)).isEqualTo(3800);
+    }
+
+    @Test
+    void processingRefundCanBeRetriedWhenChannelConfirmsNotReceived() throws Exception {
+        String owner = ownerToken();
+        String orderNo = acceptedOrder();
+        // 首次提交请求没到达渠道：停在处理中。店主不想等补偿任务，手动重试
+        String refundNo = merchantFullRefund(owner, orderNo, "mock-throw 渠道超时");
+        assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");
+        mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/retry"), owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+    }
+
+    @Test
+    void processingRefundOfflineRefusedWhileChannelStillProcessing() throws Exception {
+        String owner = ownerToken();
+        String orderNo = acceptedOrder();
+        String refundNo = merchantFullRefund(owner, orderNo, "mock-pending 处理中");
+        assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");
+        // 渠道第一次查询仍是处理中 → 不允许线下登记（否则可能双退）
+        mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/offline"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("remark", "现金")))
+                .andExpect(status().isConflict());
+        // 第二次查询渠道成功 → 线下登记请求直接把它纠正为成功，而不是再退一次
+        mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/offline"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("remark", "现金")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+    }
+
+    @Test
+    void customerRefundViewHidesStaffAndChannelDetails() throws Exception {
+        String owner = ownerToken();
+        String customer = customerToken("WECHAT", "mock:rv-" + UUID.randomUUID());
+        String orderNo = createOrder(customer, null);
+        payMock(customer, orderNo);
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
+        merchantFullRefund(owner, orderNo, "mock-fail 余额不足");
+        JsonNode r = getData("/api/v1/c/orders/" + orderNo + "/refunds", customer).get(0);
+        assertThat(r.path("status").asText()).isEqualTo("FAILED");
+        assertThat(r.path("operatorName").isNull()).isTrue();
+        assertThat(r.path("operatorId").isNull()).isTrue();
+        assertThat(r.path("failReason").isNull()).isTrue();
+        JsonNode m = getData("/api/v1/m/orders/" + orderNo, owner).path("refunds").get(0);
+        assertThat(m.path("failReason").asText()).contains("余额不足");
     }
 
     @Test

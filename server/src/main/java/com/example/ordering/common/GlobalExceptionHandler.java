@@ -94,11 +94,26 @@ public class GlobalExceptionHandler {
         return build(ErrorCode.UNSUPPORTED_MEDIA_TYPE, ErrorCode.UNSUPPORTED_MEDIA_TYPE.getMessage());
     }
 
-    /** 兜底：DTO 校验遗漏导致的超长 / 违反约束，按参数错误返回，不暴露数据库信息 */
+    /**
+     * 数据完整性异常：
+     * 字段超长 / 格式错误（SQLState 22xxx）是输入问题 → 422；
+     * 唯一键冲突（23505）→ 409；
+     * CHECK 约束（23514，如已退金额不能超过实付）是业务不变量被破坏 → 500 并记录完整堆栈，绝不能伪装成输入错误
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Result<Void>> handleDataIntegrity(DataIntegrityViolationException e) {
-        log.warn("数据约束冲突: {}", e.getMostSpecificCause().getMessage());
-        return build(ErrorCode.PARAM_INVALID, "数据不合法，请检查输入长度或格式");
+        Throwable cause = e.getMostSpecificCause();
+        String state = cause instanceof java.sql.SQLException sql ? sql.getSQLState() : null;
+        if (state != null && state.startsWith("22")) {
+            log.warn("输入数据不合法: {}", cause.getMessage());
+            return build(ErrorCode.PARAM_INVALID, "数据不合法，请检查输入长度或格式");
+        }
+        if ("23505".equals(state)) {
+            log.warn("唯一键冲突: {}", cause.getMessage());
+            return build(ErrorCode.CONFLICT, "数据已存在，请刷新后重试");
+        }
+        log.error("数据约束被破坏（业务不变量异常）", e);
+        return build(ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

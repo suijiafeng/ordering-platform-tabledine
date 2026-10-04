@@ -334,7 +334,7 @@ public class OrderService {
     }
 
     public List<RefundView> refunds(String orderNo) {
-        return refundService.listByOrder(ownOrder(orderNo));
+        return refundService.listByOrderForCustomer(ownOrder(orderNo));
     }
 
     public RefundView withdrawRefund(String refundNo) {

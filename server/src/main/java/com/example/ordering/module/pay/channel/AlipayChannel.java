@@ -247,17 +247,19 @@ public class AlipayChannel implements PayChannel {
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "支付宝响应解析失败");
         }
-        JsonNode node = root.has(nodeName) ? root.get(nodeName) : root.path("error_response");
-        // 同步响应验签：对 xxx_response 节点的原始 JSON 文本验签
-        String sign = root.path("sign").asText(null);
-        if (root.has(nodeName)) {
-            String raw = extractRawNode(body, nodeName);
-            if (sign == null || raw == null || !verify(raw, sign)) {
-                log.warn("支付宝 {} 同步响应验签失败", method);
-                throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "支付宝响应验签失败");
-            }
+        // 同步响应验签：对 xxx_response / error_response 节点的原始 JSON 文本验签（网关对两者都签名）。
+        // 错误应答同样会驱动业务（如「交易不存在」→ 关单、「退款失败」），不验签就能被伪造
+        String actualNode = root.has(nodeName) ? nodeName : "error_response";
+        if (!root.has(actualNode)) {
+            throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "支付宝响应格式异常");
         }
-        return node;
+        String sign = root.path("sign").asText(null);
+        String raw = extractRawNode(body, actualNode);
+        if (sign == null || raw == null || !verify(raw, sign)) {
+            log.warn("支付宝 {} 同步响应验签失败（{}）", method, actualNode);
+            throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "支付宝响应验签失败");
+        }
+        return root.get(actualNode);
     }
 
     /** 从原始响应中截取 "nodeName":{...} 的大括号内容（支付宝签名基于原文，不能重新序列化） */

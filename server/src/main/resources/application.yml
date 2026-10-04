@@ -81,6 +81,9 @@ app:
     platform-public-key: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  security:
+    # 公网地址的反向代理 / 云负载均衡需在此登记，否则其 X-Real-IP 不被信任，所有请求会被按同一 IP 限流
+    trusted-proxies: ${TRUSTED_PROXIES:}
   qr:
     base-url: ${QR_BASE_URL:https://ordering.example.com/q/}
   storage:

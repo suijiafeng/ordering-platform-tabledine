@@ -75,7 +75,7 @@ public class ImageUploadService {
                 int w = reader.getWidth(0);
                 int h = reader.getHeight(0);
                 if (w <= 0 || h <= 0 || w > MAX_PIXELS_SIDE || h > MAX_PIXELS_SIDE || (long) w * h > MAX_PIXELS_TOTAL) {
-                    throw new BusinessException(ErrorCode.PARAM_INVALID, "图片尺寸过大（最长边不超过 " + MAX_PIXELS_SIDE + " 像素）");
+                    throw new BusinessException(ErrorCode.PARAM_INVALID, "图片尺寸过大（最长边不超过 " + MAX_PIXELS_SIDE + " 像素，总像素不超过 1200 万）");
                 }
                 src = reader.read(0);
             } finally {

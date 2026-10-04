@@ -62,6 +62,8 @@ export default function RefundsPage() {
       const r = await fn()
       if (r.status === 'FAILED') {
         message.warning(`${ok}，但渠道返回失败：${r.failReason ?? ''}`)
+      } else if (ok === '已重新发起' && r.status === 'SUCCESS') {
+        message.info('渠道显示该笔已退款成功，已自动更新为退款成功')
       } else if (ok === '已登记线下退款' && r.status === 'SUCCESS') {
         // 登记线下退款前后端会先向渠道确认：渠道其实已退成功时自动改为成功，避免重复退款
         message.info('渠道显示该笔已原路退款成功，已自动更新为退款成功，无需线下退款')
@@ -137,7 +139,8 @@ export default function RefundsPage() {
               <Button type="link" size="small" danger onClick={() => { setReason(''); setReasonModal({ kind: 'reject', refund: r }) }}>拒绝</Button>
             </>
           )}
-          {r.status === 'FAILED' && (
+          {(r.status === 'FAILED' || r.status === 'PROCESSING') && (
+            // 处理中也允许重试 / 线下登记：后端会先向渠道确认该单确实没退成功，渠道已退则自动改为成功
             <>
               <Button type="link" size="small" loading={acting === r.refundNo} onClick={() => run(r.refundNo, () => retryRefund(r.refundNo), '已重新发起')}>重试</Button>
               <Button type="link" size="small" onClick={() => { setReason(''); setReasonModal({ kind: 'offline', refund: r }) }}>登记线下退款</Button>

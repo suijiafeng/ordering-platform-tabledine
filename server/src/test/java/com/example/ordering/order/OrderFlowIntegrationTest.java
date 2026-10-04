@@ -143,6 +143,13 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         try {
             String orderNo = createOrder(customer, List.of(item(2, List.of(), List.of(), 2)));
             assertThat(stock(2)).isEqualTo(1);
+            // 中午把限量 3 改成 5：已占用 2 份，今日剩余应为 3 而不是 5
+            mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
+                    .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 5))).andExpect(status().isOk());
+            assertThat(stock(2)).isEqualTo(3);
+            mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
+                    .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 3))).andExpect(status().isOk());
+            assertThat(stock(2)).isEqualTo(1);
             // 0 点重置：今日剩余回到每日限量
             menuService.resetDailyStock();
             assertThat(stock(2)).isEqualTo(3);

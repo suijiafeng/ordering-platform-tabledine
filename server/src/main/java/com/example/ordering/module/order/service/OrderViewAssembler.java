@@ -72,7 +72,7 @@ public class OrderViewAssembler {
     public OrderDetail detail(Order order, boolean customerView) {
         List<OrderItem> items = orderStateService.items(order.getId());
         Payment payment = payService.latestPayment(order.getId());
-        List<RefundView> refunds = refundService.listByOrder(order);
+        List<RefundView> refunds = customerView ? refundService.listByOrderForCustomer(order) : refundService.listByOrder(order);
         List<OrderStatusLog> logs = orderStateService.logs(order.getId());
         Map<Long, String> staffNames = refundService.staffNames(logs.stream()
                 .filter(l -> l.getOperatorType() == OperatorType.MERCHANT && l.getOperatorId() != null)

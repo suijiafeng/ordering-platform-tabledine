@@ -149,6 +149,11 @@ public class RefundService {
         return views(refunds, Map.of(order.getId(), order));
     }
 
+    /** 顾客端视图：不暴露员工身份与渠道原始错误信息 */
+    public List<RefundView> listByOrderForCustomer(Order order) {
+        return listByOrder(order).stream().map(RefundView::forCustomer).toList();
+    }
+
     /** 顾客端可否申请退款：状态允许、售后时限内、无进行中的退款、尚有可退余额 */
     public boolean canCustomerApply(Order order) {
         if (!(order.getStatus() == OrderStatus.MAKING || order.getStatus() == OrderStatus.READY
@@ -250,14 +255,52 @@ public class RefundService {
         return view(refund, orderStateService.getById(refund.getOrderId()));
     }
 
-    /** 失败重试：沿用同一 refund_no，渠道按单号幂等 */
-    @Transactional
+    /**
+     * 重试：沿用同一 refund_no，渠道按单号幂等。
+     * 允许对「处理中」的退款重试，但先向渠道确认：渠道已成功则直接记成功；渠道仍在处理 / 无法确认则拒绝；
+     * 渠道明确失败或查无此单才重新提交。这样持续性故障（配置错误等）下店主也有出口，又不会重复出款。
+     */
     public RefundView retry(String refundNo, Long operatorId) {
         Refund refund = getByNo(refundNo);
-        updateStatusOrConflict(refund, RefundStatus.FAILED, RefundStatus.PROCESSING,
-                w -> w.set(Refund::getFailReason, null).set(Refund::getOperatorId, operatorId));
-        submitAfterCommit(refund);
-        return view(refund, orderStateService.getById(refund.getOrderId()));
+        if (refund.getStatus() == RefundStatus.PROCESSING) {
+            RefundResult channel = confirmNotRefunded(refund);
+            if (channel != null) {
+                return channel.state() == RefundResult.State.SUCCESS
+                        ? view(refundMapper.selectById(refund.getId()), orderStateService.getById(refund.getOrderId()))
+                        : null;
+            }
+            // 渠道确认没退：直接重新提交（状态不变）
+            refundMapper.update(null, Wrappers.<Refund>lambdaUpdate()
+                    .set(Refund::getFailReason, null).set(Refund::getOperatorId, operatorId)
+                    .set(Refund::getUpdatedAt, OffsetDateTime.now()).eq(Refund::getId, refund.getId()));
+            submitToChannel(refund.getId());
+            return view(refundMapper.selectById(refund.getId()), orderStateService.getById(refund.getOrderId()));
+        }
+        tx.executeWithoutResult(st -> {
+            updateStatusOrConflict(refund, RefundStatus.FAILED, RefundStatus.PROCESSING,
+                    w -> w.set(Refund::getFailReason, null).set(Refund::getOperatorId, operatorId));
+            submitAfterCommit(refund);
+        });
+        return view(refundMapper.selectById(refund.getId()), orderStateService.getById(refund.getOrderId()));
+    }
+
+    /**
+     * 店主对处理中 / 失败的退款做人工处理前，先向渠道确认该单确实没有退成功。
+     * @return 渠道已成功（已回写）时返回该结果；渠道没退（失败 / 查无此单）返回 null；仍在处理或无法确认则抛 409
+     */
+    private RefundResult confirmNotRefunded(Refund refund) {
+        RefundResult channel = queryChannel(refund);
+        switch (channel.state()) {
+            case SUCCESS -> {
+                applyResult(refund, channel);
+                return channel;
+            }
+            case PROCESSING -> throw new BusinessException(ErrorCode.CONFLICT, "渠道显示该退款仍在处理中，请稍后再试");
+            case UNKNOWN -> throw new BusinessException(ErrorCode.CONFLICT, "暂时无法确认渠道退款状态，请稍后再试（若持续出现请检查支付渠道配置）");
+            default -> {
+                return null;
+            }
+        }
     }
 
     /**
@@ -266,23 +309,17 @@ public class RefundService {
      */
     public RefundView offline(String refundNo, String remark, Long operatorId) {
         Refund refund = getByNo(refundNo);
-        if (refund.getStatus() != RefundStatus.FAILED) {
+        RefundStatus from = refund.getStatus();
+        if (from != RefundStatus.FAILED && from != RefundStatus.PROCESSING) {
             throw new BusinessException(ErrorCode.CONFLICT, "退款单状态已变化，请刷新后重试");
         }
-        RefundResult channel = queryChannel(refund);
-        switch (channel.state()) {
-            case SUCCESS -> {
-                applyResult(refund, channel);
-                Refund fresh = refundMapper.selectById(refund.getId());
-                return view(fresh, orderStateService.getById(fresh.getOrderId()));
-            }
-            case PROCESSING -> throw new BusinessException(ErrorCode.CONFLICT, "渠道显示该退款仍在处理中，请稍后再试");
-            case UNKNOWN -> throw new BusinessException(ErrorCode.CONFLICT, "暂时无法确认渠道退款状态，请稍后再试");
-            default -> { /* FAILED / NOT_FOUND：渠道确实没有退款，可以线下退 */ }
+        if (confirmNotRefunded(refund) != null) {
+            Refund fresh = refundMapper.selectById(refund.getId());
+            return view(fresh, orderStateService.getById(fresh.getOrderId()));
         }
         return tx.execute(st -> {
             Order order = orderStateService.getById(refund.getOrderId());
-            updateStatusOrConflict(refund, RefundStatus.FAILED, RefundStatus.OFFLINE,
+            updateStatusOrConflict(refund, from, RefundStatus.OFFLINE,
                     w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
                             .set(Refund::getFailReason, truncate("线下退款：" + remark, 255))
                             .set(Refund::getOperatorId, operatorId));
@@ -425,8 +462,17 @@ public class RefundService {
                                 .set(Refund::getChannelRefundNo, result.channelRefundNo())
                                 .set(Refund::getFailReason, null);
                 // 渠道的成功以渠道为准：已被判为 FAILED 的（例如成功通知晚于失败结论）也纠正为成功
-                boolean updated = updateStatus(refund, RefundStatus.PROCESSING, RefundStatus.SUCCESS, set)
-                        || updateStatus(refund, RefundStatus.FAILED, RefundStatus.SUCCESS, set);
+                boolean updated = updateStatus(refund, RefundStatus.PROCESSING, RefundStatus.SUCCESS, set);
+                if (!updated && refund.getStatus() == RefundStatus.FAILED) {
+                    boolean orderScoped = refund.getOrderScoped() == null || refund.getOrderScoped();
+                    if (orderScoped && refund.getAmount() > order.refundableAmount()) {
+                        // 期间已有其他退款占用了余额（V3 之前 FAILED 不占名额）：不能再记账，需人工核对
+                        log.error("退款 {} 渠道返回成功，但订单可退余额不足（{} > {}），请到渠道商户平台人工核对",
+                                refund.getRefundNo(), refund.getAmount(), order.refundableAmount());
+                        return;
+                    }
+                    updated = updateStatus(refund, RefundStatus.FAILED, RefundStatus.SUCCESS, set);
+                }
                 if (updated) {
                     applyRefunded(refund, order, result.channelRefundNo());
                 }

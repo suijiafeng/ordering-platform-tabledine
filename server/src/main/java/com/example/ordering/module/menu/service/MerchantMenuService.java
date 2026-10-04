@@ -187,14 +187,22 @@ public class MerchantMenuService {
                 .set(Dish::getIsSoldOut, soldOut).set(Dish::getUpdatedAt, java.time.OffsetDateTime.now()).eq(Dish::getId, id));
     }
 
-    /** 设置每日限量：同时把今日剩余重置为该值；null 取消限量 */
+    /**
+     * 设置每日限量；null 取消限量。
+     * 今日剩余 = 新限量 − 今日已占用（原限量 − 原剩余）：中午把 10 改成 12 时已卖 5 份，剩余应是 7 而不是 12。
+     */
     public void updateStock(Long id, Integer dailyStock) {
         requireDish(id);
-        dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                .set(Dish::getDailyStock, dailyStock)
-                .set(Dish::getStockQuantity, dailyStock)
+        var w = Wrappers.<Dish>lambdaUpdate()
                 .set(Dish::getUpdatedAt, java.time.OffsetDateTime.now())
-                .eq(Dish::getId, id));
+                .eq(Dish::getId, id);
+        if (dailyStock == null) {
+            w.set(Dish::getDailyStock, null).set(Dish::getStockQuantity, null);
+        } else {
+            w.setSql("stock_quantity = GREATEST(0, " + dailyStock + " - (COALESCE(daily_stock, 0) - COALESCE(stock_quantity, 0)))")
+                    .set(Dish::getDailyStock, dailyStock);
+        }
+        dishMapper.update(null, w);
     }
 
     /** 每天 0 点（Asia/Shanghai）把今日剩余重置为每日限量；所有门店（定时任务无门店上下文） */

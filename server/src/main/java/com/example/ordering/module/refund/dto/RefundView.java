@@ -15,4 +15,10 @@ public record RefundView(Long id, String refundNo, String orderNo, String tableC
 
     public record RefundItemView(Long orderItemId, String dishName, String specDesc, int quantity, long amount) {
     }
+
+    /** 顾客端：隐藏操作员工与渠道原始错误（失败只告知「商家处理中」） */
+    public RefundView forCustomer() {
+        return new RefundView(id, refundNo, orderNo, tableCode, type, initiator, amount, reason, rejectReason,
+                status, null, null, null, null, createdAt, successAt, items);
+    }
 }

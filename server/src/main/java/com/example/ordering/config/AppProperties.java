@@ -19,6 +19,7 @@ public class AppProperties {
     private Wechat wechat = new Wechat();
     private Alipay alipay = new Alipay();
     private Cors cors = new Cors();
+    private Security security = new Security();
     private Bootstrap bootstrap = new Bootstrap();
     private Qr qr = new Qr();
     private Storage storage = new Storage();
@@ -123,6 +124,12 @@ public class AppProperties {
     @Data
     public static class Cors {
         private List<String> allowedOrigins = new ArrayList<>();
+    }
+
+    @Data
+    public static class Security {
+        /** 额外信任 X-Real-IP 的反向代理地址（IP 或前缀，如 10.0. / 2001:db8:）；内网与本机默认信任 */
+        private List<String> trustedProxies = new ArrayList<>();
     }
 
     /** 首次部署时自动创建门店和店主账号（库中没有任何门店时生效） */
