@@ -23,6 +23,7 @@ public class AppProperties {
     private Qr qr = new Qr();
     private Storage storage = new Storage();
     private RateLimit rateLimit = new RateLimit();
+<<<<<<< HEAD
     private Pay pay = new Pay();
     private WechatPay wechatPay = new WechatPay();
 
@@ -54,6 +55,8 @@ public class AppProperties {
         private String platformPublicKey;
         private String apiBase = "https://api.mch.weixin.qq.com";
     }
+=======
+>>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
 
     @Data
     public static class Qr {

@@ -15,10 +15,13 @@ app:
     secret: ${JWT_SECRET:dev-only-secret-please-change-0123456789abcdef}
   auth:
     mock-enabled: ${AUTH_MOCK_ENABLED:true}
+<<<<<<< HEAD
   pay:
     # 开发环境：模拟支付 / 退款渠道，不产生真实资金往来；小程序调用 mock-pay 接口即可完成支付
     mock-enabled: ${PAY_MOCK_ENABLED:true}
     notify-base-url: ${PAY_NOTIFY_BASE_URL:http://localhost:8080}
+=======
+>>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
   qr:
     base-url: https://example.com/q/
   storage:

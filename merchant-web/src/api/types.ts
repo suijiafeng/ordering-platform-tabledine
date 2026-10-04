@@ -132,6 +132,7 @@ export interface StoreUpdateRequest {
   acceptTimeoutMin: number
   afterSaleHours: number
 }
+<<<<<<< HEAD
 
 // ==================== 订单 / 支付 / 退款 ====================
 
@@ -287,3 +288,5 @@ export interface DashboardToday {
   topDishes: { dishName: string; quantity: number; amount: number }[]
   daily: { date: string; netIncome: number; orderCount: number }[]
 }
+=======
+>>>>>>> 4ff5965 (feat: 第 2 周菜单、桌台、店铺设置与小程序点餐页)
