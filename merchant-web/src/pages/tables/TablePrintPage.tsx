@@ -80,7 +80,7 @@ export default function TablePrintPage() {
               <h3>{storeName}</h3>
               <img src={qr} alt={table.code} />
               <div className="code">桌号 {table.code}</div>
-              <div className="tip">微信 / 支付宝扫码点餐</div>
+              <div className="tip">手机扫码点餐</div>
             </div>
           ))}
         </div>

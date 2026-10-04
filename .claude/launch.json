@@ -27,20 +27,6 @@
       }
     },
     {
-      "name": "miniapp-h5",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev:h5"
-      ],
-      "cwd": "miniapp",
-      "port": 10086,
-      "env": {
-        "TARO_APP_API_BASE": "http://127.0.0.1:8081",
-        "NODE_ENV": "development"
-      }
-    },
-    {
       "name": "customer-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
