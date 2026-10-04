@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Button, Image, Space, Upload } from 'antd'
+import { App, Button, Image, Space, Typography, Upload } from 'antd'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import { uploadImage } from '../api/store'
 
@@ -48,7 +48,7 @@ export default function ImageUpload({ value, onChange }: Props) {
         {value && (
           <Button icon={<DeleteOutlined />} type="text" danger onClick={() => onChange?.(null)}>移除</Button>
         )}
-        <span style={{ color: '#999', fontSize: 12 }}>JPG / PNG，不超过 5MB，自动压缩</span>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>JPG / PNG，不超过 5MB，自动压缩</Typography.Text>
       </Space>
     </Space>
   )

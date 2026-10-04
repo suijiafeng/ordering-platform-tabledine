@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Button, Card, Input, List, Modal, Space, Tag, Typography } from 'antd'
+import { App, Button, Card, Input, List, Modal, Space, Tag, Typography, theme as antdTheme } from 'antd'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { createCategory, deleteCategory, sortCategories, updateCategory } from '../../api/menu'
 import type { Category } from '../../api/types'
@@ -17,6 +17,7 @@ interface Props {
 
 export default function CategoryPanel({ categories, selectedId, isOwner, onSelect, onChanged }: Props) {
   const { message, modal } = App.useApp()
+  const { token } = antdTheme.useToken()
   const [editing, setEditing] = useState<Category | 'new' | null>(null)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -89,7 +90,7 @@ export default function CategoryPanel({ categories, selectedId, isOwner, onSelec
           return (
             <List.Item
               onClick={() => onSelect(c?.id ?? null)}
-              style={{ cursor: 'pointer', paddingInline: 16, background: active ? '#e6f4ff' : undefined }}
+              style={{ cursor: 'pointer', paddingInline: 16, background: active ? token.controlItemBgActive : undefined }}
               actions={
                 c && isOwner
                   ? [

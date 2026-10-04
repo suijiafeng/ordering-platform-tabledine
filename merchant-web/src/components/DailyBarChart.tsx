@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Typography } from 'antd'
+import { Typography, theme as antdTheme } from 'antd'
 import { formatYuan } from '../utils/money'
 
 interface Point {
@@ -15,6 +15,7 @@ interface Point {
 /** width 是 viewBox 逻辑宽度：窄屏传小一点，缩放后文字才不会太小 */
 export default function DailyBarChart({ data, height = 180, width = 640 }: { data: Point[]; height?: number; width?: number }) {
   const [hover, setHover] = useState<number | null>(null)
+  const { token } = antdTheme.useToken()
   const padL = 56
   const padR = 16
   const padT = 20
@@ -35,8 +36,8 @@ export default function DailyBarChart({ data, height = 180, width = 640 }: { dat
       <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label="近 7 天每日实收">
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke="#f0f0f0" />
-            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="#8c8c8c">¥{(t / 100).toFixed(0)}</text>
+            <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke={token.colorSplit} />
+            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill={token.colorTextTertiary}>¥{(t / 100).toFixed(0)}</text>
           </g>
         ))}
         {data.map((d, i) => {
@@ -52,13 +53,13 @@ export default function DailyBarChart({ data, height = 180, width = 640 }: { dat
               {h > 0 && (
                 <path
                   d={`M${cx - barW / 2},${padT + plotH} V${top + r} Q${cx - barW / 2},${top} ${cx - barW / 2 + r},${top} H${cx + barW / 2 - r} Q${cx + barW / 2},${top} ${cx + barW / 2},${top + r} V${padT + plotH} Z`}
-                  fill={active ? '#0958d9' : '#1677ff'}
+                  fill={active ? token.colorPrimaryActive : token.colorPrimary}
                 />
               )}
               {(i === maxIdx && d.netIncome > 0) && !active && (
-                <text x={cx} y={top - 6} textAnchor="middle" fontSize={11} fill="#595959">{formatYuan(d.netIncome)}</text>
+                <text x={cx} y={top - 6} textAnchor="middle" fontSize={11} fill={token.colorTextSecondary}>{formatYuan(d.netIncome)}</text>
               )}
-              <text x={cx} y={height - 8} textAnchor="middle" fontSize={11} fill={active ? '#262626' : '#8c8c8c'}>{d.date.slice(5)}</text>
+              <text x={cx} y={height - 8} textAnchor="middle" fontSize={11} fill={active ? token.colorText : token.colorTextTertiary}>{d.date.slice(5)}</text>
             </g>
           )
         })}
@@ -70,10 +71,10 @@ export default function DailyBarChart({ data, height = 180, width = 640 }: { dat
             left: `${((padL + slot * hover + slot / 2) / width) * 100}%`,
             top: 0,
             transform: 'translate(-50%, -100%)',
-            background: '#fff',
-            border: '1px solid #f0f0f0',
+            background: token.colorBgElevated,
+            border: `1px solid ${token.colorSplit}`,
             borderRadius: 6,
-            boxShadow: '0 2px 8px rgba(0,0,0,.08)',
+            boxShadow: token.boxShadowSecondary,
             padding: '6px 10px',
             fontSize: 12,
             whiteSpace: 'nowrap',

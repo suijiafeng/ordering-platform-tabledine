@@ -130,7 +130,7 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
           message={
             <Space size="large">
               <span>可退余额 <b>{formatYuan(refundable)}</b></span>
-              <span>本次退款 <b style={{ color: '#cf1322' }}>{formatYuan(finalAmount)}</b></span>
+              <span>本次退款 <Typography.Text type="danger" strong>{formatYuan(finalAmount)}</Typography.Text></span>
             </Space>
           }
           description="退款原路退回顾客支付账户；退款不改变订单履约状态。"

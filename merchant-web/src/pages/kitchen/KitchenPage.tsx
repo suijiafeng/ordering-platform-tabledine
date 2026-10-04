@@ -4,6 +4,7 @@ import { CheckOutlined, FireOutlined, SoundOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { acceptOrder, kitchenQueue, readyOrder } from '../../api/order'
 import type { OrderSummary } from '../../api/types'
+import { theme as antdTheme } from 'antd'
 import { playNewOrderSound, usePollStore } from '../../hooks/useOrderPoll'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
@@ -26,6 +27,7 @@ export default function KitchenPage() {
   const [detail, setDetail] = useState<string | null>(null)
   const [, setTick] = useState(0)
   const { soundEnabled, setSoundEnabled } = usePollStore()
+  const { token } = antdTheme.useToken()
 
   // 定时刷新与接单 / 出餐后的刷新可能交错：较早发出但较晚返回的队列不能把已接单的卡片"复活"
   const beginLoad = useLatestRequest()
@@ -78,7 +80,7 @@ export default function KitchenPage() {
       <Col key={o.id} xs={24} sm={12} xl={8} xxl={6}>
         <Card
           size="small"
-          style={{ borderTop: `4px solid ${isPending ? '#fa8c16' : '#1677ff'}`, height: '100%' }}
+          style={{ borderTop: `4px solid ${isPending ? token.colorWarning : token.colorPrimary}`, height: '100%' }}
           styles={{ body: { padding: 16 } }}
           onClick={() => setDetail(o.orderNo)}
           hoverable
@@ -138,13 +140,13 @@ export default function KitchenPage() {
         <>
           {pending.length > 0 && (
             <>
-              <Typography.Text strong style={{ color: '#fa8c16' }}>待接单</Typography.Text>
+              <Typography.Text strong style={{ color: token.colorWarning }}>待接单</Typography.Text>
               <Row gutter={[16, 16]}>{pending.map(card)}</Row>
             </>
           )}
           {making.length > 0 && (
             <>
-              <Typography.Text strong style={{ color: '#1677ff' }}>制作中</Typography.Text>
+              <Typography.Text strong style={{ color: token.colorPrimary }}>制作中</Typography.Text>
               <Row gutter={[16, 16]}>{making.map(card)}</Row>
             </>
           )}

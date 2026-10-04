@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Drawer, Layout, Menu, Space, Tag, Typography } from 'antd'
+import { Badge, Button, Drawer, Layout, Menu, Space, Tag, Typography, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import ChangePasswordButton from '../components/ChangePasswordButton'
+import ThemeToggle from '../components/ThemeToggle'
 import { useOrderPoll } from '../hooks/useOrderPoll'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -46,6 +47,7 @@ export default function MainLayout() {
   const isOwner = staff?.role === 'OWNER'
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
+  const { token } = antdTheme.useToken()
   // 全局新订单轮询（提示音 + 菜单角标）
   const { counts } = useOrderPoll()
 
@@ -103,7 +105,7 @@ export default function MainLayout() {
     return (
       <Layout style={{ minHeight: '100vh' }}>
         <Layout.Header
-          style={{ background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingInline: 12, height: 52, lineHeight: '52px', position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 0 #f0f0f0' }}
+          style={{ background: token.colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingInline: 12, height: 52, lineHeight: '52px', position: 'sticky', top: 0, zIndex: 10, boxShadow: `0 1px 0 ${token.colorSplit}` }}
         >
           <Space>
             <Button type="text" icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} aria-label="打开菜单" />
@@ -111,6 +113,7 @@ export default function MainLayout() {
           </Space>
           <Space size={4}>
             <Tag color={isOwner ? 'gold' : 'blue'} style={{ marginInlineEnd: 0 }}>{staff?.name}</Tag>
+            <ThemeToggle size="small" />
             <Button type="link" size="small" onClick={onLogout}>退出</Button>
           </Space>
         </Layout.Header>
@@ -127,17 +130,18 @@ export default function MainLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Sider theme="light" width={200} breakpoint="lg" collapsedWidth={64} style={{ minHeight: "100vh" }}>
+      <Layout.Sider theme="light" width={200} breakpoint="lg" collapsedWidth={64} style={{ minHeight: '100vh', borderInlineEnd: `1px solid ${token.colorSplit}` }}>
         <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
           点餐后台
         </div>
         {menu}
       </Layout.Sider>
       <Layout>
-        <Layout.Header style={{ background: '#fff', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingInline: 24 }}>
+        <Layout.Header style={{ background: token.colorBgContainer, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingInline: 24, boxShadow: `0 1px 0 ${token.colorSplit}` }}>
           <Space>
             <Typography.Text>{staff?.name}</Typography.Text>
             <Tag color={isOwner ? 'gold' : 'blue'}>{isOwner ? '店主' : '店员'}</Tag>
+            <ThemeToggle />
             <ChangePasswordButton />
             <Button type="link" onClick={onLogout}>退出</Button>
           </Space>

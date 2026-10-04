@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Alert, Badge, Button, Card, Col, Descriptions, Row, Skeleton, Space, Statistic, Switch, Tag, Typography } from 'antd'
+import { Alert, Badge, Button, Card, Col, Descriptions, Row, Skeleton, Space, Statistic, Switch, Tag, Typography, theme as antdTheme } from 'antd'
 import { ArrowRightOutlined, SoundOutlined } from '@ant-design/icons'
 import { fetchStore } from '../../api/store'
 import { fetchDashboard } from '../../api/report'
@@ -13,6 +13,7 @@ import { playNewOrderSound, usePollStore } from '../../hooks/useOrderPoll'
 export default function DashboardPage() {
   const navigate = useNavigate()
   const isOwner = useIsOwner()
+  const { token } = antdTheme.useToken()
   const [store, setStore] = useState<StoreDetail | null>(null)
   const [stats, setStats] = useState<DashboardToday | null>(null)
   const { counts, soundEnabled, setSoundEnabled } = usePollStore()
@@ -71,12 +72,12 @@ export default function DashboardPage() {
       <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>
       <Col xs={12} lg={6}>
         <Card hoverable onClick={() => navigate('/orders?status=PAID')}>
-          <Statistic title="待接单" value={pendingAccept} valueStyle={{ color: pendingAccept > 0 ? '#fa8c16' : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 制作中 {making}</Typography.Text>} />
+          <Statistic title="待接单" value={pendingAccept} valueStyle={{ color: pendingAccept > 0 ? token.colorWarning : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 制作中 {making}</Typography.Text>} />
         </Card>
       </Col>
       <Col xs={12} lg={6}>
         <Card hoverable={isOwner} onClick={() => isOwner && navigate('/refunds?status=APPLYING')}>
-          <Statistic title="待处理退款" value={applying + failed} valueStyle={{ color: applying + failed > 0 ? '#cf1322' : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 今日退款 ¥{fenToYuan(stats?.refundedAmount).toFixed(2)}</Typography.Text>} />
+          <Statistic title="待处理退款" value={applying + failed} valueStyle={{ color: applying + failed > 0 ? token.colorError : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 今日退款 ¥{fenToYuan(stats?.refundedAmount).toFixed(2)}</Typography.Text>} />
         </Card>
       </Col>
       <Col xs={24} lg={16}>
