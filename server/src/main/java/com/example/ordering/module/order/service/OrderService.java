@@ -248,6 +248,14 @@ public class OrderService {
     public PayInitResult pay(String orderNo) {
         Order order = ownOrder(orderNo);
         if (order.getStatus() == OrderStatus.PENDING_PAY && order.getPayExpireAt().isBefore(OffsetDateTime.now())) {
+            // 关单前先向渠道确认：顾客可能刚付完、回调还没到
+            PayService.PayCheck check = payService.queryAndSync(order);
+            if (check == PayService.PayCheck.PAID) {
+                throw new BusinessException(ErrorCode.CONFLICT, "订单已支付，请刷新查看");
+            }
+            if (check == PayService.PayCheck.UNKNOWN) {
+                throw new BusinessException(ErrorCode.CONFLICT, "正在确认支付结果，请稍后刷新");
+            }
             // 自调用不经过代理，用模板显式开事务
             tx.executeWithoutResult(s -> closeExpired(order, "支付超时自动关闭"));
             throw new BusinessException(ErrorCode.CONFLICT, "订单已超时，请重新下单");

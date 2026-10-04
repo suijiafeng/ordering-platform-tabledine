@@ -64,8 +64,14 @@ public class OrderTasks {
                 .last("LIMIT 200"));
         for (Order order : expired) {
             try {
-                if (payService.queryAndSync(order)) {
+                PayService.PayCheck check = payService.queryAndSync(order);
+                if (check == PayService.PayCheck.PAID) {
                     continue;  // 查到已支付，已入账
+                }
+                if (check == PayService.PayCheck.UNKNOWN) {
+                    // 渠道查询失败：无法确认没付，本轮不关单，下一轮再查（否则已付款订单会被关掉再退款）
+                    log.warn("订单 {} 查单结果未确认，暂不关单", order.getOrderNo());
+                    continue;
                 }
                 orderService.closeExpired(order, "支付超时自动关闭");
             } catch (RuntimeException e) {

@@ -24,6 +24,7 @@ import com.example.ordering.module.refund.service.RefundService;
 import com.example.ordering.module.store.entity.Store;
 import com.example.ordering.module.store.service.StoreService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -97,7 +98,12 @@ public class PayService {
             payment.setAmount(order.getPayAmount());
             payment.setStatus(PaymentStatus.PENDING);
             payment.setRefundedAmount(0L);
-            paymentMapper.insert(payment);
+            try {
+                paymentMapper.insert(payment);
+            } catch (DuplicateKeyException e) {
+                // 双击 / 网络重试导致并发发起：对方已建好同号支付单，复用它（渠道下单按商户单号幂等）
+                throw new BusinessException(ErrorCode.CONFLICT, "支付正在发起中，请稍后再试");
+            }
         }
         Store store = storeService.getRequired(order.getStoreId());
         String description = store.getName() + (order.getTableCode() == null ? "" : " 桌号" + order.getTableCode());
@@ -138,7 +144,8 @@ public class PayService {
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
             return true;  // 重复通知，幂等
         }
-        if (amount > 0 && amount != payment.getAmount()) {
+        // 金额必须与支付单完全一致；缺失 / 0 / 解析失败都按不符处理（fail closed），不能跳过校验
+        if (amount != payment.getAmount()) {
             log.error("支付金额不符 outTradeNo={} 期望={} 实际={}，拒绝入账", outTradeNo, payment.getAmount(), amount);
             return false;
         }
@@ -197,16 +204,19 @@ public class PayService {
         }
     }
 
+    /** 查单结果：未确认（任一支付单查询失败）时调用方不能据此关单 */
+    public enum PayCheck { PAID, NOT_PAID, UNKNOWN }
+
     /**
      * 查单补偿：对订单的支付单向渠道查询真实状态；已支付则入账（含迟到支付 → 自动退款）。
-     *
-     * @return 是否发现成功支付
+     * 任一支付单查询失败返回 UNKNOWN —— 渠道故障时「查不到」不等于「没付」，调用方不应关单。
      */
-    public boolean queryAndSync(Order order) {
+    public PayCheck queryAndSync(Order order) {
         List<Payment> payments = paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
                 .eq(Payment::getOrderId, order.getId())
                 .ne(Payment::getStatus, PaymentStatus.SUCCESS));
-        boolean found = false;
+        boolean paid = false;
+        boolean unknown = false;
         for (Payment p : payments) {
             try {
                 PayQueryResult r = channels.get(p.getChannel()).queryPayment(p.getOutTradeNo());
@@ -214,18 +224,25 @@ public class PayService {
                     long amount = r.amount() == null ? p.getAmount() : r.amount();
                     // 自调用不经过代理，@Transactional 不生效：显式开事务，保证支付单 SUCCESS 与订单流转同时提交，
                     // 否则中途异常会留下「支付单已成功、订单仍待支付」并被随后的关单任务关掉
-                    tx.executeWithoutResult(s -> onPaySuccess(p.getOutTradeNo(), r.transactionNo(), amount, r.paidAt()));
-                    found = true;
+                    Boolean accepted = tx.execute(s -> onPaySuccess(p.getOutTradeNo(), r.transactionNo(), amount, r.paidAt()));
+                    if (Boolean.TRUE.equals(accepted)) {
+                        paid = true;
+                    } else {
+                        unknown = true;  // 渠道说已付但金额不符等：需人工核对，绝不能关单
+                    }
                 } else if (r.state() == PayQueryResult.State.CLOSED && p.getStatus() == PaymentStatus.PENDING) {
                     paymentMapper.update(null, Wrappers.<Payment>lambdaUpdate()
                             .set(Payment::getStatus, PaymentStatus.CLOSED)
                             .eq(Payment::getId, p.getId()).eq(Payment::getStatus, PaymentStatus.PENDING));
+                } else if (r.state() == PayQueryResult.State.UNKNOWN) {
+                    unknown = true;
                 }
             } catch (RuntimeException e) {
                 log.warn("查单失败 outTradeNo={}: {}", p.getOutTradeNo(), e.getMessage());
+                unknown = true;
             }
         }
-        return found;
+        return paid ? PayCheck.PAID : unknown ? PayCheck.UNKNOWN : PayCheck.NOT_PAID;
     }
 
     public Payment latestPayment(Long orderId) {

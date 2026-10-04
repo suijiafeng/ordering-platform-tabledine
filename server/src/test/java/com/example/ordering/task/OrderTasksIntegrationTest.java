@@ -60,6 +60,31 @@ class OrderTasksIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void expiredOrderIsNotClosedWhileChannelQueryFails() throws Exception {
+        String customer = customerToken("WECHAT", "mock:qerr-" + UUID.randomUUID());
+        String orderNo = createOrder(customer);
+        MvcResult pay = mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer))
+                .andExpect(status().isOk()).andReturn();
+        String outTradeNo = data(pay).path("outTradeNo").asText();
+        expirePayWindow(orderNo);
+        channels.mock(Platform.WECHAT).simulateQueryError(outTradeNo, true);
+        try {
+            // 渠道故障：查不到不等于没付，关单任务和顾客再次支付都不能关单
+            tasks.closeExpiredOrders();
+            assertThat(orderStatus(orderNo)).isEqualTo("PENDING_PAY");
+            mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/pay"), customer))
+                    .andExpect(status().isConflict())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value("正在确认支付结果，请稍后刷新"));
+            assertThat(orderStatus(orderNo)).isEqualTo("PENDING_PAY");
+        } finally {
+            channels.mock(Platform.WECHAT).simulateQueryError(outTradeNo, false);
+        }
+        // 渠道恢复后确认未支付 → 正常关单
+        tasks.closeExpiredOrders();
+        assertThat(orderStatus(orderNo)).isEqualTo("CLOSED");
+    }
+
+    @Test
     void unacceptedPaidOrderIsCancelledAndRefundedAfterTimeout() throws Exception {
         String customer = customerToken("ALIPAY", "mock:noaccept-" + UUID.randomUUID());
         String stale = createOrder(customer);

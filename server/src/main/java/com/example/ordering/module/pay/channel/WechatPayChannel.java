@@ -124,7 +124,7 @@ public class WechatPayChannel implements PayChannel {
         return switch (state) {
             case "SUCCESS" -> new PayQueryResult(PayQueryResult.State.SUCCESS,
                     node.path("transaction_id").asText(null),
-                    node.path("amount").path("total").asLong(),
+                    node.path("amount").path("total").asLong(-1),
                     parseTime(node.path("success_time").asText(null)));
             case "NOTPAY", "USERPAYING", "ACCEPT" -> PayQueryResult.notPaid();
             case "CLOSED", "REVOKED", "PAYERROR" -> new PayQueryResult(PayQueryResult.State.CLOSED, null, null, null);
@@ -282,14 +282,41 @@ public class WechatPayChannel implements PayChannel {
             builder.header("Content-Type", "application/json")
                     .method(method, HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8));
         }
+        HttpResponse<String> resp;
         try {
-            return http.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            resp = http.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             log.error("调用微信支付 {} {} 异常", method, pathWithQuery, e);
             throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "微信支付网络异常");
+        }
+        verifyResponse(resp);
+        return resp;
+    }
+
+    /**
+     * 应答验签：查单「已支付」会直接入账，必须确认应答确实来自微信支付（防中间人 / API 地址被篡改）。
+     * 无应答体的 204 等不验；验签失败按渠道异常处理（结果未确认），不会据此改变订单状态。
+     */
+    private void verifyResponse(HttpResponse<String> resp) {
+        if (resp.statusCode() >= 300 || resp.body() == null || resp.body().isEmpty()) {
+            return;
+        }
+        String timestamp = resp.headers().firstValue("Wechatpay-Timestamp").orElse(null);
+        String nonce = resp.headers().firstValue("Wechatpay-Nonce").orElse(null);
+        String signature = resp.headers().firstValue("Wechatpay-Signature").orElse(null);
+        String serial = resp.headers().firstValue("Wechatpay-Serial").orElse(null);
+        if (!StringUtils.hasText(timestamp) || !StringUtils.hasText(nonce) || !StringUtils.hasText(signature)) {
+            throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "微信支付应答缺少签名");
+        }
+        if (StringUtils.hasText(props.getPlatformPublicKeyId()) && !props.getPlatformPublicKeyId().equals(serial)) {
+            throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "微信支付应答公钥 ID 不匹配");
+        }
+        if (!verify(timestamp + "\n" + nonce + "\n" + resp.body() + "\n", signature)) {
+            log.warn("微信支付应答验签失败");
+            throw new BusinessException(ErrorCode.PAY_CHANNEL_ERROR, "微信支付应答验签失败");
         }
     }
 
@@ -381,8 +408,9 @@ public class WechatPayChannel implements PayChannel {
     private void requireConfigured() {
         if (!StringUtils.hasText(props.getMchId()) || !StringUtils.hasText(props.getSerialNo())
                 || !StringUtils.hasText(props.getPrivateKey()) || !StringUtils.hasText(props.getApiV3Key())
-                || !StringUtils.hasText(appId)) {
-            throw new IllegalStateException("未配置微信支付（app.wechat-pay.* 与 app.wechat.app-id）");
+                || !StringUtils.hasText(props.getPlatformPublicKey()) || !StringUtils.hasText(appId)) {
+            // 微信支付公钥同样必需：回调验签和应答验签都依赖它
+            throw new IllegalStateException("未配置微信支付（app.wechat-pay.* 含 platform-public-key，与 app.wechat.app-id）");
         }
     }
 }

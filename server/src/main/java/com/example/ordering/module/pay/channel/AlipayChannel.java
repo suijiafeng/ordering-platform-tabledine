@@ -70,7 +70,14 @@ public class AlipayChannel implements PayChannel {
         biz.put("out_trade_no", req.outTradeNo());
         biz.put("total_amount", yuan(req.amount()));
         biz.put("subject", req.description());
-        biz.put("buyer_open_id", req.payerOpenId());
+        // 小程序支付产品码；未签约 JSAPI_PAY 时默认 FACE_TO_FACE_PAYMENT 会被拒（ACCESS_FORBIDDEN）
+        biz.put("product_code", "JSAPI_PAY");
+        // 老应用登录拿到的是 user_id（2088 开头 16 位），新应用是 open_id；传错字段会导致下单失败
+        if (req.payerOpenId() != null && req.payerOpenId().matches("2088\\d{12}")) {
+            biz.put("buyer_id", req.payerOpenId());
+        } else {
+            biz.put("buyer_open_id", req.payerOpenId());
+        }
         biz.put("time_expire", req.expireAt().atZoneSameInstant(CN).format(TS));
         JsonNode resp = call("alipay.trade.create", biz, req.notifyUrl(), ErrorCode.PAY_CHANNEL_ERROR);
         String tradeNo = resp.path("trade_no").asText(null);
@@ -210,12 +217,17 @@ public class AlipayChannel implements PayChannel {
             throw new IllegalStateException(e);
         }
         params.put("sign", AlipaySigner.sign(params, props.getPrivateKey()));
-        String form = params.entrySet().stream()
+        // 与官方 SDK 一致：系统参数（含 charset、sign）放 URL，业务参数放表单体。
+        // 网关按 URL 上的 charset 解码表单体；charset 只在表单里时可能按 GBK 解码中文，导致验签失败
+        String query = params.entrySet().stream()
+                .filter(e -> !"biz_content".equals(e.getKey()))
                 .map(e -> e.getKey() + "=" + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                 .collect(Collectors.joining("&"));
+        String form = "biz_content=" + URLEncoder.encode(params.get("biz_content"), StandardCharsets.UTF_8);
+        String gateway = props.getGateway() + (props.getGateway().contains("?") ? "&" : "?") + query;
         String body;
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(props.getGateway()))
+            HttpRequest request = HttpRequest.newBuilder(URI.create(gateway))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
                     .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
@@ -238,7 +250,7 @@ public class AlipayChannel implements PayChannel {
         JsonNode node = root.has(nodeName) ? root.get(nodeName) : root.path("error_response");
         // 同步响应验签：对 xxx_response 节点的原始 JSON 文本验签
         String sign = root.path("sign").asText(null);
-        if (root.has(nodeName) && StringUtils.hasText(props.getAlipayPublicKey())) {
+        if (root.has(nodeName)) {
             String raw = extractRawNode(body, nodeName);
             if (sign == null || raw == null || !verify(raw, sign)) {
                 log.warn("支付宝 {} 同步响应验签失败", method);
@@ -318,11 +330,12 @@ public class AlipayChannel implements PayChannel {
         return BigDecimal.valueOf(fen).movePointLeft(2).setScale(2).toPlainString();
     }
 
-    private static long fen(String yuan) {
+    /** 元 → 分；无法精确换算返回 -1，入账时会因金额不符被拒绝 */
+    static long fen(String yuan) {
         try {
             return new BigDecimal(yuan).movePointRight(2).longValueExact();
         } catch (Exception e) {
-            return 0L;
+            return -1L;
         }
     }
 
@@ -338,8 +351,10 @@ public class AlipayChannel implements PayChannel {
     }
 
     private void requireConfigured() {
-        if (!StringUtils.hasText(props.getAppId()) || !StringUtils.hasText(props.getPrivateKey())) {
-            throw new IllegalStateException("未配置支付宝（app.alipay.app-id / private-key）");
+        // 支付宝公钥同样必需：没有它就无法校验同步响应和异步通知，查单结果可被伪造
+        if (!StringUtils.hasText(props.getAppId()) || !StringUtils.hasText(props.getPrivateKey())
+                || !StringUtils.hasText(props.getAlipayPublicKey())) {
+            throw new IllegalStateException("未配置支付宝（app.alipay.app-id / private-key / alipay-public-key）");
         }
     }
 }

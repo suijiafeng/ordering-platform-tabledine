@@ -30,6 +30,8 @@ public class MockPayChannel implements PayChannel {
     /** outTradeNo → 模拟已支付的交易号 */
     private final Map<String, String> paid = new ConcurrentHashMap<>();
     private final Map<String, String> closed = new ConcurrentHashMap<>();
+    /** 测试钩子：这些商户单号查单时模拟渠道故障 */
+    private final java.util.Set<String> queryErrors = ConcurrentHashMap.newKeySet();
     private final Map<String, Integer> pendingRefundHits = new ConcurrentHashMap<>();
     /** 退款单号 → 渠道侧结果 */
     private final Map<String, RefundResult> refunds = new ConcurrentHashMap<>();
@@ -61,6 +63,9 @@ public class MockPayChannel implements PayChannel {
 
     @Override
     public PayQueryResult queryPayment(String outTradeNo) {
+        if (queryErrors.contains(outTradeNo)) {
+            throw new RuntimeException("模拟渠道：查单超时");
+        }
         String txn = paid.get(outTradeNo);
         if (txn != null) {
             return new PayQueryResult(PayQueryResult.State.SUCCESS, txn, null, OffsetDateTime.now());
@@ -69,6 +74,15 @@ public class MockPayChannel implements PayChannel {
             return new PayQueryResult(PayQueryResult.State.CLOSED, null, null, null);
         }
         return PayQueryResult.notPaid();
+    }
+
+    /** 测试 / 联调钩子：模拟某笔支付查单时渠道故障 */
+    public void simulateQueryError(String outTradeNo, boolean on) {
+        if (on) {
+            queryErrors.add(outTradeNo);
+        } else {
+            queryErrors.remove(outTradeNo);
+        }
     }
 
     @Override
