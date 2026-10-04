@@ -39,19 +39,23 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
+  // 只采纳最后一次发起的加载：加载 A 时切到订单 B（如点了新订单通知），A 晚到的结果不能覆盖 B
+  const loadSeq = useRef(0)
   const load = useCallback(async () => {
     if (!orderNo) {
       return
     }
+    const seq = ++loadSeq.current
     setLoading(true)
     try {
-      setOrder(await getOrder(orderNo))
+      const detail = await getOrder(orderNo)
+      if (seq === loadSeq.current) setOrder(detail)
     } catch (e) {
       // 打开详情失败（订单不存在 / 无权限）：请求层已提示，关闭抽屉回到列表
-      onCloseRef.current()
+      if (seq === loadSeq.current) onCloseRef.current()
       ignoreShownError(e)
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }, [orderNo])
 
@@ -62,16 +66,19 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
     }
   }, [open, load])
 
-  const runOrderAction = async (fn: () => Promise<OrderDetail>, ok: string) => {
+  /** 返回是否成功 */
+  const runOrderAction = async (fn: () => Promise<OrderDetail>, ok: string): Promise<boolean> => {
     setActing(true)
     try {
       setOrder(await fn())
       message.success(ok)
       onChanged?.()
+      return true
     } catch (e) {
       // 操作失败（通常是状态已被别人改变）：请求层已提示，重新拉取详情让按钮与最新状态一致
       void load()
       ignoreShownError(e)
+      return false
     } finally {
       setActing(false)
     }
@@ -87,9 +94,10 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
     }
     const kind = reasonModal
     setReasonModal(null)
-    await runOrderAction(() => (kind === 'reject' ? rejectOrder(order.orderNo, reason.trim()) : cancelOrder(order.orderNo, reason.trim())),
+    const ok = await runOrderAction(() => (kind === 'reject' ? rejectOrder(order.orderNo, reason.trim()) : cancelOrder(order.orderNo, reason.trim())),
       kind === 'reject' ? '已拒单，退款处理中' : '已取消，退款处理中')
-    setReason('')
+    // 失败时保留已填写的原因，再次打开可以直接重试
+    if (ok) setReason('')
   }
 
   const itemColumns: ColumnsType<OrderItemView> = [
@@ -186,7 +194,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
           <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} bordered>
             <Descriptions.Item label="桌号"><Typography.Text strong style={{ fontSize: 16 }}>{order.tableCode ?? '-'}</Typography.Text></Descriptions.Item>
             <Descriptions.Item label="人数">{order.peopleCount} 人</Descriptions.Item>
-            <Descriptions.Item label="渠道">{PLATFORM[order.platform]}</Descriptions.Item>
+            <Descriptions.Item label="支付方式">{PLATFORM[order.platform]}</Descriptions.Item>
             <Descriptions.Item label="下单时间">{fmt(order.createdAt)}</Descriptions.Item>
             <Descriptions.Item label="支付时间">{fmt(order.paidAt)}</Descriptions.Item>
             <Descriptions.Item label="接单时间">{fmt(order.acceptedAt)}</Descriptions.Item>
@@ -214,7 +222,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
           {order.payment ? (
             <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label="商户单号"><Typography.Text copyable style={{ fontSize: 12 }}>{order.payment.outTradeNo}</Typography.Text></Descriptions.Item>
-              <Descriptions.Item label="渠道交易号"><Typography.Text copyable={!!order.payment.transactionNo} style={{ fontSize: 12 }}>{order.payment.transactionNo ?? '-'}</Typography.Text></Descriptions.Item>
+              <Descriptions.Item label="交易号"><Typography.Text copyable={!!order.payment.transactionNo} style={{ fontSize: 12 }}>{order.payment.transactionNo ?? '-'}</Typography.Text></Descriptions.Item>
               <Descriptions.Item label="状态">
                 <Tag color={order.payment.status === 'SUCCESS' ? 'green' : order.payment.status === 'PENDING' ? 'orange' : 'default'}>
                   {order.payment.status === 'SUCCESS' ? '支付成功' : order.payment.status === 'PENDING' ? '待支付' : '已关闭'}
@@ -265,7 +273,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged }:
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary">
-          {reasonModal === 'reject' ? '订单将变为已取消，实付金额原路退回顾客，已扣减的限量库存回补。' : '订单将停止制作并变为已取消，实付金额原路退回顾客。'}
+          {reasonModal === 'reject' ? '订单将变为已取消，实付金额退回顾客会员余额，已扣减的限量库存回补。' : '订单将停止制作并变为已取消，实付金额退回顾客会员余额。'}
         </Typography.Paragraph>
         <Input.TextArea rows={3} maxLength={200} showCount value={reason} onChange={(e) => setReason(e.target.value)}
           placeholder={reasonModal === 'reject' ? '原因（可选），如：忙不过来 / 菜品做不了' : '原因（必填）'} />

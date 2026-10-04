@@ -32,7 +32,8 @@ function elapsed(from: string | null): string {
 export default function KitchenPage() {
   const { message } = App.useApp()
   const [orders, setOrders] = useState<OrderSummary[]>([])
-  const [acting, setActing] = useState<string | null>(null)
+  // 正在处理的订单号集合：连续点不同订单时，先完成的那单不会把后一单的加载状态清掉
+  const [acting, setActing] = useState<ReadonlySet<string>>(new Set())
   const [detail, setDetail] = useState<string | null>(null)
   const [view, setView] = useState<View>('ALL')
   const [lastSync, setLastSync] = useState<Date | null>(null)
@@ -82,7 +83,8 @@ export default function KitchenPage() {
   }, [load])
 
   const act = async (o: OrderSummary) => {
-    setActing(o.orderNo)
+    if (acting.has(o.orderNo)) return
+    setActing((s) => new Set(s).add(o.orderNo))
     try {
       if (o.status === 'PAID') {
         await acceptOrder(o.orderNo)
@@ -97,7 +99,11 @@ export default function KitchenPage() {
     } catch (e) {
       ignoreShownError(e)  // 请求层已提示
     } finally {
-      setActing(null)
+      setActing((s) => {
+        const next = new Set(s)
+        next.delete(o.orderNo)
+        return next
+      })
       void load()
     }
   }
@@ -155,7 +161,7 @@ export default function KitchenPage() {
             block
             danger={overdue}
             icon={s === 'PAID' ? <FireOutlined /> : s === 'MAKING' ? <CheckOutlined /> : <SendOutlined />}
-            loading={acting === o.orderNo}
+            loading={acting.has(o.orderNo)}
             onClick={(e) => { e.stopPropagation(); void act(o) }}
           >
             {s === 'PAID' ? '接单' : s === 'MAKING' ? '出餐' : '送达'}

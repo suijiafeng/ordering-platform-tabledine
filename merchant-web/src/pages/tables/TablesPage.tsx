@@ -116,11 +116,26 @@ export default function TablesPage() {
               <Popconfirm
                 title="重置桌码？"
                 description="旧桌码会立即失效，需要重新打印张贴。"
-                onConfirm={async () => { await resetTableQr(r.id); message.success('已重置，请重新打印'); void load() }}
+                onConfirm={async () => {
+                  try {
+                    await resetTableQr(r.id)
+                    message.success('已重置，请重新打印')
+                    void load()
+                  } catch (e) {
+                    ignoreShownError(e)  // 请求层已提示
+                  }
+                }}
               >
                 <Button type="link" size="small">重置</Button>
               </Popconfirm>
-              <Popconfirm title={`删除桌台 ${r.code}？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteTable(r.id); void load() }}>
+              <Popconfirm title={`删除桌台 ${r.code}？`} okButtonProps={{ danger: true }} onConfirm={async () => {
+                try {
+                  await deleteTable(r.id)
+                  void load()
+                } catch (e) {
+                  ignoreShownError(e)  // 请求层已提示
+                }
+              }}>
                 <Button type="link" size="small" danger>删除</Button>
               </Popconfirm>
             </>

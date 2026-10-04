@@ -19,7 +19,8 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((s) => s.accessToken)
   const location = useLocation()
   if (!token) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    // 带上查询参数：从新订单通知等链接（/orders?status=PAID&orderNo=…）过来，登录后回到同一个视图
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
   }
   return <>{children}</>
 }

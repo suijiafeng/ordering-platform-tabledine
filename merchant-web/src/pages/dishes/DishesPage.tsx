@@ -159,8 +159,8 @@ export default function DishesPage() {
                 if (next !== v && (next === null || Number.isInteger(next))) {
                   try {
                     await setDishStock(r.id, next)
-                    // 设置限量同时把今日剩余重置为该值
-                    patchLocal(r.id, { dailyStock: next, stockQuantity: next })
+                    // 今日剩余由后端按「新限量 − 今日已售」重算，重新加载才能显示正确的值
+                    void loadDishes()
                   } catch (e) {
                     setStockReset((t) => t + 1)  // 回滚显示值
                     ignoreShownError(e)  // 请求层已提示
@@ -180,7 +180,14 @@ export default function DishesPage() {
           render: (_: unknown, r: DishItem) => (
             <Space>
               <Button type="link" size="small" onClick={() => setDrawer({ open: true, dishId: r.id })}>编辑</Button>
-              <Popconfirm title={`删除「${r.name}」？`} okButtonProps={{ danger: true }} onConfirm={async () => { await deleteDish(r.id); void loadDishes() }}>
+              <Popconfirm title={`删除「${r.name}」？`} okButtonProps={{ danger: true }} onConfirm={async () => {
+                try {
+                  await deleteDish(r.id)
+                  void loadDishes()
+                } catch (e) {
+                  ignoreShownError(e)  // 请求层已提示（如菜品仍在使用）
+                }
+              }}>
                 <Button type="link" size="small" danger>删除</Button>
               </Popconfirm>
             </Space>

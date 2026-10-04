@@ -18,5 +18,6 @@ export async function exportReport(from: string, to: string): Promise<void> {
   document.body.appendChild(a)
   a.click()
   a.remove()
-  URL.revokeObjectURL(url)
+  // 立即回收会让部分浏览器（Safari）的下载中断，稍后再回收
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }

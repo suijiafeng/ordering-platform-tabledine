@@ -170,14 +170,15 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
                     validator: (_, v: number | undefined) => {
                       // 与后端一致：基础价 + 每个必选规格组里最便宜的一项（可选组只算负加价）≥ 0.01 元
                       const groups = (getFieldValue('specGroups') ?? []) as { required?: boolean; items?: { priceDeltaYuan?: number }[] }[]
-                      let min = v ?? 0
+                      // 按「分」整数计算：元的浮点相加会有误差（0.03 + -0.02 = 0.00999…），把 0.01 元的合法价格误判为不合法
+                      let minFen = yuanToFen(v ?? 0)
                       for (const g of groups) {
-                        const deltas = (g?.items ?? []).map((i) => i?.priceDeltaYuan ?? 0)
+                        const deltas = (g?.items ?? []).map((i) => yuanToFen(i?.priceDeltaYuan ?? 0))
                         if (deltas.length === 0) continue
                         const d = Math.min(...deltas)
-                        min += g?.required === false ? Math.min(0, d) : d
+                        minFen += g?.required === false ? Math.min(0, d) : d
                       }
-                      return min >= 0.01 ? Promise.resolve() : Promise.reject(new Error('基础价加上最便宜的规格后必须大于 0 元'))
+                      return minFen >= 1 ? Promise.resolve() : Promise.reject(new Error('基础价加上最便宜的规格后必须大于 0 元'))
                     },
                   }),
                 ]}

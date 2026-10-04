@@ -14,15 +14,19 @@ import { ignoreShownError } from '../../utils/errors'
 /** 区间统计与导出共用的最大天数（与后端一致） */
 const MAX_RANGE_DAYS = 92
 
-const RANGE_PRESETS = [
-  { label: '今天', value: [dayjs(), dayjs()] as [Dayjs, Dayjs] },
-  { label: '昨天', value: [dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')] as [Dayjs, Dayjs] },
-  { label: '近 7 天', value: [dayjs().subtract(6, 'day'), dayjs()] as [Dayjs, Dayjs] },
-  { label: '近 30 天', value: [dayjs().subtract(29, 'day'), dayjs()] as [Dayjs, Dayjs] },
-  { label: '本周', value: [dayjs().startOf('week'), dayjs()] as [Dayjs, Dayjs] },
-  { label: '本月', value: [dayjs().startOf('month'), dayjs()] as [Dayjs, Dayjs] },
-  { label: '上月', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] as [Dayjs, Dayjs] },
-]
+/** 快捷区间：每次渲染时按当前日期计算（页面开过午夜后「今天」仍然正确） */
+function rangePresets(): { label: string; value: [Dayjs, Dayjs] }[] {
+  const today = dayjs()
+  return [
+    { label: '今天', value: [today, today] },
+    { label: '昨天', value: [today.subtract(1, 'day'), today.subtract(1, 'day')] },
+    { label: '近 7 天', value: [today.subtract(6, 'day'), today] },
+    { label: '近 30 天', value: [today.subtract(29, 'day'), today] },
+    { label: '本周', value: [today.startOf('week'), today] },
+    { label: '本月', value: [today.startOf('month'), today] },
+    { label: '上月', value: [today.subtract(1, 'month').startOf('month'), today.subtract(1, 'month').endOf('month')] },
+  ]
+}
 
 /** 数据看板（今日概览 + 任意区间统计）+ 流水导出（店主）。区间选择同时作用于统计与导出 */
 export default function ReportsPage() {
@@ -139,7 +143,7 @@ export default function ReportsPage() {
                 setRange([v[0], v[1]])
               }}
               disabledDate={(d) => d.isAfter(dayjs(), 'day')}
-              presets={RANGE_PRESETS}
+              presets={rangePresets()}
             />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>按支付成功日期统计，最多 {MAX_RANGE_DAYS} 天</Typography.Text>
           </Space>

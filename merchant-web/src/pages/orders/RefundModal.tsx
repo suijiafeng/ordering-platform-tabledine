@@ -60,6 +60,7 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
         <InputNumber
           min={0}
           max={r.quantity - r.refundedQty}
+          precision={0}
           value={qty[r.id] ?? 0}
           onChange={(v) => setQty((q) => ({ ...q, [r.id]: v ?? 0 }))}
           style={{ width: 90 }}
@@ -131,7 +132,7 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
               <span>本次退款 <Typography.Text type="danger" strong>{formatYuan(finalAmount)}</Typography.Text></span>
             </Space>
           }
-          description="退款原路退回顾客支付账户；退款不改变订单履约状态。"
+          description="退款退回顾客的会员余额；退款不改变订单履约状态。"
         />
       </Form>
     </Modal>
