@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { acceptOrder, kitchenQueue, readyOrder } from '../../api/order'
 import type { OrderSummary } from '../../api/types'
 import { playNewOrderSound, usePollStore } from '../../hooks/useOrderPoll'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
 
 const REFRESH_MS = 5000
@@ -26,13 +27,18 @@ export default function KitchenPage() {
   const [, setTick] = useState(0)
   const { soundEnabled, setSoundEnabled } = usePollStore()
 
+  // 定时刷新与接单 / 出餐后的刷新可能交错：较早发出但较晚返回的队列不能把已接单的卡片"复活"
+  const beginLoad = useLatestRequest()
+
   const load = useCallback(async () => {
+    const isLatest = beginLoad()
     try {
-      setOrders(await kitchenQueue())
+      const list = await kitchenQueue()
+      if (isLatest()) setOrders(list)
     } catch {
       // 轮询失败静默，下一轮重试
     }
-  }, [])
+  }, [beginLoad])
 
   useEffect(() => {
     void load()

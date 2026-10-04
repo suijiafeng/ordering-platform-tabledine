@@ -8,6 +8,7 @@ import { approveRefund, listRefunds, offlineRefund, rejectRefund, retryRefund } 
 import type { RefundView } from '../../api/types'
 import { REFUND_INITIATOR, REFUND_TYPE } from '../../utils/orderStatus'
 import { usePollStore } from '../../hooks/useOrderPoll'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
 import MoneyText from '../../components/MoneyText'
 import { RefundStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
@@ -36,17 +37,20 @@ export default function RefundsPage() {
   const [reason, setReason] = useState('')
   const counts = usePollStore((s) => s.counts)
 
+  const beginLoad = useLatestRequest()
+
   const load = useCallback(async () => {
+    const isLatest = beginLoad()
     setLoading(true)
     try {
       const res = await listRefunds({ status: status || undefined, page, pageSize: PAGE_SIZE })
-      setData({ list: res.list, total: res.total })
+      if (isLatest()) setData({ list: res.list, total: res.total })
     } catch {
       // 已统一提示
     } finally {
-      setLoading(false)
+      if (isLatest()) setLoading(false)
     }
-  }, [status, page])
+  }, [status, page, beginLoad])
 
   useEffect(() => {
     void load()

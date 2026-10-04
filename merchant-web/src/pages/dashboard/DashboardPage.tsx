@@ -17,9 +17,16 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardToday | null>(null)
   const { counts, soundEnabled, setSoundEnabled } = usePollStore()
 
+  const [statsError, setStatsError] = useState(false)
+
   const load = useCallback(() => {
     fetchStore().then(setStore).catch(() => setStore(null))
-    fetchDashboard().then(setStats).catch(() => setStats(null))
+    fetchDashboard()
+      .then((s) => {
+        setStats(s)
+        setStatsError(false)
+      })
+      .catch(() => setStatsError(true))  // 保留上次数据；首次失败时显示重试，不要一直骨架屏
   }, [])
 
   useEffect(() => {
@@ -55,8 +62,13 @@ export default function DashboardPage() {
           />
         </Col>
       )}
-      <Col xs={12} lg={6}><Card loading={!stats}><Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" /></Card></Col>
-      <Col xs={12} lg={6}><Card loading={!stats}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>
+      {statsError && !stats && (
+        <Col span={24}>
+          <Alert type="error" showIcon message="今日概览加载失败" action={<Button size="small" onClick={load}>重试</Button>} />
+        </Col>
+      )}
+      <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" /></Card></Col>
+      <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>
       <Col xs={12} lg={6}>
         <Card hoverable onClick={() => navigate('/orders?status=PAID')}>
           <Statistic title="待接单" value={pendingAccept} valueStyle={{ color: pendingAccept > 0 ? '#fa8c16' : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 制作中 {making}</Typography.Text>} />

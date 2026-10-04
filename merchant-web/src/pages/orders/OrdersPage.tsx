@@ -8,6 +8,7 @@ import { listOrders } from '../../api/order'
 import type { OrderSummary } from '../../api/types'
 import { PLATFORM } from '../../utils/orderStatus'
 import { usePollStore } from '../../hooks/useOrderPoll'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
 import MoneyText from '../../components/MoneyText'
 import { OrderRefundTag, OrderStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from './OrderDetailDrawer'
@@ -39,7 +40,10 @@ export default function OrdersPage() {
   const newArrived = usePollStore((s) => s.newArrived)
   const consumeNew = usePollStore((s) => s.consumeNew)
 
+  const beginLoad = useLatestRequest()
+
   const load = useCallback(async () => {
+    const isLatest = beginLoad()
     setLoading(true)
     try {
       const res = await listOrders({
@@ -49,13 +53,13 @@ export default function OrdersPage() {
         page,
         pageSize: PAGE_SIZE,
       })
-      setData({ list: res.list, total: res.total })
+      if (isLatest()) setData({ list: res.list, total: res.total })
     } catch {
       // 已统一提示
     } finally {
-      setLoading(false)
+      if (isLatest()) setLoading(false)
     }
-  }, [status, keyword, date, page])
+  }, [status, keyword, date, page, beginLoad])
 
   useEffect(() => {
     void load()

@@ -3,6 +3,7 @@ import { App, Button, Card, Col, Image, Input, InputNumber, Popconfirm, Row, Spa
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined } from '@ant-design/icons'
 import { deleteDish, listCategories, listDishes, setDishSoldOut, setDishStatus, setDishStock } from '../../api/menu'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
 import type { Category, DishItem } from '../../api/types'
 import { formatYuan } from '../../utils/money'
 import { useIsOwner } from '../../utils/auth'
@@ -26,10 +27,16 @@ export default function DishesPage() {
   // 错误提示均由 request 统一弹出，这里吞掉 rejection 避免 Unhandled promise rejection
   const loadCategories = useCallback(() => listCategories().then(setCategories).catch(() => {}), [])
 
+  const beginLoad = useLatestRequest()
+  // 限量输入框是非受控的：保存失败时递增该值强制重建，让显示值回到服务端的旧值
+  const [stockReset, setStockReset] = useState(0)
+
   const loadDishes = useCallback(async () => {
+    const isLatest = beginLoad()
     setLoading(true)
     try {
       const res = await listDishes({ categoryId: categoryId ?? undefined, keyword: keyword || undefined, page, pageSize: PAGE_SIZE })
+      if (!isLatest()) return
       setData({ list: res.list, total: res.total })
       // 删除当前页最后一条后页码越界：回退到最后一页
       const lastPage = Math.max(1, Math.ceil(res.total / PAGE_SIZE))
@@ -39,9 +46,9 @@ export default function DishesPage() {
     } catch {
       // 已统一提示
     } finally {
-      setLoading(false)
+      if (isLatest()) setLoading(false)
     }
-  }, [categoryId, keyword, page])
+  }, [categoryId, keyword, page, beginLoad])
 
   useEffect(() => {
     void loadCategories()
@@ -113,7 +120,7 @@ export default function DishesPage() {
       render: (v: number | null, r) =>
         isOwner ? (
           <InputNumber
-            key={`${r.id}-${v ?? 'none'}`}
+            key={`${r.id}-${v ?? 'none'}-${stockReset}`}
             size="small"
             min={0}
             max={100000}
@@ -124,8 +131,12 @@ export default function DishesPage() {
               const raw = e.target.value.trim()
               const next = raw === '' ? null : Number(raw)
               if (next !== v && (next === null || Number.isInteger(next))) {
-                await setDishStock(r.id, next)
-                patchLocal(r.id, { stockQuantity: next })
+                try {
+                  await setDishStock(r.id, next)
+                  patchLocal(r.id, { stockQuantity: next })
+                } catch {
+                  setStockReset((t) => t + 1)  // 已统一提示；回滚显示值
+                }
               }
             }}
           />
