@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import { router } from './router'
 import { useThemeStore } from './store/theme'
+import { AntdStaticBridge } from './utils/antdStatic'
 import './styles/responsive.css'
 
 dayjs.locale('zh-cn')
@@ -27,9 +28,19 @@ function BodyBackground() {
 function Root() {
   const isDark = useThemeStore((s) => s.isDark)
   return (
-    <ConfigProvider locale={zhCN} theme={{ algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm }}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        // CSS 变量模式：组件样式只生成一份、颜色通过变量引用，切换主题只改变量值。
+        // 不开时深 / 浅两套样式共用同一类名、按插入顺序决定谁生效，按钮、输入框、表头等会停留在旧主题。
+        cssVar: true,
+        hashed: false,
+      }}
+    >
       <AntdApp>
         <BodyBackground />
+        <AntdStaticBridge />
         <RouterProvider router={router} />
       </AntdApp>
     </ConfigProvider>

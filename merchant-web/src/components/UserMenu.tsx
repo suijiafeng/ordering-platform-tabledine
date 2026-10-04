@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Avatar, Dropdown, Modal, Space, Tag, Typography, theme as antdTheme } from 'antd'
+import { App, Avatar, Dropdown, Space, Tag, Typography, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import { DownOutlined, KeyOutlined, LogoutOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
@@ -10,6 +10,8 @@ import ChangePasswordModal from './ChangePasswordModal'
 export default function UserMenu({ compact }: { compact?: boolean }) {
   const navigate = useNavigate()
   const { token } = antdTheme.useToken()
+  // 用上下文版 modal，确认框才会跟随深 / 浅色主题
+  const { modal } = App.useApp()
   const { staff, logout } = useAuthStore()
   const [pwdOpen, setPwdOpen] = useState(false)
   const isOwner = staff?.role === 'OWNER'
@@ -47,7 +49,7 @@ export default function UserMenu({ compact }: { compact?: boolean }) {
     if (key === 'staff') navigate('/staff')
     if (key === 'password') setPwdOpen(true)
     if (key === 'logout') {
-      Modal.confirm({
+      modal.confirm({
         title: '确认退出登录？',
         okText: '退出',
         cancelText: '取消',

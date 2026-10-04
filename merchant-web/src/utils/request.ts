@@ -1,5 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
-import { message } from 'antd'
+import { getMessage } from './antdStatic'
 import type { ApiResult, StaffTokenResponse } from '../api/types'
 import { useAuthStore } from '../store/auth'
 
@@ -93,14 +93,14 @@ export async function request<T>(options: RequestOptions, retried = false): Prom
       } catch {
         // 续期失败只提示一次：多个并发 401 共用同一次刷新，避免弹出多条重复提示
         if (!silent) {
-          message.warning({ content: '登录已失效，请重新登录', key: 'session-expired' })
+          getMessage()?.warning({ content: '登录已失效，请重新登录', key: 'session-expired' })
         }
         throw err
       }
       return request<T>(options, true)
     }
     if (!silent) {
-      message.error(err.message)
+      getMessage()?.error(err.message)
     }
     throw err
   }

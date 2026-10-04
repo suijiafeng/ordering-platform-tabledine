@@ -4,6 +4,13 @@ body {
   margin: 0;
 }
 
+/* 主题切换瞬间：关闭过渡，所有元素同一帧换色（见 store/theme.ts） */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
 /* 窄屏适配：antd 组件默认按桌面排版，这里只做最小必要的覆盖 */
 @media (max-width: 767.98px) {
   /* Card 标题 + 右侧工具栏（搜索 / 按钮）换行堆叠，而不是把标题挤成竖排 */
