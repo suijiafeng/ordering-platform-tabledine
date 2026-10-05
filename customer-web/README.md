@@ -1,7 +1,7 @@
 # 顾客 H5 下单端
 
 基于 Next.js App Router（静态导出）、antd-mobile 和 zustand，复用现有 `/api/v1/c/**` 顾客接口；
-业务规则与小程序一致（扫码浏览不需登录、提交订单时登录会员、余额支付）。
+业务规则：扫码浏览不需登录，提交订单时登录会员账号，余额支付。
 
 ```bash
 npm install
@@ -35,4 +35,4 @@ npm run typecheck
 STATIC_EXPORT=true npm run build
 ```
 
-产物位于 `out/`，应与后端 API 同域部署。
+产物位于 `out/`，由 Nginx 在 `/h5/` 提供，与后端 API 同域。生产部署时 `deploy/nginx/Dockerfile` 会在镜像里执行这一步，不需要手动构建。
