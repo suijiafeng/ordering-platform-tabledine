@@ -63,6 +63,8 @@ app:
   refund:
     # 退款处理中超过该时长仍无结果，补偿任务按钱包流水查询并重试
     query-after: 3m
+    # 事务提交后在独立线程返还余额；false 为同步执行（测试与排查问题时用）
+    async: true
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
   security:

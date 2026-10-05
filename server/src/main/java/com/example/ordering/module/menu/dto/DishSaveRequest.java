@@ -26,7 +26,9 @@ public record DishSaveRequest(
         @Valid @Size(max = 10, message = "加料组最多 10 个") List<AddonGroupInput> addonGroups
 ) {
 
+    /** id：编辑时带上已有规格组 / 规格项的 id，服务端按 id 原地更新，顾客购物车里的选择不会失效；新增的留空 */
     public record SpecGroupInput(
+            Long id,
             @NotBlank(message = "请输入规格组名称") @Size(max = 32) String name,
             Boolean required,
             @NotEmpty(message = "规格组至少需要一个规格项") @Size(max = 20, message = "每组规格项最多 20 个")
@@ -35,6 +37,7 @@ public record DishSaveRequest(
     }
 
     public record SpecItemInput(
+            Long id,
             @NotBlank(message = "请输入规格名称") @Size(max = 32) String name,
             @Min(value = -10_000_000) @Max(value = 10_000_000) Long priceDelta,
             Boolean isDefault
@@ -42,6 +45,7 @@ public record DishSaveRequest(
     }
 
     public record AddonGroupInput(
+            Long id,
             @NotBlank(message = "请输入加料组名称") @Size(max = 32) String name,
             @Min(value = 1, message = "最多可选数量至少为 1") Integer maxCount,
             @NotEmpty(message = "加料组至少需要一个加料项") @Size(max = 30, message = "每组加料项最多 30 个")
@@ -50,6 +54,7 @@ public record DishSaveRequest(
     }
 
     public record AddonItemInput(
+            Long id,
             @NotBlank(message = "请输入加料名称") @Size(max = 32) String name,
             @Min(value = 0, message = "加料价格不能为负") @Max(value = 10_000_000) Long priceDelta
     ) {

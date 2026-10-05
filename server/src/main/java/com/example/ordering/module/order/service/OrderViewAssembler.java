@@ -25,12 +25,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.example.ordering.module.staff.service.StaffDirectory;
 
 /** 订单视图组装（列表 / 详情），顾客端与商家端共用 */
 @Component
 public class OrderViewAssembler {
 
-    private final com.example.ordering.module.staff.service.StaffDirectory staffDirectory;
+    private final StaffDirectory staffDirectory;
 
     private final OrderStateService orderStateService;
     private final OrderItemMapper orderItemMapper;
@@ -40,7 +41,7 @@ public class OrderViewAssembler {
 
     public OrderViewAssembler(OrderStateService orderStateService, OrderItemMapper orderItemMapper,
                               PayService payService, RefundService refundService, StoreService storeService,
-                              com.example.ordering.module.staff.service.StaffDirectory staffDirectory) {
+                              StaffDirectory staffDirectory) {
         this.staffDirectory = staffDirectory;
         this.orderStateService = orderStateService;
         this.orderItemMapper = orderItemMapper;

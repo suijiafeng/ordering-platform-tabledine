@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
 import com.example.ordering.common.PageResult;
+import com.example.ordering.config.RefundExecutorConfig;
 import com.example.ordering.module.order.entity.Order;
 import com.example.ordering.module.order.entity.OrderStatus;
 import com.example.ordering.module.order.mapper.OrderMapper;
@@ -27,6 +28,7 @@ import com.example.ordering.module.store.entity.Store;
 import com.example.ordering.module.store.service.StoreService;
 import com.example.ordering.security.LoginUser;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,8 +43,12 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.function.Consumer;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 
 /**
  * 退款全流程（需求 §8）：
@@ -64,7 +70,7 @@ import java.util.stream.Collectors;
  * 事务边界：
  * <ul>
  *   <li>创建 / 审核退款：调用方的数据库事务（@Transactional）</li>
- *   <li>返还余额：该事务提交之后（afterCommit），在钱包自己的事务里执行</li>
+ *   <li>返还余额：该事务提交之后（afterCommit）交给独立线程，在钱包自己的事务里执行</li>
  *   <li>记录返还结果、店主人工处理：独立新事务（requiresNewTx）</li>
  * </ul>
  */
@@ -83,16 +89,19 @@ public class RefundService {
     private final RefundCalculator calculator;
     private final RefundLedger ledger;
     private final RefundViewAssembler viewAssembler;
+    private final Executor refundExecutor;
     /** 独立新事务（REQUIRES_NEW）：返还结果回写、店主人工处理时使用，见构造器说明 */
     private final TransactionTemplate requiresNewTx;
 
     public RefundService(RefundMapper refundMapper, RefundItemMapper refundItemMapper, OrderMapper orderMapper,
                          OrderStateService orderStateService, StoreService storeService,
                          BalancePayChannel balanceChannel, PlatformTransactionManager txManager,
-                         RefundCalculator calculator, RefundLedger ledger, RefundViewAssembler viewAssembler) {
+                         RefundCalculator calculator, RefundLedger ledger, RefundViewAssembler viewAssembler,
+                         @Qualifier(RefundExecutorConfig.BEAN_NAME) Executor refundExecutor) {
         this.calculator = calculator;
         this.ledger = ledger;
         this.viewAssembler = viewAssembler;
+        this.refundExecutor = refundExecutor;
         this.refundMapper = refundMapper;
         this.refundItemMapper = refundItemMapper;
         this.orderMapper = orderMapper;
@@ -507,7 +516,7 @@ public class RefundService {
         Order order = orderStateService.getById(refund.getOrderId());
         switch (result.state()) {
             case SUCCESS -> {
-                java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Refund>> set =
+                Consumer<LambdaUpdateWrapper<Refund>> set =
                         w -> w.set(Refund::getSuccessAt, OffsetDateTime.now())
                                 .set(Refund::getChannelRefundNo, result.channelRefundNo())
                                 .set(Refund::getFailReason, null);
@@ -626,27 +635,39 @@ public class RefundService {
         return s == null || s.length() <= max ? s : s.substring(0, max);
     }
 
+    /**
+     * 事务提交后把返还余额交给独立线程（见 RefundExecutorConfig）：请求线程立即归还数据库连接并返回「处理中」。
+     * 线程池拒绝（队列满）或返还抛异常时只记日志：退款单仍是 PROCESSING，由补偿任务按钱包流水重试。
+     */
     private void submitAfterCommit(Refund refund) {
         Long id = refund.getId();
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    // 业务事务已提交，返还余额的任何异常都不能再抛给调用方（否则接口 500 但数据已落库）
+                    // 业务事务已提交，这里的任何异常都不能再抛给调用方（否则接口 500 但数据已落库）
                     try {
-                        executeRefund(id);
-                    } catch (RuntimeException e) {
-                        log.error("退款 {} 返还余额异常，等待补偿任务处理", id, e);
+                        refundExecutor.execute(() -> executeRefundQuietly(id));
+                    } catch (RejectedExecutionException e) {
+                        log.warn("退款 {} 返还队列已满，等待补偿任务处理", id);
                     }
                 }
             });
         } else {
-            executeRefund(id);
+            executeRefundQuietly(id);
+        }
+    }
+
+    private void executeRefundQuietly(Long refundId) {
+        try {
+            executeRefund(refundId);
+        } catch (RuntimeException e) {
+            log.error("退款 {} 返还余额异常，等待补偿任务处理", refundId, e);
         }
     }
 
     private boolean updateStatus(Refund refund, RefundStatus from, RefundStatus to,
-                                 java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Refund>> extra) {
+                                 Consumer<LambdaUpdateWrapper<Refund>> extra) {
         var w = Wrappers.<Refund>lambdaUpdate()
                 .set(Refund::getStatus, to)
                 .set(Refund::getUpdatedAt, OffsetDateTime.now())
@@ -664,7 +685,7 @@ public class RefundService {
     }
 
     private void updateStatusOrConflict(Refund refund, RefundStatus from, RefundStatus to,
-                                        java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Refund>> extra) {
+                                        Consumer<LambdaUpdateWrapper<Refund>> extra) {
         if (!updateStatus(refund, from, to, extra)) {
             throw new BusinessException(ErrorCode.CONFLICT, "退款单状态已变化，请刷新后重试");
         }

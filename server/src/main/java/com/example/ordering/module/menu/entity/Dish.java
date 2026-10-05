@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
 
 @Data
 @TableName("dish")
@@ -42,7 +43,7 @@ public class Dish {
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Integer dailyStock;
     /** 今日剩余所属的业务日期（Asia/Shanghai）；跨天的订单取消不回补，停机错过 0 点按此补做重置 */
-    private java.time.LocalDate stockDate;
+    private LocalDate stockDate;
     @TableLogic
     private Integer deleted;
     @TableField(fill = FieldFill.INSERT)

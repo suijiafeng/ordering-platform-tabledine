@@ -28,6 +28,20 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.Set;
+import java.util.Map;
+import java.util.HashSet;
+import java.time.OffsetDateTime;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.context.event.EventListener;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.scheduling.annotation.Scheduled;
+import java.util.function.Consumer;
 
 /**
  * 商家端菜单管理。
@@ -137,11 +151,11 @@ public class MerchantMenuService {
         dish.setStatus(req.status() != null ? req.status() : Dish.STATUS_ON_SHELF);
         dish.setIsSoldOut(false);
         dishMapper.insert(dish);
-        saveGroups(dish.getId(), req);
+        syncGroups(dish.getId(), req);
         return getDish(dish.getId());
     }
 
-    /** 整体替换：基础信息 + 规格组 + 加料组。历史订单使用明细快照，不受影响 */
+    /** 基础信息 + 规格组 + 加料组（按 id 同步，见 syncGroups）。历史订单使用明细快照，不受影响 */
     @Transactional
     public DishDetail updateDish(Long id, DishSaveRequest req) {
         validateGroups(req);
@@ -154,7 +168,7 @@ public class MerchantMenuService {
                 .set(Dish::getDescription, StringUtils.hasText(req.description()) ? req.description().trim() : null)
                 .set(Dish::getPrice, req.price())
                 .set(Dish::getImage, StringUtils.hasText(req.image()) ? req.image().trim() : null)
-                .set(Dish::getUpdatedAt, java.time.OffsetDateTime.now())
+                .set(Dish::getUpdatedAt, OffsetDateTime.now())
                 .eq(Dish::getId, dish.getId());
         if (req.sort() != null) {
             w.set(Dish::getSort, req.sort());
@@ -163,8 +177,7 @@ public class MerchantMenuService {
             w.set(Dish::getStatus, req.status());
         }
         dishMapper.update(null, w);
-        removeGroups(id);
-        saveGroups(id, req);
+        syncGroups(id, req);
         return getDish(id);
     }
 
@@ -178,13 +191,13 @@ public class MerchantMenuService {
     public void updateStatus(Long id, int status) {
         requireDish(id);
         dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                .set(Dish::getStatus, status).set(Dish::getUpdatedAt, java.time.OffsetDateTime.now()).eq(Dish::getId, id));
+                .set(Dish::getStatus, status).set(Dish::getUpdatedAt, OffsetDateTime.now()).eq(Dish::getId, id));
     }
 
     public void updateSoldOut(Long id, boolean soldOut) {
         requireDish(id);
         dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                .set(Dish::getIsSoldOut, soldOut).set(Dish::getUpdatedAt, java.time.OffsetDateTime.now()).eq(Dish::getId, id));
+                .set(Dish::getIsSoldOut, soldOut).set(Dish::getUpdatedAt, OffsetDateTime.now()).eq(Dish::getId, id));
     }
 
     /**
@@ -194,7 +207,7 @@ public class MerchantMenuService {
     public void updateStock(Long id, Integer dailyStock) {
         requireDish(id);
         var w = Wrappers.<Dish>lambdaUpdate()
-                .set(Dish::getUpdatedAt, java.time.OffsetDateTime.now())
+                .set(Dish::getUpdatedAt, OffsetDateTime.now())
                 .eq(Dish::getId, id);
         if (dailyStock == null) {
             w.set(Dish::getDailyStock, null).set(Dish::getStockQuantity, null);
@@ -202,12 +215,12 @@ public class MerchantMenuService {
             ensureStockFresh();  // 先把可能错过的 0 点重置补上，再按今日已占用重算
             w.setSql("stock_quantity = GREATEST(0, " + dailyStock + " - (COALESCE(daily_stock, 0) - COALESCE(stock_quantity, 0)))")
                     .set(Dish::getDailyStock, dailyStock)
-                    .set(Dish::getStockDate, java.time.LocalDate.now(STOCK_ZONE));
+                    .set(Dish::getStockDate, LocalDate.now(STOCK_ZONE));
         }
         dishMapper.update(null, w);
     }
 
-    static final java.time.ZoneId STOCK_ZONE = java.time.ZoneId.of("Asia/Shanghai");
+    static final ZoneId STOCK_ZONE = ZoneId.of("Asia/Shanghai");
 
     /**
      * 幂等的每日重置：业务日期落后于今天的限量菜，把今日剩余重置为每日限量并推进日期。
@@ -217,7 +230,7 @@ public class MerchantMenuService {
      * 在事务里调用时，等事务提交后才记为已执行（事务回滚则重置也回滚，下次还要再跑）。
      */
     public int ensureStockFresh() {
-        if (java.time.LocalDate.now(STOCK_ZONE).equals(stockFreshDate.get())) {
+        if (LocalDate.now(STOCK_ZONE).equals(stockFreshDate.get())) {
             return 0;
         }
         return refreshDailyStock();
@@ -225,15 +238,15 @@ public class MerchantMenuService {
 
     /** 不看本进程缓存，直接执行一次每日重置（0 点任务与启动时用） */
     private int refreshDailyStock() {
-        java.time.LocalDate today = java.time.LocalDate.now(STOCK_ZONE);
+        LocalDate today = LocalDate.now(STOCK_ZONE);
         int rows = dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
                 .setSql("stock_quantity = daily_stock")
                 .set(Dish::getStockDate, today)
                 .isNotNull(Dish::getDailyStock)
                 .and(q -> q.isNull(Dish::getStockDate).or().lt(Dish::getStockDate, today)));
-        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
-            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                    new org.springframework.transaction.support.TransactionSynchronization() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
                             stockFreshDate.set(today);
@@ -246,16 +259,16 @@ public class MerchantMenuService {
     }
 
     /** 本进程最近一次成功执行每日重置的业务日期 */
-    private final java.util.concurrent.atomic.AtomicReference<java.time.LocalDate> stockFreshDate =
-            new java.util.concurrent.atomic.AtomicReference<>();
+    private final AtomicReference<LocalDate> stockFreshDate =
+            new AtomicReference<>();
 
-    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @EventListener(ApplicationReadyEvent.class)
     public void resetDailyStockOnStartup() {
         resetDailyStock();
     }
 
     /** 每天 0 点（Asia/Shanghai）把今日剩余重置为每日限量；所有门店（定时任务无门店上下文） */
-    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 0 * * *", zone = "Asia/Shanghai")
+    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Shanghai")
     public void resetDailyStock() {
         int rows = refreshDailyStock();
         if (rows > 0) {
@@ -306,47 +319,123 @@ public class MerchantMenuService {
         }
     }
 
-    private void saveGroups(Long dishId, DishSaveRequest req) {
-        if (req.specGroups() != null) {
-            int gSort = 0;
-            for (DishSaveRequest.SpecGroupInput in : req.specGroups()) {
-                DishSpecGroup g = new DishSpecGroup();
+    /**
+     * 按 id 同步规格组 / 加料组：请求里带 id 且确实属于这道菜的原地更新，没带 id（或 id 不属于这道菜）的新建，
+     * 请求里没出现的删除。规格项 id 保持不变，顾客购物车里已选的规格仍然有效（改个错别字不会把所有人的购物车清掉）；
+     * 价格变化由顾客端按最新菜单重新计算。
+     */
+    private void syncGroups(Long dishId, DishSaveRequest req) {
+        syncSpecGroups(dishId, req.specGroups() == null ? List.of() : req.specGroups());
+        syncAddonGroups(dishId, req.addonGroups() == null ? List.of() : req.addonGroups());
+    }
+
+    private void syncSpecGroups(Long dishId, List<DishSaveRequest.SpecGroupInput> inputs) {
+        Map<Long, DishSpecGroup> existing = specGroupMapper.selectList(Wrappers.<DishSpecGroup>lambdaQuery()
+                .eq(DishSpecGroup::getDishId, dishId)).stream().collect(Collectors.toMap(DishSpecGroup::getId, g -> g));
+        Set<Long> keptGroups = new HashSet<>();
+        int gSort = 0;
+        for (DishSaveRequest.SpecGroupInput in : inputs) {
+            DishSpecGroup g = in.id() != null ? existing.get(in.id()) : null;
+            boolean isNew = g == null;
+            if (isNew) {
+                g = new DishSpecGroup();
                 g.setDishId(dishId);
-                g.setName(in.name().trim());
-                g.setRequired(in.required() == null || in.required());
-                g.setSort(++gSort);
+            }
+            g.setName(in.name().trim());
+            g.setRequired(in.required() == null || in.required());
+            g.setSort(++gSort);
+            if (isNew) {
                 specGroupMapper.insert(g);
-                int iSort = 0;
-                for (DishSaveRequest.SpecItemInput itemIn : in.items()) {
-                    DishSpecItem item = new DishSpecItem();
+            } else {
+                specGroupMapper.updateById(g);
+            }
+            keptGroups.add(g.getId());
+            Map<Long, DishSpecItem> existingItems = isNew ? Map.of() : specItemMapper.selectList(Wrappers.<DishSpecItem>lambdaQuery()
+                    .eq(DishSpecItem::getGroupId, g.getId())).stream().collect(Collectors.toMap(DishSpecItem::getId, i -> i));
+            Set<Long> keptItems = new HashSet<>();
+            int iSort = 0;
+            for (DishSaveRequest.SpecItemInput itemIn : in.items()) {
+                DishSpecItem item = itemIn.id() != null ? existingItems.get(itemIn.id()) : null;
+                boolean itemNew = item == null;
+                if (itemNew) {
+                    item = new DishSpecItem();
                     item.setGroupId(g.getId());
-                    item.setName(itemIn.name().trim());
-                    item.setPriceDelta(itemIn.priceDelta() == null ? 0L : itemIn.priceDelta());
-                    item.setIsDefault(Boolean.TRUE.equals(itemIn.isDefault()));
-                    item.setSort(++iSort);
+                }
+                item.setName(itemIn.name().trim());
+                item.setPriceDelta(itemIn.priceDelta() == null ? 0L : itemIn.priceDelta());
+                item.setIsDefault(Boolean.TRUE.equals(itemIn.isDefault()));
+                item.setSort(++iSort);
+                if (itemNew) {
                     specItemMapper.insert(item);
+                } else {
+                    specItemMapper.updateById(item);
                 }
+                keptItems.add(item.getId());
             }
+            deleteMissing(existingItems.keySet(), keptItems, ids -> specItemMapper.deleteBatchIds(ids));
         }
-        if (req.addonGroups() != null) {
-            int gSort = 0;
-            for (DishSaveRequest.AddonGroupInput in : req.addonGroups()) {
-                AddonGroup g = new AddonGroup();
+        List<Long> removedGroups = existing.keySet().stream().filter(id -> !keptGroups.contains(id)).toList();
+        if (!removedGroups.isEmpty()) {
+            specItemMapper.delete(Wrappers.<DishSpecItem>lambdaQuery().in(DishSpecItem::getGroupId, removedGroups));
+            specGroupMapper.deleteBatchIds(removedGroups);
+        }
+    }
+
+    private void syncAddonGroups(Long dishId, List<DishSaveRequest.AddonGroupInput> inputs) {
+        Map<Long, AddonGroup> existing = addonGroupMapper.selectList(Wrappers.<AddonGroup>lambdaQuery()
+                .eq(AddonGroup::getDishId, dishId)).stream().collect(Collectors.toMap(AddonGroup::getId, g -> g));
+        Set<Long> keptGroups = new HashSet<>();
+        int gSort = 0;
+        for (DishSaveRequest.AddonGroupInput in : inputs) {
+            AddonGroup g = in.id() != null ? existing.get(in.id()) : null;
+            boolean isNew = g == null;
+            if (isNew) {
+                g = new AddonGroup();
                 g.setDishId(dishId);
-                g.setName(in.name().trim());
-                g.setMaxCount(in.maxCount() == null ? 1 : in.maxCount());
-                g.setSort(++gSort);
-                addonGroupMapper.insert(g);
-                int iSort = 0;
-                for (DishSaveRequest.AddonItemInput itemIn : in.items()) {
-                    AddonItem item = new AddonItem();
-                    item.setGroupId(g.getId());
-                    item.setName(itemIn.name().trim());
-                    item.setPriceDelta(itemIn.priceDelta() == null ? 0L : itemIn.priceDelta());
-                    item.setSort(++iSort);
-                    addonItemMapper.insert(item);
-                }
             }
+            g.setName(in.name().trim());
+            g.setMaxCount(in.maxCount() == null ? 1 : in.maxCount());
+            g.setSort(++gSort);
+            if (isNew) {
+                addonGroupMapper.insert(g);
+            } else {
+                addonGroupMapper.updateById(g);
+            }
+            keptGroups.add(g.getId());
+            Map<Long, AddonItem> existingItems = isNew ? Map.of() : addonItemMapper.selectList(Wrappers.<AddonItem>lambdaQuery()
+                    .eq(AddonItem::getGroupId, g.getId())).stream().collect(Collectors.toMap(AddonItem::getId, i -> i));
+            Set<Long> keptItems = new HashSet<>();
+            int iSort = 0;
+            for (DishSaveRequest.AddonItemInput itemIn : in.items()) {
+                AddonItem item = itemIn.id() != null ? existingItems.get(itemIn.id()) : null;
+                boolean itemNew = item == null;
+                if (itemNew) {
+                    item = new AddonItem();
+                    item.setGroupId(g.getId());
+                }
+                item.setName(itemIn.name().trim());
+                item.setPriceDelta(itemIn.priceDelta() == null ? 0L : itemIn.priceDelta());
+                item.setSort(++iSort);
+                if (itemNew) {
+                    addonItemMapper.insert(item);
+                } else {
+                    addonItemMapper.updateById(item);
+                }
+                keptItems.add(item.getId());
+            }
+            deleteMissing(existingItems.keySet(), keptItems, ids -> addonItemMapper.deleteBatchIds(ids));
+        }
+        List<Long> removedGroups = existing.keySet().stream().filter(id -> !keptGroups.contains(id)).toList();
+        if (!removedGroups.isEmpty()) {
+            addonItemMapper.delete(Wrappers.<AddonItem>lambdaQuery().in(AddonItem::getGroupId, removedGroups));
+            addonGroupMapper.deleteBatchIds(removedGroups);
+        }
+    }
+
+    private static void deleteMissing(Set<Long> existing, Set<Long> kept, Consumer<List<Long>> delete) {
+        List<Long> removed = existing.stream().filter(id -> !kept.contains(id)).toList();
+        if (!removed.isEmpty()) {
+            delete.accept(removed);
         }
     }
 

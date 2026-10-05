@@ -27,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 /**
  * 支付：余额支付（发起即扣费入账）与支付成功入账。
@@ -168,7 +169,7 @@ public class PayService {
         if (orderIds.isEmpty()) {
             return Map.of();
         }
-        Map<Long, Payment> map = new java.util.HashMap<>();
+        Map<Long, Payment> map = new HashMap<>();
         for (Payment p : paymentMapper.selectList(Wrappers.<Payment>lambdaQuery()
                 .in(Payment::getOrderId, orderIds).eq(Payment::getStatus, PaymentStatus.SUCCESS))) {
             map.putIfAbsent(p.getOrderId(), p);

@@ -7,10 +7,11 @@ import ImageUpload from '../../components/ImageUpload'
 import { fenToYuan, yuanToFen } from '../../utils/money'
 import { ignoreShownError } from '../../utils/errors'
 
-interface SpecItemForm { name: string; priceDeltaYuan: number; isDefault: boolean }
-interface SpecGroupForm { name: string; required: boolean; items: SpecItemForm[] }
-interface AddonItemForm { name: string; priceDeltaYuan: number }
-interface AddonGroupForm { name: string; maxCount: number; items: AddonItemForm[] }
+// id：编辑已有菜品时带上，后端按 id 原地更新规格 / 加料，顾客购物车里已选的规格不会失效；新增的行没有 id
+interface SpecItemForm { id?: number; name: string; priceDeltaYuan: number; isDefault: boolean }
+interface SpecGroupForm { id?: number; name: string; required: boolean; items: SpecItemForm[] }
+interface AddonItemForm { id?: number; name: string; priceDeltaYuan: number }
+interface AddonGroupForm { id?: number; name: string; maxCount: number; items: AddonItemForm[] }
 
 interface FormValues {
   categoryId: number
@@ -72,14 +73,16 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
           onShelf: d.dish.status === 1,
           sort: d.dish.sort,
           specGroups: d.specGroups.map((g) => ({
+            id: g.id,
             name: g.name,
             required: g.required,
-            items: g.items.map((i) => ({ name: i.name, priceDeltaYuan: fenToYuan(i.priceDelta), isDefault: i.isDefault })),
+            items: g.items.map((i) => ({ id: i.id, name: i.name, priceDeltaYuan: fenToYuan(i.priceDelta), isDefault: i.isDefault })),
           })),
           addonGroups: d.addonGroups.map((g) => ({
+            id: g.id,
             name: g.name,
             maxCount: g.maxCount,
-            items: g.items.map((i) => ({ name: i.name, priceDeltaYuan: fenToYuan(i.priceDelta) })),
+            items: g.items.map((i) => ({ id: i.id, name: i.name, priceDeltaYuan: fenToYuan(i.priceDelta) })),
           })),
         })
       })
@@ -102,18 +105,21 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       status: v.onShelf ? 1 : 0,
       sort: v.sort == null ? undefined : v.sort,
       specGroups: (v.specGroups ?? []).map((g) => ({
+        id: g.id,
         name: g.name.trim(),
         required: g.required ?? true,
         items: (g.items ?? []).map((i) => ({
+          id: i.id,
           name: i.name.trim(),
           priceDelta: yuanToFen(i.priceDeltaYuan),
           isDefault: !!i.isDefault,
         })),
       })),
       addonGroups: (v.addonGroups ?? []).map((g) => ({
+        id: g.id,
         name: g.name.trim(),
         maxCount: g.maxCount ?? 1,
-        items: (g.items ?? []).map((i) => ({ name: i.name.trim(), priceDelta: yuanToFen(i.priceDeltaYuan) })),
+        items: (g.items ?? []).map((i) => ({ id: i.id, name: i.name.trim(), priceDelta: yuanToFen(i.priceDeltaYuan) })),
       })),
     }
     setSaving(true)

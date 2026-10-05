@@ -14,6 +14,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.HashMap;
+import java.util.ArrayList;
 
 /**
  * 流水导出（CSV，UTF-8 带 BOM 便于 Excel 直接打开）：按下单日期区间导出订单 + 支付 + 退款明细。
@@ -32,7 +35,7 @@ public class ReportExportService {
             "REJECTED", "已拒绝", "WITHDRAWN", "已撤回", "OFFLINE", "线下退款");
 
     /** 形如 -12.50 的金额不是公式，不加前缀 */
-    private static final java.util.regex.Pattern NUMERIC = java.util.regex.Pattern.compile("[+-]?\\d+(\\.\\d+)?");
+    private static final Pattern NUMERIC = Pattern.compile("[+-]?\\d+(\\.\\d+)?");
 
     private final JdbcTemplate jdbc;
 
@@ -73,9 +76,9 @@ public class ReportExportService {
                 WHERE r.store_id = ? AND r.order_id IN (SELECT id FROM orders WHERE store_id = ? AND created_at >= ? AND created_at < ?)
                 ORDER BY r.order_id, r.id
                 """, storeId, storeId, start, end);
-        Map<Object, List<Map<String, Object>>> refundsByOrder = new java.util.HashMap<>();
+        Map<Object, List<Map<String, Object>>> refundsByOrder = new HashMap<>();
         for (Map<String, Object> r : refunds) {
-            refundsByOrder.computeIfAbsent(r.get("order_id"), k -> new java.util.ArrayList<>()).add(r);
+            refundsByOrder.computeIfAbsent(r.get("order_id"), k -> new ArrayList<>()).add(r);
         }
 
         StringBuilder sb = new StringBuilder("﻿");

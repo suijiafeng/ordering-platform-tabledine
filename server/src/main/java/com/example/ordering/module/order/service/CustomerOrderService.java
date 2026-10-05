@@ -50,6 +50,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import com.example.ordering.module.menu.mapper.CategoryMapper;
+import com.example.ordering.module.menu.service.MerchantMenuService;
+import java.util.LinkedHashMap;
 
 /**
  * 顾客端订单：创建（服务端重算价格 + 幂等 + 限量库存）、发起支付、取消、详情 / 历史、退款申请。
@@ -64,8 +67,8 @@ public class CustomerOrderService {
     private final DishMapper dishMapper;
     private final DiningTableMapper tableMapper;
     private final MenuGroupLoader groupLoader;
-    private final com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper;
-    private final com.example.ordering.module.menu.service.MerchantMenuService menuService;
+    private final CategoryMapper categoryMapper;
+    private final MerchantMenuService menuService;
     private final StoreService storeService;
     private final OrderStateService orderStateService;
     private final OrderViewAssembler assembler;
@@ -76,8 +79,8 @@ public class CustomerOrderService {
 
     public CustomerOrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper, DishMapper dishMapper,
                         DiningTableMapper tableMapper, MenuGroupLoader groupLoader,
-                        com.example.ordering.module.menu.mapper.CategoryMapper categoryMapper,
-                        com.example.ordering.module.menu.service.MerchantMenuService menuService, StoreService storeService,
+                        CategoryMapper categoryMapper,
+                        MerchantMenuService menuService, StoreService storeService,
                         OrderStateService orderStateService, OrderViewAssembler assembler, PayService payService,
                         RefundService refundService, TransactionTemplate tx, CustomerMapper customerMapper) {
         this.orderMapper = orderMapper;
@@ -172,7 +175,7 @@ public class CustomerOrderService {
 
         // 3. 限量库存扣减（同一事务内，失败整体回滚）；先补做可能错过的 0 点重置
         menuService.ensureStockFresh();
-        Map<Long, Integer> qtyByDish = new java.util.LinkedHashMap<>();
+        Map<Long, Integer> qtyByDish = new LinkedHashMap<>();
         for (OrderItem item : items) {
             qtyByDish.merge(item.getDishId(), item.getQuantity(), Integer::sum);
         }

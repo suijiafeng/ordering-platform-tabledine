@@ -21,6 +21,8 @@ import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * 订单状态流转的底层操作：条件更新（WHERE status = 原状态）保证并发安全，每次变更写 order_status_log。
@@ -184,7 +186,7 @@ public class OrderStateService {
         if (order == null || order.getCreatedAt() == null) {
             return;
         }
-        java.time.LocalDate orderDay = order.getCreatedAt().atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
+        LocalDate orderDay = order.getCreatedAt().atZoneSameInstant(ZoneId.of("Asia/Shanghai")).toLocalDate();
         for (OrderItem item : items(orderId)) {
             dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
                     .setSql("stock_quantity = LEAST(stock_quantity + " + item.getQuantity() + ", daily_stock)")

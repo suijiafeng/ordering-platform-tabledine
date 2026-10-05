@@ -29,6 +29,8 @@ public class AppProperties {
     public static class Refund {
         /** 退款单处理中超过该时长仍无结果时，定时任务按钱包流水查询并重试 */
         private Duration queryAfter = Duration.ofMinutes(3);
+        /** 事务提交后在独立线程返还余额（默认）；false 为同步执行，测试与排查问题时用 */
+        private boolean async = true;
     }
 
     @Data

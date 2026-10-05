@@ -7,13 +7,14 @@ import java.nio.file.Paths;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import com.example.ordering.ratelimit.ClientIp;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
     @jakarta.annotation.PostConstruct
     void initTrustedProxies() {
-        com.example.ordering.ratelimit.ClientIp.setTrustedProxies(appProperties.getSecurity().getTrustedProxies());
+        ClientIp.setTrustedProxies(appProperties.getSecurity().getTrustedProxies());
     }
 
     private final RateLimitInterceptor rateLimitInterceptor;

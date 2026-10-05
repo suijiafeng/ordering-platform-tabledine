@@ -7,6 +7,9 @@ app:
     secret: test-secret-0123456789abcdef0123456789abcdef
   auth:
     max-login-failures: 3
+  refund:
+    # 测试里同步返还：接口返回时退款已有结果，断言不需要等待；异步路径由 RefundAsyncExecutionTest 单独覆盖
+    async: false
   rate-limit:
     enabled: false
   storage:

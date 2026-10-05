@@ -60,6 +60,54 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void editingDishKeepsSpecIdsSoCustomerCartsStayValid() throws Exception {
+        String owner = ownerToken();
+        long categoryId = createCategory(owner, "规格同步-" + System.nanoTime());
+        MvcResult created = mvc.perform(authed(post("/api/v1/m/dishes"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(dishBody(categoryId, "同步测试", 2000L))))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode detail = data(created);
+        long dishId = detail.path("dish").path("id").asLong();
+        JsonNode group = detail.path("specGroups").get(0);
+        long groupId = group.path("id").asLong();
+        long mediumId = group.path("items").get(0).path("id").asLong();
+        long largeId = group.path("items").get(1).path("id").asLong();
+        long addonGroupId = detail.path("addonGroups").get(0).path("id").asLong();
+
+        // 带 id 重新保存：改名、改价、去掉「大杯」、新增「超大杯」，加料组原样带回
+        Map<String, Object> body = dishBody(categoryId, "同步测试", 2000L);
+        body.put("specGroups", List.of(Map.of("id", groupId, "name", "杯型（改）", "required", true, "items", List.of(
+                Map.of("id", mediumId, "name", "中杯（改）", "priceDelta", 100, "isDefault", true),
+                Map.of("name", "超大杯", "priceDelta", 800)))));
+        body.put("addonGroups", List.of(Map.of("id", addonGroupId, "name", "加料", "maxCount", 1, "items", List.of(
+                Map.of("name", "燕麦", "priceDelta", 300)))));
+        MvcResult updated = mvc.perform(authed(put("/api/v1/m/dishes/" + dishId), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(body)))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode after = data(updated).path("specGroups").get(0);
+        assertThat(after.path("id").asLong()).isEqualTo(groupId);
+        assertThat(after.path("name").asText()).isEqualTo("杯型（改）");
+        assertThat(after.path("items").get(0).path("id").asLong()).isEqualTo(mediumId);  // 原地更新，id 不变
+        assertThat(after.path("items").get(0).path("priceDelta").asLong()).isEqualTo(100);
+        assertThat(after.path("items").get(1).path("id").asLong()).isNotEqualTo(largeId);  // 新项拿到新 id
+        assertThat(after.path("items").size()).isEqualTo(2);
+        assertThat(data(updated).path("addonGroups").get(0).path("id").asLong()).isEqualTo(addonGroupId);
+        assertThat(jdbc.queryForObject("SELECT deleted FROM dish_spec_item WHERE id = ?", Integer.class, largeId)).isEqualTo(1);
+
+        // 冒用别的菜的规格项 id：当作新建，不会改到别人的数据
+        Long foreignItem = jdbc.queryForObject(
+                "SELECT i.id FROM dish_spec_item i JOIN dish_spec_group g ON g.id = i.group_id WHERE g.dish_id = 3 AND i.deleted = 0 LIMIT 1", Long.class);
+        String foreignName = jdbc.queryForObject("SELECT name FROM dish_spec_item WHERE id = ?", String.class, foreignItem);
+        body.put("specGroups", List.of(Map.of("id", groupId, "name", "杯型（改）", "required", true, "items", List.of(
+                Map.of("id", mediumId, "name", "中杯（改）", "priceDelta", 100, "isDefault", true),
+                Map.of("id", foreignItem, "name", "篡改", "priceDelta", 0)))));
+        mvc.perform(authed(put("/api/v1/m/dishes/" + dishId), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(body)))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT name FROM dish_spec_item WHERE id = ?", String.class, foreignItem)).isEqualTo(foreignName);
+    }
+
+    @Test
     void clearingDescriptionAndImagePersists() throws Exception {
         String owner = ownerToken();
         long categoryId = createCategory(owner, "清空测试-" + System.nanoTime());
