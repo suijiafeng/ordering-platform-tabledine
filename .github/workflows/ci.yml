@@ -20,7 +20,7 @@ jobs:
           cache: maven
       # verify 包含 Checkstyle（validate 阶段）与测试；集成测试使用 Testcontainers，GitHub 托管的 ubuntu runner 自带 Docker
       - run: mvn -B verify
-      # 验证生产镜像能构建（不推送；推送与部署按设计文档 §5.4 后续接入镜像仓库）
+      # 验证后端生产镜像能构建（不推送）
       - run: docker build -t ordering-server:ci .
 
   merchant-web:
@@ -62,3 +62,10 @@ jobs:
       - run: npm run build
         env:
           STATIC_EXPORT: 'true'
+
+  web-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 验证前端 / nginx 生产镜像能构建（在镜像里构建 merchant-web 与 customer-web）
+      - run: docker build -f deploy/nginx/Dockerfile -t ordering-web:ci .

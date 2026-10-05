@@ -1,31 +1,26 @@
-# 生产编排：nginx + backend + postgres
-# 使用：cp .env.example .env 并填写 → docker compose up -d --build
-# 说明：表结构由后端 Flyway 管理，postgres 不再挂载 init.sql（避免与 Flyway 冲突）
+# 生产编排：nginx（含两个前端的静态文件）+ backend + postgres + certbot 续期
+# 使用方法见 deploy/README.md：填写 .env 后运行 ./deploy.sh（首次部署和更新都是它）
+name: ordering
+
 services:
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ..
+      dockerfile: deploy/nginx/Dockerfile
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    # 每 6 小时 reload 一次：让 certbot 续期后的新证书生效（否则要到容器重启才换证书）
+    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ../merchant-web/dist:/usr/share/nginx/merchant:ro  # 商家端构建产物（CI 构建后同步）
-      - ../customer-web/out:/usr/share/nginx/h5:ro         # 顾客 H5 点餐（STATIC_EXPORT=true npm run build）
-      - uploads:/data/uploads:ro                        # 菜品图片
-      - certbot-conf:/etc/letsencrypt:ro
-      - certbot-www:/var/www/certbot:ro
+      - uploads:/data/uploads:ro            # 菜品图片（后端写入，nginx 只读提供）
+      - certbot-conf:/etc/letsencrypt:ro    # 证书
+      - certbot-www:/var/www/certbot:ro     # 证书续期的校验文件
     depends_on:
       backend:
         condition: service_healthy
-    restart: unless-stopped
-
-  certbot:
-    image: certbot/certbot:latest
-    volumes:
-      - certbot-conf:/etc/letsencrypt
-      - certbot-www:/var/www/certbot
-    # 每 12 小时尝试续期一次；首次签发见 README
-    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
     restart: unless-stopped
 
   backend:
@@ -36,15 +31,13 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
-      QR_BASE_URL: ${QR_BASE_URL}
+      QR_BASE_URL: https://${DOMAIN}/q/
       BOOTSTRAP_ENABLED: ${BOOTSTRAP_ENABLED:-false}
       BOOTSTRAP_STORE_NAME: ${BOOTSTRAP_STORE_NAME:-}
       BOOTSTRAP_OWNER_USERNAME: ${BOOTSTRAP_OWNER_USERNAME:-}
       BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD:-}
     volumes:
       - uploads:/data/uploads
-      - ./secrets:/run/secrets:ro                       # 预留：如需以文件方式注入证书 / 密钥
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,8 +59,17 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # 每 12 小时检查一次证书是否需要续期；首次签发由 ./deploy.sh 完成
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    restart: unless-stopped
+
 volumes:
-  pgdata:
-  uploads:
-  certbot-conf:
+  pgdata:        # 数据库数据
+  uploads:       # 菜品图片
+  certbot-conf:  # 证书
   certbot-www:

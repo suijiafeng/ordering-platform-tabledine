@@ -1,9 +1,9 @@
-# 将 ordering.example.com 替换为实际域名
+# 域名来自 deploy/.env 的 DOMAIN：nginx 镜像启动时用 envsubst 把本模板渲染为 /etc/nginx/conf.d/ordering.conf
 
 # HTTP：证书签发校验 + 其余跳转 HTTPS
 server {
     listen 80;
-    server_name ordering.example.com;
+    server_name ${DOMAIN};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -17,10 +17,10 @@ server {
 server {
     listen 443 ssl;
     http2 on;
-    server_name ordering.example.com;
+    server_name ${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/ordering.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/ordering.example.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
     client_max_body_size 10m;

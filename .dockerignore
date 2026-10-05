@@ -1,0 +1,8 @@
+# 前端镜像的构建上下文是仓库根目录：排除本机依赖与构建产物，镜像里会重新安装 / 构建
+.git
+**/node_modules
+**/.next
+**/dist
+**/out
+server/target
+**/*.log
