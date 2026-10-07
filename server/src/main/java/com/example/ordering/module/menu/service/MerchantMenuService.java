@@ -1,0 +1,418 @@
+package com.example.ordering.module.menu.service;
+
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.ordering.common.BusinessException;
+import com.example.ordering.common.ErrorCode;
+import com.example.ordering.common.PageResult;
+import com.example.ordering.module.menu.dto.CategoryRequest;
+import com.example.ordering.module.menu.dto.CategoryView;
+import com.example.ordering.module.menu.dto.DishDetail;
+import com.example.ordering.module.menu.dto.DishSaveRequest;
+import com.example.ordering.module.menu.dto.DishView;
+import com.example.ordering.module.menu.entity.AddonGroup;
+import com.example.ordering.module.menu.entity.AddonItem;
+import com.example.ordering.module.menu.entity.Category;
+import com.example.ordering.module.menu.entity.Dish;
+import com.example.ordering.module.menu.entity.DishSpecGroup;
+import com.example.ordering.module.menu.entity.DishSpecItem;
+import com.example.ordering.module.menu.mapper.AddonGroupMapper;
+import com.example.ordering.module.menu.mapper.AddonItemMapper;
+import com.example.ordering.module.menu.mapper.CategoryMapper;
+import com.example.ordering.module.menu.mapper.DishMapper;
+import com.example.ordering.module.menu.mapper.DishSpecGroupMapper;
+import com.example.ordering.module.menu.mapper.DishSpecItemMapper;
+import com.example.ordering.security.LoginUser;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.Set;
+import java.util.Map;
+import java.util.HashSet;
+import java.time.OffsetDateTime;
+import java.util.function.Consumer;
+
+/**
+ * 商家端菜单管理。
+ * 商家请求带门店上下文，category / dish 的查询与更新由多租户插件自动限定在当前门店；
+ * 跨店访问会表现为「不存在」。
+ */
+@Service
+public class MerchantMenuService {
+
+    private final CategoryMapper categoryMapper;
+    private final DishMapper dishMapper;
+    private final DishSpecGroupMapper specGroupMapper;
+    private final DishSpecItemMapper specItemMapper;
+    private final AddonGroupMapper addonGroupMapper;
+    private final AddonItemMapper addonItemMapper;
+    private final MenuGroupLoader groupLoader;
+    private final DailyStockService dailyStockService;
+
+    public MerchantMenuService(CategoryMapper categoryMapper, DishMapper dishMapper,
+                               DishSpecGroupMapper specGroupMapper, DishSpecItemMapper specItemMapper,
+                               AddonGroupMapper addonGroupMapper, AddonItemMapper addonItemMapper,
+                               MenuGroupLoader groupLoader, DailyStockService dailyStockService) {
+        this.dailyStockService = dailyStockService;
+        this.categoryMapper = categoryMapper;
+        this.dishMapper = dishMapper;
+        this.specGroupMapper = specGroupMapper;
+        this.specItemMapper = specItemMapper;
+        this.addonGroupMapper = addonGroupMapper;
+        this.addonItemMapper = addonItemMapper;
+        this.groupLoader = groupLoader;
+    }
+
+    // ==================== 分类 ====================
+
+    public List<CategoryView> listCategories() {
+        return categoryMapper.selectList(Wrappers.<Category>lambdaQuery()
+                        .orderByAsc(Category::getSort, Category::getId))
+                .stream().map(CategoryView::of).toList();
+    }
+
+    public CategoryView createCategory(CategoryRequest req) {
+        Category c = new Category();
+        c.setStoreId(LoginUser.currentStaff().storeId());
+        c.setName(req.name().trim());
+        c.setSort(req.sort() != null ? req.sort() : nextCategorySort());
+        c.setStatus(req.status() != null ? req.status() : 1);
+        categoryMapper.insert(c);
+        return CategoryView.of(c);
+    }
+
+    public CategoryView updateCategory(Long id, CategoryRequest req) {
+        Category c = requireCategory(id);
+        c.setName(req.name().trim());
+        if (req.sort() != null) {
+            c.setSort(req.sort());
+        }
+        if (req.status() != null) {
+            c.setStatus(req.status());
+        }
+        categoryMapper.updateById(c);
+        return CategoryView.of(c);
+    }
+
+    public void deleteCategory(Long id) {
+        requireCategory(id);
+        Long dishCount = dishMapper.selectCount(Wrappers.<Dish>lambdaQuery().eq(Dish::getCategoryId, id));
+        if (dishCount != null && dishCount > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "分类下还有菜品，请先移走或删除菜品");
+        }
+        categoryMapper.deleteById(id);
+    }
+
+    @Transactional
+    public void sortCategories(List<Long> ids) {
+        for (int i = 0; i < ids.size(); i++) {
+            Category c = new Category();
+            c.setId(ids.get(i));
+            c.setSort(i + 1);
+            categoryMapper.updateById(c); // 多租户插件保证只能改到本店分类
+        }
+    }
+
+    // ==================== 菜品 ====================
+
+    public PageResult<DishView> listDishes(Long categoryId, String keyword, long page, long pageSize) {
+        Page<Dish> p = dishMapper.selectPage(Page.of(page, pageSize), Wrappers.<Dish>lambdaQuery()
+                .eq(categoryId != null, Dish::getCategoryId, categoryId)
+                .like(StringUtils.hasText(keyword), Dish::getName, keyword == null ? null : keyword.trim())
+                .orderByAsc(Dish::getSort, Dish::getId));
+        return PageResult.of(p, DishView::of);
+    }
+
+    public DishDetail getDish(Long id) {
+        Dish dish = requireDish(id);
+        List<Long> ids = List.of(id);
+        return new DishDetail(DishView.of(dish),
+                groupLoader.loadSpecGroups(ids).getOrDefault(id, List.of()),
+                groupLoader.loadAddonGroups(ids).getOrDefault(id, List.of()));
+    }
+
+    @Transactional
+    public DishDetail createDish(DishSaveRequest req) {
+        validateGroups(req);
+        requireCategory(req.categoryId());
+        Dish dish = new Dish();
+        dish.setStoreId(LoginUser.currentStaff().storeId());
+        applyBasic(dish, req);
+        dish.setSort(req.sort() != null ? req.sort() : 0);
+        dish.setStatus(req.status() != null ? req.status() : Dish.STATUS_ON_SHELF);
+        dish.setIsSoldOut(false);
+        dishMapper.insert(dish);
+        syncGroups(dish.getId(), req);
+        return getDish(dish.getId());
+    }
+
+    /** 基础信息 + 规格组 + 加料组（按 id 同步，见 syncGroups）。历史订单使用明细快照，不受影响 */
+    @Transactional
+    public DishDetail updateDish(Long id, DishSaveRequest req) {
+        validateGroups(req);
+        Dish dish = requireDish(id);
+        requireCategory(req.categoryId());
+        // 定向更新基础字段：整行 updateById 会把读到的旧库存写回，覆盖期间顾客下单扣减的库存（超卖）
+        var w = Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getCategoryId, req.categoryId())
+                .set(Dish::getName, req.name().trim())
+                .set(Dish::getDescription, StringUtils.hasText(req.description()) ? req.description().trim() : null)
+                .set(Dish::getPrice, req.price())
+                .set(Dish::getImage, StringUtils.hasText(req.image()) ? req.image().trim() : null)
+                .set(Dish::getUpdatedAt, OffsetDateTime.now())
+                .eq(Dish::getId, dish.getId());
+        if (req.sort() != null) {
+            w.set(Dish::getSort, req.sort());
+        }
+        if (req.status() != null) {
+            w.set(Dish::getStatus, req.status());
+        }
+        dishMapper.update(null, w);
+        syncGroups(id, req);
+        return getDish(id);
+    }
+
+    @Transactional
+    public void deleteDish(Long id) {
+        requireDish(id);
+        dishMapper.deleteById(id);
+        removeGroups(id);
+    }
+
+    public void updateStatus(Long id, int status) {
+        requireDish(id);
+        dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getStatus, status).set(Dish::getUpdatedAt, OffsetDateTime.now()).eq(Dish::getId, id));
+    }
+
+    public void updateSoldOut(Long id, boolean soldOut) {
+        requireDish(id);
+        dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getIsSoldOut, soldOut).set(Dish::getUpdatedAt, OffsetDateTime.now()).eq(Dish::getId, id));
+    }
+
+    /**
+     * 设置每日限量；null 取消限量。
+     * 今日剩余 = 新限量 − 今日已占用（原限量 − 原剩余）：中午把 10 改成 12 时已卖 5 份，剩余应是 7 而不是 12。
+     */
+    public void updateStock(Long id, Integer dailyStock) {
+        requireDish(id);
+        var w = Wrappers.<Dish>lambdaUpdate()
+                .set(Dish::getUpdatedAt, OffsetDateTime.now())
+                .eq(Dish::getId, id);
+        if (dailyStock == null) {
+            w.set(Dish::getDailyStock, null).set(Dish::getStockQuantity, null);
+        } else {
+            dailyStockService.ensureFresh();  // 先把可能错过的 0 点重置补上，再按今日已占用重算
+            w.setSql("stock_quantity = GREATEST(0, " + dailyStock + " - (COALESCE(daily_stock, 0) - COALESCE(stock_quantity, 0)))")
+                    .set(Dish::getDailyStock, dailyStock)
+                    .set(Dish::getStockDate, DailyStockService.today());
+        }
+        dishMapper.update(null, w);
+    }
+
+    // ==================== 内部方法 ====================
+
+    private void applyBasic(Dish dish, DishSaveRequest req) {
+        dish.setCategoryId(req.categoryId());
+        dish.setName(req.name().trim());
+        dish.setDescription(StringUtils.hasText(req.description()) ? req.description().trim() : null);
+        dish.setPrice(req.price());
+        dish.setImage(StringUtils.hasText(req.image()) ? req.image().trim() : null);
+    }
+
+    static void validateGroups(DishSaveRequest req) {
+        // 任意合法选择下单价都必须 ≥ 1 分：负价规格会让订单总额变负（违反约束 500）或抵扣其他菜品，
+        // 0 元订单渠道不受理（永远无法支付且占着库存）。加料价不能为负，只需看规格组的最低加价
+        long minUnit = req.price();
+        if (req.specGroups() != null) {
+            for (DishSaveRequest.SpecGroupInput g : req.specGroups()) {
+                long minDelta = g.items().stream().mapToLong(i -> i.priceDelta() == null ? 0 : i.priceDelta()).min().orElse(0);
+                boolean required = g.required() == null || g.required();
+                minUnit += required ? minDelta : Math.min(0, minDelta);
+            }
+        }
+        if (minUnit < 1) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "菜品最低售价（基础价 + 最便宜的规格）必须大于 0");
+        }
+        if (req.specGroups() != null) {
+            for (DishSaveRequest.SpecGroupInput g : req.specGroups()) {
+                long defaults = g.items().stream().filter(i -> Boolean.TRUE.equals(i.isDefault())).count();
+                if (defaults > 1) {
+                    throw new BusinessException(ErrorCode.PARAM_INVALID, "规格组「" + g.name() + "」只能有一个默认项");
+                }
+            }
+        }
+        if (req.addonGroups() != null) {
+            for (DishSaveRequest.AddonGroupInput g : req.addonGroups()) {
+                int max = g.maxCount() == null ? 1 : g.maxCount();
+                if (max > g.items().size()) {
+                    throw new BusinessException(ErrorCode.PARAM_INVALID,
+                            "加料组「" + g.name() + "」最多可选数量不能超过加料项数量");
+                }
+            }
+        }
+    }
+
+    /**
+     * 按 id 同步规格组 / 加料组：请求里带 id 且确实属于这道菜的原地更新，没带 id（或 id 不属于这道菜）的新建，
+     * 请求里没出现的删除。规格项 id 保持不变，顾客购物车里已选的规格仍然有效（改个错别字不会把所有人的购物车清掉）；
+     * 价格变化由顾客端按最新菜单重新计算。
+     */
+    private void syncGroups(Long dishId, DishSaveRequest req) {
+        syncSpecGroups(dishId, req.specGroups() == null ? List.of() : req.specGroups());
+        syncAddonGroups(dishId, req.addonGroups() == null ? List.of() : req.addonGroups());
+    }
+
+    private void syncSpecGroups(Long dishId, List<DishSaveRequest.SpecGroupInput> inputs) {
+        Map<Long, DishSpecGroup> existing = specGroupMapper.selectList(Wrappers.<DishSpecGroup>lambdaQuery()
+                .eq(DishSpecGroup::getDishId, dishId)).stream().collect(Collectors.toMap(DishSpecGroup::getId, g -> g));
+        Set<Long> keptGroups = new HashSet<>();
+        int gSort = 0;
+        for (DishSaveRequest.SpecGroupInput in : inputs) {
+            DishSpecGroup g = in.id() != null ? existing.get(in.id()) : null;
+            boolean isNew = g == null;
+            if (isNew) {
+                g = new DishSpecGroup();
+                g.setDishId(dishId);
+            }
+            g.setName(in.name().trim());
+            g.setRequired(in.required() == null || in.required());
+            g.setSort(++gSort);
+            if (isNew) {
+                specGroupMapper.insert(g);
+            } else {
+                specGroupMapper.updateById(g);
+            }
+            keptGroups.add(g.getId());
+            Map<Long, DishSpecItem> existingItems = isNew ? Map.of() : specItemMapper.selectList(Wrappers.<DishSpecItem>lambdaQuery()
+                    .eq(DishSpecItem::getGroupId, g.getId())).stream().collect(Collectors.toMap(DishSpecItem::getId, i -> i));
+            Set<Long> keptItems = new HashSet<>();
+            int iSort = 0;
+            for (DishSaveRequest.SpecItemInput itemIn : in.items()) {
+                DishSpecItem item = itemIn.id() != null ? existingItems.get(itemIn.id()) : null;
+                boolean itemNew = item == null;
+                if (itemNew) {
+                    item = new DishSpecItem();
+                    item.setGroupId(g.getId());
+                }
+                item.setName(itemIn.name().trim());
+                item.setPriceDelta(itemIn.priceDelta() == null ? 0L : itemIn.priceDelta());
+                item.setIsDefault(Boolean.TRUE.equals(itemIn.isDefault()));
+                item.setSort(++iSort);
+                if (itemNew) {
+                    specItemMapper.insert(item);
+                } else {
+                    specItemMapper.updateById(item);
+                }
+                keptItems.add(item.getId());
+            }
+            deleteMissing(existingItems.keySet(), keptItems, ids -> specItemMapper.deleteBatchIds(ids));
+        }
+        List<Long> removedGroups = existing.keySet().stream().filter(id -> !keptGroups.contains(id)).toList();
+        if (!removedGroups.isEmpty()) {
+            specItemMapper.delete(Wrappers.<DishSpecItem>lambdaQuery().in(DishSpecItem::getGroupId, removedGroups));
+            specGroupMapper.deleteBatchIds(removedGroups);
+        }
+    }
+
+    private void syncAddonGroups(Long dishId, List<DishSaveRequest.AddonGroupInput> inputs) {
+        Map<Long, AddonGroup> existing = addonGroupMapper.selectList(Wrappers.<AddonGroup>lambdaQuery()
+                .eq(AddonGroup::getDishId, dishId)).stream().collect(Collectors.toMap(AddonGroup::getId, g -> g));
+        Set<Long> keptGroups = new HashSet<>();
+        int gSort = 0;
+        for (DishSaveRequest.AddonGroupInput in : inputs) {
+            AddonGroup g = in.id() != null ? existing.get(in.id()) : null;
+            boolean isNew = g == null;
+            if (isNew) {
+                g = new AddonGroup();
+                g.setDishId(dishId);
+            }
+            g.setName(in.name().trim());
+            g.setMaxCount(in.maxCount() == null ? 1 : in.maxCount());
+            g.setSort(++gSort);
+            if (isNew) {
+                addonGroupMapper.insert(g);
+            } else {
+                addonGroupMapper.updateById(g);
+            }
+            keptGroups.add(g.getId());
+            Map<Long, AddonItem> existingItems = isNew ? Map.of() : addonItemMapper.selectList(Wrappers.<AddonItem>lambdaQuery()
+                    .eq(AddonItem::getGroupId, g.getId())).stream().collect(Collectors.toMap(AddonItem::getId, i -> i));
+            Set<Long> keptItems = new HashSet<>();
+            int iSort = 0;
+            for (DishSaveRequest.AddonItemInput itemIn : in.items()) {
+                AddonItem item = itemIn.id() != null ? existingItems.get(itemIn.id()) : null;
+                boolean itemNew = item == null;
+                if (itemNew) {
+                    item = new AddonItem();
+                    item.setGroupId(g.getId());
+                }
+                item.setName(itemIn.name().trim());
+                item.setPriceDelta(itemIn.priceDelta() == null ? 0L : itemIn.priceDelta());
+                item.setSort(++iSort);
+                if (itemNew) {
+                    addonItemMapper.insert(item);
+                } else {
+                    addonItemMapper.updateById(item);
+                }
+                keptItems.add(item.getId());
+            }
+            deleteMissing(existingItems.keySet(), keptItems, ids -> addonItemMapper.deleteBatchIds(ids));
+        }
+        List<Long> removedGroups = existing.keySet().stream().filter(id -> !keptGroups.contains(id)).toList();
+        if (!removedGroups.isEmpty()) {
+            addonItemMapper.delete(Wrappers.<AddonItem>lambdaQuery().in(AddonItem::getGroupId, removedGroups));
+            addonGroupMapper.deleteBatchIds(removedGroups);
+        }
+    }
+
+    private static void deleteMissing(Set<Long> existing, Set<Long> kept, Consumer<List<Long>> delete) {
+        List<Long> removed = existing.stream().filter(id -> !kept.contains(id)).toList();
+        if (!removed.isEmpty()) {
+            delete.accept(removed);
+        }
+    }
+
+    /** 软删除菜品下的全部规格组 / 加料组及其子项 */
+    private void removeGroups(Long dishId) {
+        List<Long> specGroupIds = specGroupMapper.selectList(Wrappers.<DishSpecGroup>lambdaQuery()
+                .select(DishSpecGroup::getId).eq(DishSpecGroup::getDishId, dishId))
+                .stream().map(DishSpecGroup::getId).toList();
+        if (!specGroupIds.isEmpty()) {
+            specItemMapper.delete(Wrappers.<DishSpecItem>lambdaQuery().in(DishSpecItem::getGroupId, specGroupIds));
+            specGroupMapper.delete(Wrappers.<DishSpecGroup>lambdaQuery().in(DishSpecGroup::getId, specGroupIds));
+        }
+        List<Long> addonGroupIds = addonGroupMapper.selectList(Wrappers.<AddonGroup>lambdaQuery()
+                .select(AddonGroup::getId).eq(AddonGroup::getDishId, dishId))
+                .stream().map(AddonGroup::getId).toList();
+        if (!addonGroupIds.isEmpty()) {
+            addonItemMapper.delete(Wrappers.<AddonItem>lambdaQuery().in(AddonItem::getGroupId, addonGroupIds));
+            addonGroupMapper.delete(Wrappers.<AddonGroup>lambdaQuery().in(AddonGroup::getId, addonGroupIds));
+        }
+    }
+
+    private int nextCategorySort() {
+        Long count = categoryMapper.selectCount(null);
+        return count == null ? 1 : count.intValue() + 1;
+    }
+
+    private Category requireCategory(Long id) {
+        Category c = id == null ? null : categoryMapper.selectById(id);
+        if (c == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "分类不存在");
+        }
+        return c;
+    }
+
+    private Dish requireDish(Long id) {
+        Dish d = id == null ? null : dishMapper.selectById(id);
+        if (d == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "菜品不存在");
+        }
+        return d;
+    }
+}
