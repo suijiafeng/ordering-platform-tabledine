@@ -1,0 +1,210 @@
+package com.example.ordering.auth;
+
+import com.example.ordering.support.AbstractIntegrationTest;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 认证闭环集成测试。覆盖需求 v1.2 验收标准 US-5，以及扫码解析 US-1 AC3。
+ */
+class AuthFlowIntegrationTest extends AbstractIntegrationTest {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    com.example.ordering.security.JwtService jwtService;
+
+    @Test
+    void staffLoginRefreshAndMe() throws Exception {
+        JsonNode data = staffLogin("admin", "admin123");
+        String access = data.path("accessToken").asText();
+        assertThat(data.path("staff").path("role").asText()).isEqualTo("OWNER");
+
+        mvc.perform(get("/api/v1/m/auth/me").header("Authorization", "Bearer " + access))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.username").value("admin"));
+
+        mvc.perform(get("/api/v1/m/store").header("Authorization", "Bearer " + access))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.payTimeoutMin").value(15));
+
+        String refresh = data.path("refreshToken").asText();
+        MvcResult refreshed = mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + refresh + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andReturn();
+        String rotated = data(refreshed).path("refreshToken").asText();
+        assertThat(rotated).isNotEqualTo(refresh);
+
+        // 轮换：用过的 refresh token 再用一次被拒（泄露的 token 只能用一次），新的可以继续用
+        mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + refresh + "\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40101));
+        mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + rotated + "\"}"))
+                .andExpect(status().isOk());
+
+        // access token 不能当作 refresh token 使用
+        mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + access + "\"}"))
+                .andExpect(jsonPath("$.code").value(40101));
+    }
+
+    @Test
+    void wrongPasswordAndLockout() throws Exception {
+        // 使用独立账号，避免锁定状态影响其他测试（登录锁定记录在内存中，测试类之间共享）
+        jdbc.update("INSERT INTO staff (store_id, username, password_hash, name, role) "
+                + "SELECT 1, 'lock_user', password_hash, '锁定测试', 'STAFF' FROM staff WHERE username = 'staff'");
+        for (int i = 0; i < 3; i++) {
+            mvc.perform(post("/api/v1/m/auth/login").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"username\":\"lock_user\",\"password\":\"wrong\"}"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value(40102));
+        }
+        // 达到失败上限后，即使密码正确也被锁定
+        mvc.perform(post("/api/v1/m/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"lock_user\",\"password\":\"staff123\"}"))
+                .andExpect(jsonPath("$.code").value(40103));
+    }
+
+    @Test
+    void lockoutIsPerIpSoAttackerCannotLockOutRealOwner() throws Exception {
+        jdbc.update("INSERT INTO staff (store_id, username, password_hash, name, role) "
+                + "SELECT 1, 'ip_lock_user', password_hash, 'IP锁定测试', 'STAFF' FROM staff WHERE username = 'staff' "
+                + "ON CONFLICT (username) DO NOTHING");
+        // 攻击者 IP 连错 3 次（测试配置 max-login-failures=3）→ 该 IP 被锁
+        for (int i = 0; i < 3; i++) {
+            mvc.perform(post("/api/v1/m/auth/login").header("X-Real-IP", "203.0.113.9").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"username\":\"ip_lock_user\",\"password\":\"wrong\"}"));
+        }
+        mvc.perform(post("/api/v1/m/auth/login").header("X-Real-IP", "203.0.113.9").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"ip_lock_user\",\"password\":\"staff123\"}"))
+                .andExpect(jsonPath("$.code").value(40103));
+        // 真正的员工从另一个 IP 用正确密码仍能登录
+        mvc.perform(post("/api/v1/m/auth/login").header("X-Real-IP", "198.51.100.7").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"ip_lock_user\",\"password\":\"staff123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+    }
+
+    @Test
+    void loginIgnoresStaleTokenInHeader() throws Exception {
+        // 浏览器里残留的旧 token（这里用顾客 token 模拟另一身份）不影响登录
+        String customer = memberToken();
+        mvc.perform(post("/api/v1/m/auth/login").header("Authorization", "Bearer " + customer)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"staff\",\"password\":\"staff123\"}"))
+                .andExpect(status().isOk());
+        String owner = ownerToken();
+        mvc.perform(post("/api/v1/m/auth/login").header("Authorization", "Bearer " + owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"staff\",\"password\":\"staff123\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void clientErrorsAreNot500() throws Exception {
+        String owner = ownerToken();
+        mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/m/auth/me"), owner))
+                .andExpect(status().isMethodNotAllowed());
+        mvc.perform(authed(get("/api/v1/m/orders?date=2026-1-5"), owner))
+                .andExpect(status().isUnprocessableEntity());
+        mvc.perform(post("/api/v1/m/auth/login").contentType(MediaType.TEXT_PLAIN).content("x"))
+                .andExpect(status().isUnsupportedMediaType());
+    }
+
+    @Test
+    void unauthenticatedRequestsGet401() throws Exception {
+        mvc.perform(get("/api/v1/m/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40101));
+        mvc.perform(get("/api/v1/c/me").header("Authorization", "Bearer invalid"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40101));
+    }
+
+    @Test
+    void onlyMemberTokensAreAccepted() throws Exception {
+        String member = memberToken();
+        assertThat(me(member).path("member").asBoolean()).isTrue();
+
+        // 已停用的小程序登录留下的非会员顾客：即使拿到签名合法的 token 也不能再访问
+        jdbc.update("INSERT INTO customer (status) VALUES (1)");
+        Long legacyId = jdbc.queryForObject("SELECT MAX(id) FROM customer WHERE phone IS NULL", Long.class);
+        String legacy = jwtService.issueCustomerToken(legacyId, 0).token();
+        mvc.perform(get("/api/v1/c/me").header("Authorization", "Bearer " + legacy))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40101));
+        // 小程序静默登录接口已移除
+        mvc.perform(post("/api/v1/c/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"platform\":\"WECHAT\",\"code\":\"x\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void tokensCannotCrossAudience() throws Exception {
+        String customer = memberToken();
+        mvc.perform(get("/api/v1/m/auth/me").header("Authorization", "Bearer " + customer))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(40301));
+
+        String staff = staffLogin("admin", "admin123").path("accessToken").asText();
+        mvc.perform(get("/api/v1/c/me").header("Authorization", "Bearer " + staff))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(40301));
+
+        // 公开接口带了另一端的 token：忽略 token，正常返回
+        mvc.perform(get("/api/v1/c/qr/dev-table-a1").header("Authorization", "Bearer " + staff))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void disablingStaffInvalidatesIssuedTokens() throws Exception {
+        jdbc.update("INSERT INTO staff (store_id, username, password_hash, name, role) "
+                + "SELECT 1, 'temp', password_hash, '临时', 'STAFF' FROM staff WHERE username = 'staff'");
+        String access = staffLogin("temp", "staff123").path("accessToken").asText();
+        mvc.perform(get("/api/v1/m/auth/me").header("Authorization", "Bearer " + access))
+                .andExpect(status().isOk());
+
+        jdbc.update("UPDATE staff SET status = 0, token_version = token_version + 1 WHERE username = 'temp'");
+        mvc.perform(get("/api/v1/m/auth/me").header("Authorization", "Bearer " + access))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40101));
+    }
+
+    @Test
+    void qrResolve() throws Exception {
+        mvc.perform(get("/api/v1/c/qr/dev-table-a1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tableCode").value("A1"))
+                .andExpect(jsonPath("$.data.storeId").value(1));
+        mvc.perform(get("/api/v1/c/qr/not-exist"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(40402));
+        mvc.perform(get("/api/v1/c/stores/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.open").value(true));
+    }
+
+    @Test
+    void validationErrorsUseUnifiedFormat() throws Exception {
+        mvc.perform(post("/api/v1/c/auth/password-login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"13800000001\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value(42201));
+    }
+
+    private JsonNode me(String token) throws Exception {
+        MvcResult r = mvc.perform(get("/api/v1/c/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(r.getResponse().getContentAsString()).path("data");
+    }
+}
