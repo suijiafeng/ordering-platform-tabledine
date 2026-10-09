@@ -10,6 +10,7 @@ import TablesPage from './pages/tables/TablesPage'
 import TablePrintPage from './pages/tables/TablePrintPage'
 import PlaceOrderPage from './pages/orders/PlaceOrderPage'
 import MembersPage from './pages/members/MembersPage'
+import DashboardPage from './pages/dashboard/DashboardPage'
 import { useAuthStore } from './store/auth'
 import type { RouteHandle } from './components/PageBreadcrumb'
 
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
     children: [
+      { index: true, handle: crumb('工作台'), element: <DashboardPage /> },
       { path: 'orders', handle: crumb('订单管理'), children: [{ index: true, element: <OrdersPage /> }, { path: 'new', handle: crumb('代客下单'), element: <PlaceOrderPage /> }] },
       { path: 'kitchen', handle: crumb('后厨队列'), element: <KitchenPage /> },
       { path: 'refunds', handle: crumb('退款管理'), element: <RequireOwner><RefundsPage /></RequireOwner> },
