@@ -7,9 +7,11 @@ import { ApiError, fetchMenu, resolveTable } from '@/lib/api'
 import { defaultSelection, hasOptions } from '@/lib/pricing'
 import { imageSrc, yuan } from '@/lib/format'
 import type { Dish, MenuView, TableInfo } from '@/lib/types'
-import { dishQuantity, useOrdering } from '@/store/ordering'
+import { MAX_QUANTITY, dishLimit, dishQuantity, useOrdering } from '@/store/ordering'
 import { notify } from '@/store/feedback'
+import { ActiveOrderBanner } from './ActiveOrderBanner'
 import { CartBar } from './CartBar'
+import { DishDetail } from './DishDetail'
 import { SpecSheet } from './SpecSheet'
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
@@ -32,6 +34,7 @@ export function MenuClient() {
   const [activeCategory, setActiveCategory] = useState<number | null>(null)
   const [keyword, setKeyword] = useState('')
   const [specDish, setSpecDish] = useState<Dish | null>(null)
+  const [detailDish, setDetailDish] = useState<Dish | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const dishesRef = useRef<HTMLElement>(null)
@@ -57,8 +60,9 @@ export function MenuClient() {
       }
       if (token) {
         resolved = await resolveTable(token)
-      } else if (quiet && current) {
-        // 前台已打开的点餐页才可用当前桌码静默刷新；首次进入无桌码页面必须重新扫码。
+      } else if (current) {
+        // 站内跳回菜单（登录页「先逛逛」、退出登录、订单列表「去点餐」）不带桌码：沿用已扫的桌台并重新校验，
+        // 不能清空购物车。桌码失效（404）时在下面清掉，要求重新扫码。
         resolved = await resolveTable(current.qrToken)
       } else {
         clearTable()
@@ -69,11 +73,12 @@ export function MenuClient() {
       if (!resolved) return
       setTable(resolved)
       const nextMenu = await fetchMenu(resolved.storeId)
-      const removed = reconcile(nextMenu)
+      const { removed, capped } = reconcile(nextMenu)
       setMenu(nextMenu)
       setActiveCategory((value) => value ?? nextMenu.categories[0]?.id ?? null)
       loadedAt.current = Date.now()
       if (removed.length) notify(`${[...new Set(removed)].join('、')} 已售罄或选项有变，已移出购物车`)
+      else if (capped.length) notify(`${[...new Set(capped)].join('、')} 剩余不多，购物车数量已调整`)
     } catch (e) {
       if (!(e instanceof ApiError)) throw e
       if (e.code === 40401 || e.status === 404) clearTable()
@@ -95,6 +100,10 @@ export function MenuClient() {
   }, [load])
 
   useEffect(() => () => { if (scrollStopTimer.current) window.clearTimeout(scrollStopTimer.current) }, [])
+
+  useEffect(() => {
+    if (table?.storeName) document.title = `${table.storeName} · 扫码点餐`
+  }, [table?.storeName])
 
   const matched = useMemo(() => {
     const term = keyword.trim().toLowerCase()
@@ -137,10 +146,25 @@ export function MenuClient() {
     container.scrollTo({ top, behavior: 'smooth' })
   }
 
+  /** 加入购物车并提示；限量菜达到上限时说明剩余份数 */
+  const addToCart = (dish: Dish, selection = defaultSelection(dish), quantity = 1) => {
+    const added = add(dish, selection, quantity)
+    if (added === quantity) notify('已加入购物车', 'success')
+    else if (added > 0) notify(`「${dish.name}」今日仅剩 ${dishLimit(dish)} 份，已加入 ${added} 份`)
+    else notify(`「${dish.name}」今日仅剩 ${dishLimit(dish)} 份，购物车已达上限`)
+    return added
+  }
+
   const addDish = (dish: Dish) => {
     if (hasOptions(dish)) setSpecDish(dish)
-    else add(dish, defaultSelection(dish))
+    else addToCart(dish)
   }
+
+  /** 列表里的「仅剩 N 份」角标：限量且剩余不多时才显示，避免菜单到处都是数字 */
+  const stockHint = (dish: Dish) =>
+    dish.remainingStock != null && dish.remainingStock > 0 && dish.remainingStock <= 10
+      ? <span className="stock-hint">仅剩 {dish.remainingStock} 份</span>
+      : null
 
   const changeDirectQuantity = (dish: Dish, value: number) => {
     const item = items.find((i) => i.dishId === dish.id)
@@ -159,20 +183,22 @@ export function MenuClient() {
         </Badge>
       )
     } else if (quantity) {
-      action = <Stepper min={0} max={99} value={quantity} onChange={(value) => changeDirectQuantity(dish, value)} />
+      action = <Stepper min={0} max={dishLimit(dish)} value={quantity} onChange={(value) => changeDirectQuantity(dish, value)} />
     } else {
       action = <button className="round-add" aria-label={`添加${dish.name}`} onClick={() => addDish(dish)}>+</button>
     }
     return (
       <div className={`dish ${dish.soldOut ? 'sold-out' : ''}`} key={dish.id}>
-        {dish.image
-          ? <img className="dish-image" src={imageSrc(dish.image)} alt={dish.name} loading="lazy" />
-          : <div className="dish-placeholder" />}
+        <button className="dish-media" aria-label={`查看${dish.name}详情`} onClick={() => setDetailDish(dish)}>
+          {dish.image
+            ? <img className="dish-image" src={imageSrc(dish.image)} alt="" loading="lazy" />
+            : <div className="dish-placeholder" />}
+        </button>
         <div className="dish-info">
-          <div className="dish-name">{dish.name}</div>
-          {dish.description && <div className="dish-desc">{dish.description}</div>}
+          <div className="dish-name" onClick={() => setDetailDish(dish)}>{dish.name}</div>
+          {dish.description && <div className="dish-desc" onClick={() => setDetailDish(dish)}>{dish.description}</div>}
           <div className="dish-bottom">
-            <span className="price">¥{yuan(dish.price)}{hasOptions(dish) && <small>起</small>}</span>
+            <span className="price">¥{yuan(dish.price)}{hasOptions(dish) && <small>起</small>}{stockHint(dish)}</span>
             {action}
           </div>
         </div>
@@ -227,6 +253,7 @@ export function MenuClient() {
         {accountLinks}
       </header>
       {!table.storeOpen && <div className="notice">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
+      <ActiveOrderBanner />
       <div className="search-wrap">
         <SearchBar placeholder="搜索菜品" value={keyword} onChange={setKeyword} onClear={() => setKeyword('')} />
       </div>
@@ -243,14 +270,16 @@ export function MenuClient() {
             {menu?.categories.map((category) => {
               const count = category.dishes.reduce((sum, dish) => sum + dishQuantity(items, dish.id), 0)
               return (
-                <div
+                <button
                   key={category.id}
+                  type="button"
                   className={`category ${activeCategory === category.id ? 'active' : ''}`}
+                  aria-current={activeCategory === category.id ? 'true' : undefined}
                   onClick={() => scrollToCategory(category.id)}
                 >
                   {category.name}
-                  {count > 0 && <span className="category-count">{count}</span>}
-                </div>
+                  {count > 0 && <span className="category-count" aria-label={`已选 ${count} 份`}>{count}</span>}
+                </button>
               )
             })}
           </nav>
@@ -267,13 +296,14 @@ export function MenuClient() {
       )}
 
       <CartBar disabled={!table.storeOpen} />
+      <DishDetail dish={detailDish} onClose={() => setDetailDish(null)} onAdd={(dish) => { setDetailDish(null); addDish(dish) }} />
       <SpecSheet
         dish={specDish}
+        maxQuantity={specDish ? dishLimit(specDish) - dishQuantity(items, specDish.id) : MAX_QUANTITY}
         onClose={() => setSpecDish(null)}
         onConfirm={(dish, selection, quantity) => {
-          add(dish, selection, quantity)
+          addToCart(dish, selection, quantity)
           setSpecDish(null)
-          notify('已加入购物车', 'success')
         }}
       />
     </div>

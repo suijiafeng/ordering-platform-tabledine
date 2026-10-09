@@ -12,6 +12,8 @@ export interface SpecGroup { id: number; name: string; required: boolean; items:
 export interface AddonGroup { id: number; name: string; maxCount: number; items: OptionItem[] }
 export interface Dish {
   id: number; name: string; description: string | null; price: number; image: string | null; soldOut: boolean
+  /** 限量菜品今日剩余份数；null 不限量 */
+  remainingStock: number | null
   specGroups: SpecGroup[]; addonGroups: AddonGroup[]
 }
 export interface MenuCategory { id: number; name: string; dishes: Dish[] }
@@ -21,6 +23,8 @@ export interface Selection { specItemIds: number[]; addonItemIds: number[] }
 export interface CartItem extends Selection {
   key: string; dishId: number; name: string; image: string | null; specDesc: string; addonDesc: string
   unitPrice: number; quantity: number
+  /** 这道菜（所有规格合计）最多可点份数，来自剩余库存；旧版本购物车没有此字段 */
+  limit?: number
 }
 
 export type OrderStatus = 'PENDING_PAY' | 'PAID' | 'MAKING' | 'READY' | 'DONE' | 'CLOSED' | 'CANCELLED'
