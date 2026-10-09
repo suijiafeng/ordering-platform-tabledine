@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.env*.local
+*.tsbuildinfo
+
+# Browser regression artifacts
+/test-results/
+/playwright-report/
