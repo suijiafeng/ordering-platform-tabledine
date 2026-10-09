@@ -166,11 +166,20 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":0}"))
                 .andExpect(status().isOk());
         assertThat(findMenuDish(2L).path("soldOut").asBoolean()).isTrue();
+        assertThat(findMenuDish(2L).path("remainingStock").asInt()).isZero();
+
+        // 有剩余：顾客菜单给出剩余份数，用于限制加购数量
+        mvc.perform(authed(put("/api/v1/m/dishes/2/stock"), owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":3}"))
+                .andExpect(status().isOk());
+        assertThat(findMenuDish(2L).path("soldOut").asBoolean()).isFalse();
+        assertThat(findMenuDish(2L).path("remainingStock").asInt()).isEqualTo(3);
 
         mvc.perform(authed(put("/api/v1/m/dishes/2/stock"), owner)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":null}"))
                 .andExpect(status().isOk());
         assertThat(findMenuDish(2L).path("soldOut").asBoolean()).isFalse();
+        assertThat(findMenuDish(2L).path("remainingStock").isNull()).isTrue();  // 不限量
         assertThat(jdbc.queryForObject("SELECT stock_quantity FROM dish WHERE id = 2", Integer.class)).isNull();
     }
 

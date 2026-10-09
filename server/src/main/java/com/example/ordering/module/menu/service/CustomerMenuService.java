@@ -64,6 +64,7 @@ public class CustomerMenuService {
             }
             List<MenuView.MenuDish> menuDishes = list.stream().map(d -> new MenuView.MenuDish(
                     d.getId(), d.getName(), d.getDescription(), d.getPrice(), d.getImage(), d.soldOutForCustomer(),
+                    d.getStockQuantity() == null ? null : Math.max(0, d.getStockQuantity()),
                     specs.getOrDefault(d.getId(), List.of()),
                     addons.getOrDefault(d.getId(), List.of()))).toList();
             result.add(new MenuView.MenuCategory(c.getId(), c.getName(), menuDishes));
