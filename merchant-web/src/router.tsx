@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import MainLayout from './layouts/MainLayout'
 import LoginPage from './pages/login/LoginPage'
 import OrdersPage from './pages/orders/OrdersPage'
+import KitchenPage from './pages/kitchen/KitchenPage'
 import { useAuthStore } from './store/auth'
 import type { RouteHandle } from './components/PageBreadcrumb'
 
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { path: 'orders', handle: crumb('订单管理'), children: [{ index: true, element: <OrdersPage /> }] },
+      { path: 'kitchen', handle: crumb('后厨队列'), element: <KitchenPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
