@@ -14,6 +14,7 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 import StaffPage from './pages/staff/StaffPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import ReportsPage from './pages/reports/ReportsPage'
+import AuditLogsPage from './pages/audit/AuditLogsPage'
 import { useAuthStore } from './store/auth'
 import type { RouteHandle } from './components/PageBreadcrumb'
 
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { path: 'staff', handle: crumb('员工管理'), element: <RequireOwner><StaffPage /></RequireOwner> },
       { path: 'settings', handle: crumb('店铺设置'), element: <RequireOwner><SettingsPage /></RequireOwner> },
       { path: 'reports', handle: crumb('数据看板'), element: <RequireOwner><ReportsPage /></RequireOwner> },
+      { path: 'audit', handle: crumb('操作日志'), element: <RequireOwner><AuditLogsPage /></RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
