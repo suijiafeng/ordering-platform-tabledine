@@ -5,6 +5,7 @@ import LoginPage from './pages/login/LoginPage'
 import OrdersPage from './pages/orders/OrdersPage'
 import KitchenPage from './pages/kitchen/KitchenPage'
 import RefundsPage from './pages/refunds/RefundsPage'
+import DishesPage from './pages/dishes/DishesPage'
 import { useAuthStore } from './store/auth'
 import type { RouteHandle } from './components/PageBreadcrumb'
 
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
       { path: 'orders', handle: crumb('订单管理'), children: [{ index: true, element: <OrdersPage /> }] },
       { path: 'kitchen', handle: crumb('后厨队列'), element: <KitchenPage /> },
       { path: 'refunds', handle: crumb('退款管理'), element: <RequireOwner><RefundsPage /></RequireOwner> },
+      { path: 'dishes', handle: crumb('菜品管理'), element: <DishesPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
