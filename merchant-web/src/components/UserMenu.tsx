@@ -1,15 +1,21 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Avatar, Dropdown, Space, Tag, Typography } from 'antd'
+import { App, Avatar, Dropdown, Space, Tag, Typography, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
-import { DownOutlined, LogoutOutlined } from '@ant-design/icons'
+import { DownOutlined, KeyOutlined, LogoutOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
+import ChangePasswordModal from './ChangePasswordModal'
 import { ROLE_META } from '../utils/auth'
 
-/** 顶栏右侧用户菜单（简化版）：头像 + 姓名，下拉可退出登录。修改密码随员工管理提交补全 */
+/** 顶栏右侧用户菜单：头像 + 姓名，下拉展示身份信息与账号操作 */
 export default function UserMenu({ compact }: { compact?: boolean }) {
   const navigate = useNavigate()
+  const { token } = antdTheme.useToken()
+  // 用上下文版 modal，确认框才会跟随深 / 浅色主题
   const { modal } = App.useApp()
   const { staff, logout } = useAuthStore()
+  const [pwdOpen, setPwdOpen] = useState(false)
+  const isOwner = staff?.role === 'OWNER'
   const name = staff?.name ?? ''
 
   const items: MenuProps['items'] = [
@@ -28,10 +34,21 @@ export default function UserMenu({ compact }: { compact?: boolean }) {
       ),
     },
     { type: 'divider' },
+    ...(isOwner
+      ? [
+          { key: 'settings', icon: <ShopOutlined />, label: '店铺设置' },
+          { key: 'staff', icon: <TeamOutlined />, label: '员工管理' },
+          { type: 'divider' as const },
+        ]
+      : []),
+    { key: 'password', icon: <KeyOutlined />, label: '修改密码' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ]
 
   const onClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'settings') navigate('/settings')
+    if (key === 'staff') navigate('/staff')
+    if (key === 'password') setPwdOpen(true)
     if (key === 'logout') {
       modal.confirm({
         title: '确认退出登录？',
@@ -46,12 +63,22 @@ export default function UserMenu({ compact }: { compact?: boolean }) {
   }
 
   return (
-    <Dropdown menu={{ items, onClick }} trigger={['click']}>
-      <Space style={{ cursor: 'pointer' }}>
-        <Avatar size={compact ? 'small' : 'default'}>{name.slice(0, 1)}</Avatar>
-        {!compact && <Typography.Text>{name}</Typography.Text>}
-        <DownOutlined style={{ fontSize: 12 }} />
-      </Space>
-    </Dropdown>
+    <>
+      <Dropdown menu={{ items, onClick }} trigger={['click']} placement="bottomRight">
+        <Space
+          size={6}
+          role="button"
+          aria-label="用户菜单"
+          style={{ cursor: 'pointer', padding: '0 8px', height: 40, borderRadius: token.borderRadius, lineHeight: 1 }}
+        >
+          <Avatar size={compact ? 26 : 28} style={{ background: isOwner ? token.colorWarning : token.colorPrimary, flexShrink: 0 }}>
+            {name.slice(0, 1)}
+          </Avatar>
+          {!compact && <Typography.Text>{name}</Typography.Text>}
+          <DownOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
+        </Space>
+      </Dropdown>
+      <ChangePasswordModal open={pwdOpen} onClose={() => setPwdOpen(false)} />
+    </>
   )
 }
