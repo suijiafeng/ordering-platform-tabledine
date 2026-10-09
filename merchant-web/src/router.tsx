@@ -12,6 +12,7 @@ import PlaceOrderPage from './pages/orders/PlaceOrderPage'
 import MembersPage from './pages/members/MembersPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import StaffPage from './pages/staff/StaffPage'
+import SettingsPage from './pages/settings/SettingsPage'
 import { useAuthStore } from './store/auth'
 import type { RouteHandle } from './components/PageBreadcrumb'
 
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
       { path: 'tables', handle: crumb('桌台管理'), element: <TablesPage /> },
       { path: 'members', handle: crumb('会员充值'), element: <MembersPage /> },
       { path: 'staff', handle: crumb('员工管理'), element: <RequireOwner><StaffPage /></RequireOwner> },
+      { path: 'settings', handle: crumb('店铺设置'), element: <RequireOwner><SettingsPage /></RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
