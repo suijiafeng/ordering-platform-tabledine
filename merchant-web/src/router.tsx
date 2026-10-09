@@ -4,6 +4,7 @@ import MainLayout from './layouts/MainLayout'
 import LoginPage from './pages/login/LoginPage'
 import OrdersPage from './pages/orders/OrdersPage'
 import KitchenPage from './pages/kitchen/KitchenPage'
+import RefundsPage from './pages/refunds/RefundsPage'
 import { useAuthStore } from './store/auth'
 import type { RouteHandle } from './components/PageBreadcrumb'
 
@@ -18,6 +19,11 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+function RequireOwner({ children }: { children: ReactNode }) {
+  const role = useAuthStore((s) => s.staff?.role)
+  return role === 'OWNER' ? <>{children}</> : <Navigate to="/" replace />
+}
+
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   {
@@ -30,6 +36,7 @@ export const router = createBrowserRouter([
     children: [
       { path: 'orders', handle: crumb('订单管理'), children: [{ index: true, element: <OrdersPage /> }] },
       { path: 'kitchen', handle: crumb('后厨队列'), element: <KitchenPage /> },
+      { path: 'refunds', handle: crumb('退款管理'), element: <RequireOwner><RefundsPage /></RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
