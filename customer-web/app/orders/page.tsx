@@ -1,6 +1,6 @@
 'use client'
 
-import { Button, ErrorBlock, InfiniteScroll, PullToRefresh, SpinLoading, Tag } from 'antd-mobile'
+import { Button, CapsuleTabs, ErrorBlock, InfiniteScroll, PullToRefresh, SpinLoading, Tag } from 'antd-mobile'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchOrders } from '@/lib/api'
@@ -11,6 +11,12 @@ import { useCountdown } from '@/hooks/useCountdown'
 import { PageHeader } from '@/components/PageHeader'
 
 const PAGE_SIZE = 20
+
+type Filter = 'all' | 'active' | 'finished'
+const FILTERS: { key: Filter; label: string }[] = [{ key: 'all', label: '全部' }, { key: 'active', label: '进行中' }, { key: 'finished', label: '已结束' }]
+const FINISHED = new Set<OrderStatus>(['DONE', 'CLOSED', 'CANCELLED'])
+const matchesFilter = (order: OrderSummary, filter: Filter) =>
+  filter === 'all' || (filter === 'active') !== FINISHED.has(order.status)
 
 function statusColor(status: OrderStatus): 'primary' | 'success' | 'default' {
   if (status === 'DONE') return 'success'
@@ -27,9 +33,13 @@ function PendingPayHint({ payExpireAt }: { payExpireAt: string | null }) {
     : <span className="muted">支付已超时，订单即将关闭</span>
 }
 
-/** 我的订单：按时间倒序，下拉刷新，触底加载更多 */
+/**
+ * 我的订单：按时间倒序，下拉刷新，触底加载更多。
+ * 「进行中 / 已结束」在已加载的数据上筛选（接口没有状态参数）；筛选后不足一屏时 InfiniteScroll 会继续翻页。
+ */
 export default function OrdersPage() {
   const router = useRouter()
+  const [filter, setFilter] = useState<Filter>('all')
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
@@ -62,6 +72,7 @@ export default function OrdersPage() {
   useEffect(() => { void load(1) }, [load])
 
   const hasMore = loaded && !failed && orders.length < total
+  const visible = orders.filter((order) => matchesFilter(order, filter))
 
   let content: React.ReactNode
   if (!loaded) {
@@ -72,7 +83,8 @@ export default function OrdersPage() {
     content = <ErrorBlock status="empty" title="暂无订单" description={<Button color="primary" onClick={() => router.push('/')}>去点餐</Button>} />
   } else {
     content = <>
-      {orders.map((order) => (
+      {!visible.length && !hasMore && <ErrorBlock status="empty" title={filter === 'active' ? '没有进行中的订单' : '没有已结束的订单'} description="" />}
+      {visible.map((order) => (
         <article className="order-card" key={order.orderNo} onClick={() => router.push(`/order?orderNo=${encodeURIComponent(order.orderNo)}`)}>
           <div className="order-head">
             <span className="muted">{dateTime(order.createdAt)} · 桌号 {order.tableCode}</span>
@@ -89,7 +101,11 @@ export default function OrdersPage() {
             <span><span className="muted">共 {order.itemCount} 件 </span><strong>¥{yuan(order.payAmount)}</strong></span>
           </div>
           {order.refundedAmount > 0 && <div className="refunded">已退款 ¥{yuan(order.refundedAmount)}</div>}
-          {order.status === 'PENDING_PAY' && <Button block color="primary" size="small" className="order-pay">去支付</Button>}
+          {order.status === 'PENDING_PAY' && (
+            <Button block color="primary" size="small" className="order-pay" onClick={(e) => { e.stopPropagation(); router.push(`/order?orderNo=${encodeURIComponent(order.orderNo)}`) }}>
+              去支付
+            </Button>
+          )}
         </article>
       ))}
       <InfiniteScroll loadMore={() => load(page + 1)} hasMore={hasMore}>
@@ -101,6 +117,12 @@ export default function OrdersPage() {
   return (
     <div className="page">
       <PageHeader>我的订单</PageHeader>
+      {/* 吸顶放在外层容器上：antd-mobile 给 .adm-capsule-tabs 自带 position: relative，直接写在组件上会被覆盖 */}
+      <div className="order-filter">
+        <CapsuleTabs activeKey={filter} onChange={(key) => { setFilter(key as Filter); window.scrollTo(0, 0) }}>
+          {FILTERS.map((item) => <CapsuleTabs.Tab key={item.key} title={item.label} />)}
+        </CapsuleTabs>
+      </div>
       <PullToRefresh onRefresh={() => load(1)}>
         <div className="content-page">{content}</div>
       </PullToRefresh>

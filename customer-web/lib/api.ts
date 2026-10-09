@@ -38,25 +38,30 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (auth) {
     const token = getToken()
     if (!token) {
-      redirectToLogin()
+      await redirectToLogin()
       throw new ApiError(40101, '请先登录', 401)
     }
     headers.set('Authorization', `Bearer ${token}`)
   }
 
+  // 不用 AbortSignal.timeout()：旧版微信 / iOS 15 内核没有，会把所有请求当成网络异常
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   let response: Response
   try {
-    response = await fetch(path, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+    response = await fetch(path, { ...init, headers, signal: init.signal ?? controller.signal })
   } catch {
     if (!silent) notify('网络异常，请稍后重试')
     throw new ApiError(-1, '网络异常，请稍后重试', 0)
+  } finally {
+    window.clearTimeout(timeout)
   }
 
   const body = await response.json().catch(() => null) as Envelope<T> | null
   // 只有「登录失效」（40101）才退出登录；其他 401（如账号或密码错误）按普通业务错误提示
   if (auth && (body?.code === 40101 || (response.status === 401 && !body))) {
     logout()
-    redirectToLogin()
+    await redirectToLogin()
     throw new ApiError(40101, body?.message || '登录已失效', response.status)
   }
   if (!response.ok || !body || body.code !== 0) {
@@ -67,11 +72,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return body.data
 }
 
-function redirectToLogin() {
+/**
+ * 整页跳转到登录页，登录后回到当前页。跳转已发起时返回一个永不结束的 Promise：
+ * 页面保持加载态直到被登录页替换，不会先渲染一帧「加载失败」。
+ */
+function redirectToLogin(): Promise<never> | undefined {
   if (typeof window === 'undefined') return
   const redirect = currentRoutePath()
   if (redirect.startsWith('/login')) return
   location.assign(toBrowserUrl(`/login/?redirect=${encodeURIComponent(redirect)}`))
+  return new Promise<never>(() => {})
 }
 
 const post = (body: unknown = {}): RequestOptions => ({ method: 'POST', body: JSON.stringify(body) })

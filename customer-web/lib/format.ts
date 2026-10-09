@@ -5,11 +5,12 @@ export const yuan = (cents: number) => (cents / 100).toFixed(2).replace(/\.00$/,
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-/** 列表 / 详情用的时间：MM-DD HH:mm */
+/** 列表 / 详情用的时间：MM-DD HH:mm；不是今年的订单带上年份，避免跨年后混淆 */
 export function dateTime(value?: string | null): string {
   if (!value) return ''
   const d = new Date(value)
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const year = d.getFullYear() === new Date().getFullYear() ? '' : `${d.getFullYear()}-`
+  return `${year}${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 /** 状态时间线用：同一分钟内可能发生多次流转，带上秒 */
@@ -44,6 +45,18 @@ const REFUND_STATUS_TEXT: Record<RefundStatus, string> = {
   WITHDRAWN: '已撤回',
   OFFLINE: '已线下退款',
 }
+
+/** 状态卡片下的一句说明，告诉顾客接下来会发生什么 */
+const ORDER_STATUS_DESC: Record<OrderStatus, string> = {
+  PENDING_PAY: '',
+  PAID: '商家接单后开始制作，请留意订单进度',
+  MAKING: '后厨正在制作，请稍候',
+  READY: '菜品已做好，服务员马上送到桌上',
+  DONE: '感谢光临，欢迎再来',
+  CLOSED: '订单未支付已关闭，可以重新点餐',
+  CANCELLED: '款项已退回账户余额',
+}
+export const orderStatusDesc = (status: string) => (ORDER_STATUS_DESC as Record<string, string>)[status] ?? ''
 
 /** 后端可能先于前端新增状态：未知状态给兜底文案，不显示 undefined */
 export const orderStatusText = (status: string) => (ORDER_STATUS_TEXT as Record<string, string>)[status] ?? '处理中'

@@ -2,11 +2,11 @@
 
 import { Button, ErrorBlock, SpinLoading, Steps } from 'antd-mobile'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useState } from 'react'
-import { applyRefund, cancelOrder, payOrder, withdrawRefund } from '@/lib/api'
+import { Suspense, useEffect, useState } from 'react'
+import { applyRefund, cancelOrder, fetchMe, payOrder, withdrawRefund } from '@/lib/api'
 import { ignoreShownError } from '@/lib/errors'
 import {
-  countdownText, dateTime, dateTimeWithSeconds, itemOptionsText, orderStatusText, refundStatusText, statusLogText, yuan,
+  countdownText, dateTime, dateTimeWithSeconds, itemOptionsText, orderStatusDesc, orderStatusText, refundStatusText, statusLogText, yuan,
 } from '@/lib/format'
 import type { OrderDetail, RefundRecord } from '@/lib/types'
 import { useCountdown } from '@/hooks/useCountdown'
@@ -14,7 +14,7 @@ import { useOrderPolling } from '@/hooks/useOrderPolling'
 import { PageHeader } from '@/components/PageHeader'
 import { RefundSheet } from '@/components/RefundSheet'
 import { notify } from '@/store/feedback'
-import { confirmDialog } from '@/lib/ui'
+import { confirmDialog, copyText } from '@/lib/ui'
 import { menuPath } from '@/lib/navigation'
 import { useOrdering } from '@/store/ordering'
 
@@ -30,7 +30,9 @@ function StatusCard({ order, onExpire }: { order: OrderDetail; onExpire: () => v
             : '支付已超时，订单即将关闭'}
         </div>
       )}
-      {order.cancelReason && <div className="muted">{order.cancelReason}</div>}
+      {order.cancelReason
+        ? <div className="muted status-desc">{order.cancelReason}</div>
+        : orderStatusDesc(order.status) && <div className="muted status-desc">{orderStatusDesc(order.status)}</div>}
     </section>
   )
 }
@@ -63,6 +65,17 @@ function OrderView() {
   const table = useOrdering((state) => state.table)
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
+  const [balance, setBalance] = useState<number | null>(null)
+  const [actionSeq, setActionSeq] = useState(0)  // 每次操作后 +1，触发余额重新加载
+  const pendingPay = order?.status === 'PENDING_PAY'
+
+  // 待支付时显示余额，余额不足的原因一目了然；每次操作（如支付失败）后重新加载
+  useEffect(() => {
+    if (!pendingPay) return
+    let cancelled = false
+    fetchMe().then((me) => { if (!cancelled) setBalance(me.balance) }).catch((e: unknown) => { ignoreShownError(e) })
+    return () => { cancelled = true }
+  }, [pendingPay, actionSeq])
 
   const runOrderAction = async (action: () => Promise<unknown>, success?: string) => {
     if (busy) return
@@ -74,6 +87,7 @@ function OrderView() {
       ignoreShownError(e)  // 请求层已提示；下面刷新一次，显示服务端的最新状态
     } finally {
       await refresh()
+      setActionSeq((n) => n + 1)
       setBusy(false)
     }
   }
@@ -138,7 +152,13 @@ function OrderView() {
         </section>
 
         <section className="section-card">
-          <div className="row"><span>订单号</span><span className="muted selectable">{order.orderNo}</span></div>
+          <div className="row">
+            <span>订单号</span>
+            <span className="muted selectable">
+              {order.orderNo}
+              <button className="copy-link" onClick={async () => notify((await copyText(order.orderNo)) ? '订单号已复制' : '复制失败，请长按选择')}>复制</button>
+            </span>
+          </div>
           <div className="row"><span>下单时间</span><span>{dateTime(order.createdAt)}</span></div>
           {order.paidAt && <div className="row"><span>支付时间</span><span>{dateTime(order.paidAt)}</span></div>}
           <div className="row"><span>就餐人数</span><span>{order.peopleCount}</span></div>
@@ -178,9 +198,14 @@ function OrderView() {
         )}
 
         <section className="order-actions">
-          {order.status === 'PENDING_PAY' && (
+          {order.status === 'PENDING_PAY' && <>
             <Button block color="primary" size="large" loading={busy} onClick={pay}>余额支付 ¥{yuan(order.payAmount)}</Button>
-          )}
+            {balance !== null && (
+              <div className={`pay-balance ${balance < order.payAmount ? 'warning' : 'muted'}`}>
+                账户余额 ¥{yuan(balance)}{balance < order.payAmount ? `，还差 ¥${yuan(order.payAmount - balance)}，请联系店员充值后再支付` : ''}
+              </div>
+            )}
+          </>}
           <div className="order-actions-row">
             {order.canCancel && <Button disabled={busy} onClick={cancel}>取消订单</Button>}
             {activeApplying && (

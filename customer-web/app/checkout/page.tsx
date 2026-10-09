@@ -2,8 +2,8 @@
 
 import { Button, Form, Stepper, TextArea } from 'antd-mobile'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { createOrder, payOrder, resolveTable } from '@/lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import { ApiError, createOrder, fetchMe, payOrder, resolveTable } from '@/lib/api'
 import { getToken } from '@/lib/auth'
 import { ignoreShownError } from '@/lib/errors'
 import { itemOptionsText, yuan } from '@/lib/format'
@@ -17,10 +17,20 @@ const REQUEST_ID_KEY = 'ordering_checkout_request_id'
 // 未登录时先保存人数和备注，登录回来后恢复
 const DRAFT_KEY = 'ordering_checkout_draft'
 
+/** 下单失败后应回菜单重新加载的业务码：售罄 / 库存不足、打烊、菜品已下架（状态冲突）、桌码失效 */
+const BACK_TO_MENU_CODES = new Set([60001, 60002, 40901, 40402])
+
+/** crypto.randomUUID 只在 HTTPS / localhost 可用；局域网 http 真机联调时降级为随机字节 */
+function newRequestId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 function requestId() {
   const existing = sessionStorage.getItem(REQUEST_ID_KEY)
   if (existing) return existing
-  const created = crypto.randomUUID()
+  const created = newRequestId()
   sessionStorage.setItem(REQUEST_ID_KEY, created)
   return created
 }
@@ -36,11 +46,24 @@ export default function CheckoutPage() {
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)  // null：尚未在浏览器端读取登录态
+  const [balance, setBalance] = useState<number | null>(null)  // null：未登录或尚未加载
   const total = cartTotal(items)
   const returnToMenu = menuPath(table?.qrToken)
+  // 余额不足时不创建订单：避免生成一笔待支付订单、占用限量库存，再让顾客手动取消
+  const insufficient = balance !== null && balance < total
+
+  const loadBalance = useCallback(async () => {
+    if (!getToken()) return
+    try {
+      setBalance((await fetchMe()).balance)
+    } catch (e) {
+      ignoreShownError(e)  // 加载失败不拦截下单，由服务端兜底校验余额
+    }
+  }, [])
 
   useEffect(() => {
     setLoggedIn(getToken() != null)
+    void loadBalance()
     const draft = sessionStorage.getItem(DRAFT_KEY)
     if (draft) {
       sessionStorage.removeItem(DRAFT_KEY)
@@ -52,7 +75,7 @@ export default function CheckoutPage() {
         // 草稿损坏：忽略，顾客重新填写即可
       }
     }
-  }, [])
+  }, [loadBalance])
 
   // 进入确认页时刷新营业状态：在菜单页停留期间可能已经打烊
   useEffect(() => {
@@ -68,6 +91,10 @@ export default function CheckoutPage() {
     if (!getToken()) {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ peopleCount, remark }))
       router.push(`/login?redirect=${encodeURIComponent('/checkout')}`)
+      return
+    }
+    if (insufficient) {
+      notify('账户余额不足，请联系店员充值')
       return
     }
     setSubmitting(true)
@@ -89,11 +116,16 @@ export default function CheckoutPage() {
       notify(paid ? '支付成功' : '支付未完成，可在订单中重试', paid ? 'success' : 'info')
     } catch (e) {
       // 下单失败：保留 requestId，重试时服务端幂等；支付失败（如余额不足）：订单已创建，去详情页继续处理
+      if (!orderNo) setSubmitting(false)
       ignoreShownError(e)
-    } finally {
-      setSubmitting(false)
-      if (orderNo) router.replace(`/order?orderNo=${encodeURIComponent(orderNo)}`)
+      if (!orderNo && e instanceof ApiError && BACK_TO_MENU_CODES.has(e.code)) {
+        // 菜单已变化（售罄、下架、打烊、桌码失效）：留在结算页重试没有意义，回菜单重新加载并整理购物车
+        router.replace(returnToMenu)
+        return
+      }
     }
+    // 成功：保持 submitting，直到详情页替换掉本页（否则先渲染一帧「购物车是空的」）
+    if (orderNo) router.replace(`/order?orderNo=${encodeURIComponent(orderNo)}`)
   }
 
   if (loggedIn === null) return null
@@ -108,9 +140,9 @@ export default function CheckoutPage() {
     </>
   }
 
-  const actionText = !table.storeOpen ? '已打烊' : loggedIn ? '余额支付' : '登录并支付'
+  const actionText = !table.storeOpen ? '已打烊' : !loggedIn ? '登录并支付' : insufficient ? '余额不足' : '余额支付'
   return (
-    <div className="page">
+    <div className="page with-action">
       <PageHeader fallback={returnToMenu}>确认订单</PageHeader>
       <div className="content-page">
         <section className="section-card">
@@ -146,11 +178,23 @@ export default function CheckoutPage() {
             </Form.Item>
           </Form>
         </section>
+        {balance !== null && (
+          <section className={`section-card balance-row ${insufficient ? 'insufficient' : ''}`}>
+            <div className="row">
+              <span>账户余额</span>
+              <span className="row-value">
+                <strong>¥{yuan(balance)}</strong>
+                <button className="soft-link small" onClick={() => void loadBalance()}>刷新</button>
+              </span>
+            </div>
+            {insufficient && <div className="warning">余额不足以支付本单（差 ¥{yuan(total - balance)}），请联系店员充值后刷新余额。</div>}
+          </section>
+        )}
         <p className="hint">实际金额以服务端计算为准；提交后从账户余额扣款，取消或退款原路退回余额。</p>
       </div>
       <div className="sticky-action">
         <strong className="amount-large">¥{yuan(total)}</strong>
-        <Button color="primary" size="large" shape='rounded' loading={submitting} disabled={!table.storeOpen} onClick={submit}>{actionText}</Button>
+        <Button color="primary" size="large" shape='rounded' loading={submitting} disabled={!table.storeOpen || insufficient} onClick={submit}>{actionText}</Button>
       </div>
     </div>
   )
