@@ -8,7 +8,8 @@ import { imageSrc, yuan } from '@/lib/format'
 import type { Dish, MenuView, Selection, TableInfo } from '@/lib/types'
 import { MAX_QUANTITY, dishLimit, dishQuantity, useOrdering } from '@/store/ordering'
 import { notify } from '@/store/feedback'
-import { EmptyState, PersonIcon, Price, PillButton, SearchIcon, Skeleton, Stepper, Tile } from './ui'
+import { alertDialog } from '@/lib/ui'
+import { CloseIcon, EmptyState, PersonIcon, Price, PillButton, SearchIcon, Skeleton, Stepper, Tile } from './ui'
 import { ActiveOrderBanner } from './ActiveOrderBanner'
 import { CartBar } from './CartBar'
 import { DishDetail } from './DishDetail'
@@ -35,6 +36,7 @@ export function MenuClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const dishesRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const scrollingTo = useRef<number | null>(null)
   const scrollStopTimer = useRef<number | undefined>(undefined)
   const loadedAt = useRef(0)
@@ -145,6 +147,7 @@ export function MenuClient() {
   }
 
   const addDish = (dish: Dish) => { if (hasOptions(dish)) setSpecDish(dish); else addToCart(dish) }
+  const clearSearch = () => { setKeyword(''); searchRef.current?.focus() }
 
   const changeDirectQuantity = (dish: Dish, value: number) => {
     const item = items.find((i) => i.dishId === dish.id)
@@ -174,6 +177,7 @@ export function MenuClient() {
           min={0}
           max={dishLimit(dish)}
           hideMinusAtMin
+          label={dish.name}
           onChange={(value) => (quantity ? changeDirectQuantity(dish, value) : addDish(dish))}
         />
       )
@@ -184,15 +188,15 @@ export function MenuClient() {
           <Tile name={dish.name} image={dish.image ? imageSrc(dish.image) : null} className="dish-tile-inner" />
         </button>
         <div className="dish-main">
-          <div className="dish-name" onClick={() => setDetailDish(dish)}>{dish.name}</div>
-          {dish.description && <div className="dish-desc" onClick={() => setDetailDish(dish)}>{dish.description}</div>}
-          <div className="dish-foot">
-            <span>
-              <Price value={yuan(dish.price)} suffix={hasOptions(dish) ? '起' : undefined} />
-              {limited && <span className="stock-tip">仅剩 {dish.remainingStock} 份</span>}
-            </span>
-            {action}
-          </div>
+          <button className="dish-info" onClick={() => setDetailDish(dish)} aria-label={`查看${dish.name}介绍`}>
+            <span className="dish-name">{dish.name}</span>
+            {dish.description && <span className="dish-desc">{dish.description}</span>}
+          </button>
+          {limited && <span className="stock-tip">仅剩 {dish.remainingStock} 份</span>}
+        </div>
+        <div className="dish-foot">
+          <Price value={yuan(dish.price)} suffix={hasOptions(dish) ? '起' : undefined} />
+          {action}
         </div>
       </article>
     )
@@ -229,25 +233,31 @@ export function MenuClient() {
         <div className="menu-hero-row">
           <div>
             <div className="menu-store">{table.storeName}</div>
-            <div className="menu-table">{table.tableCode}桌 · 堂食</div>
+            <div className="menu-table"><span className="menu-table-badge">{table.tableCode}桌</span><span>堂食 · {table.storeOpen ? '营业中' : '已打烊'}</span></div>
           </div>
           {accountButton()}
         </div>
         <div className="search-field">
           <SearchIcon />
-          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索菜品" aria-label="搜索菜品" />
+          <input ref={searchRef} type="search" enterKeyHint="search" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="想吃什么？搜菜名或口味" aria-label="搜索菜品" />
+          {keyword && <button className="icon-button search-clear" aria-label="清空搜索" onClick={clearSearch}><CloseIcon /></button>}
         </div>
       </header>
+      <button className="menu-payment-note" onClick={() => void alertDialog('本店使用会员余额支付', '可以先选菜，结算前再登录。没有会员账号或余额不足，请联系店员开户、充值。充值后可在结算页刷新余额。')}>
+        <span><strong>会员余额支付</strong><span>首次用餐请联系店员开户</span></span>
+        <span className="menu-note-link">须知 ›</span>
+      </button>
       {!table.storeOpen && <div className="menu-closed">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
       <ActiveOrderBanner />
 
       {matched ? (
-        <div className="dishes" style={{ flex: 1, minHeight: 0 }}>
-          {matched.length ? matched.map(dishRow) : <EmptyState inset title="没有找到相关菜品" desc={`试试换个词，当前搜索「${keyword.trim()}」`} />}
+        <div className="dishes search-results">
+          <div className="search-summary" role="status">找到 {matched.length} 道菜品</div>
+          {matched.length ? matched.map(dishRow) : <EmptyState inset title="没有找到相关菜品" desc={`试试换个词，当前搜索「${keyword.trim()}」`} action={<PillButton variant="plain" onClick={clearSearch}>查看全部菜品</PillButton>} />}
         </div>
       ) : (
         <div className="menu-body">
-          <nav className="cats">
+          <nav className="cats" aria-label="菜品分类">
             {menu?.categories.map((category) => {
               const count = category.dishes.reduce((sum, dish) => sum + dishQuantity(items, dish.id), 0)
               return (

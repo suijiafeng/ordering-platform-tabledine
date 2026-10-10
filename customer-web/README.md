@@ -38,3 +38,17 @@ STATIC_EXPORT=true npm run build
 ```
 
 产物位于 `out/`，由 Nginx 在 `/h5/` 提供，与后端 API 同域。生产部署时 `deploy/nginx/Dockerfile` 会在镜像里执行这一步，不需要手动构建。
+
+## 顾客体验回归
+
+```bash
+npx playwright install chromium
+npm run test:ux
+```
+
+测试自动启动开发服务器，使用模拟接口，不依赖后端，也不会产生真实订单或扣款。
+覆盖 320 / 375 / 430 / 768px 菜单布局、购物车和规格弹层、登录返回保留草稿、余额查询与充值后刷新、价格变化后二次确认，以及支付结果异常和订单进度。
+可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定已有 Chromium。
+真实扣款、退款及店员充值仍需连接后端验收。
+
+本轮体验约定：加减按钮点击区域为 44px；菜单提前说明会员余额支付；结算明确使用「确认并支付」；支付结果页取得真实订单状态后才显示成功。

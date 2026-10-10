@@ -1,15 +1,16 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
-import { ApiError, createOrder, fetchMe, payOrder, resolveTable } from '@/lib/api'
+import { useEffect, useState } from 'react'
+import { ApiError, createOrder, payOrder, resolveTable } from '@/lib/api'
 import { getToken } from '@/lib/auth'
 import { ignoreShownError } from '@/lib/errors'
 import { itemOptionsText, yuan } from '@/lib/format'
 import { cartCount, cartTotal, useOrdering } from '@/store/ordering'
 import { menuPath } from '@/lib/navigation'
 import { notify } from '@/store/feedback'
-import { AppBar, BottomBar, Card, EmptyState, PillButton, Stepper } from '@/components/ui'
+import { useMemberBalance } from '@/hooks/useMemberBalance'
+import { AppBar, BottomBar, Card, EmptyState, PillButton, Price, Skeleton, Stepper } from '@/components/ui'
 
 // 同一次提交（含刷新页面后重试）复用同一个 clientRequestId，服务端据此幂等；下单成功后才换新的
 const REQUEST_ID_KEY = 'ordering_checkout_request_id'
@@ -43,24 +44,14 @@ export default function CheckoutPage() {
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)  // null：尚未在浏览器端读取登录态
-  const [balance, setBalance] = useState<number | null>(null)     // null：未登录或尚未加载
+  const { balance, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(loggedIn === true)
   const total = cartTotal(items)
   const returnToMenu = menuPath(table?.qrToken)
   // 余额不足时不创建订单：避免生成一笔待支付订单、占用限量库存，再让顾客手动取消
   const insufficient = balance !== null && balance < total
 
-  const loadBalance = useCallback(async () => {
-    if (!getToken()) return
-    try {
-      setBalance((await fetchMe()).balance)
-    } catch (e) {
-      ignoreShownError(e)  // 加载失败不拦截下单，由服务端兜底校验余额
-    }
-  }, [])
-
   useEffect(() => {
     setLoggedIn(getToken() != null)
-    void loadBalance()
     const draft = sessionStorage.getItem(DRAFT_KEY)
     if (draft) {
       sessionStorage.removeItem(DRAFT_KEY)
@@ -72,7 +63,7 @@ export default function CheckoutPage() {
         // 草稿损坏：忽略，顾客重新填写即可
       }
     }
-  }, [loadBalance])
+  }, [])
 
   // 进入确认页时刷新营业状态：在菜单页停留期间可能已经打烊
   useEffect(() => {
@@ -84,7 +75,7 @@ export default function CheckoutPage() {
   }, [setTable])
 
   const submit = async () => {
-    if (!table || !items.length || submitting) return
+    if (!table || !table.storeOpen || !items.length || submitting) return
     if (!getToken()) {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ peopleCount, remark }))
       router.push(`/login?redirect=${encodeURIComponent('/checkout')}`)
@@ -106,6 +97,12 @@ export default function CheckoutPage() {
       orderNo = order.orderNo
       sessionStorage.removeItem(REQUEST_ID_KEY)
       clear()
+      // 结算金额变动时先交给顾客确认，不能按旧页面展示的金额直接支付。
+      if (order.payAmount !== total) {
+        notify('菜品价格已更新，请核对后支付')
+        router.replace(`/order?orderNo=${encodeURIComponent(orderNo)}`)
+        return
+      }
       if (await payOrder(orderNo)) { router.replace(`/paid?orderNo=${encodeURIComponent(orderNo)}`); return }
       notify('支付未完成，可在订单中重试')
     } catch (e) {
@@ -122,8 +119,8 @@ export default function CheckoutPage() {
     if (orderNo) router.replace(`/order?orderNo=${encodeURIComponent(orderNo)}`)
   }
 
-  if (loggedIn === null) return null
-  if (submitting && !items.length) return <div className="center-state full"><span className="spinner" /><div className="t-note">正在支付…</div></div>
+  if (loggedIn === null) return <div className="screen"><AppBar title="确认订单" fallback={returnToMenu} /><Skeleton variant="card" rows={3} label="正在准备结算…" /></div>
+  if (submitting && !items.length) return <div className="center-state full" role="status"><span className="spinner" /><div className="t-title">正在确认支付结果</div><div className="t-note">请稍候，可在「我的订单」查看进度</div></div>
   if (!table || !items.length) {
     return (
       <div className="screen">
@@ -133,7 +130,7 @@ export default function CheckoutPage() {
     )
   }
 
-  const actionText = !table.storeOpen ? '已打烊' : !loggedIn ? '登录并支付' : insufficient ? '余额不足' : '提交订单'
+  const actionText = !table.storeOpen ? '已打烊' : !loggedIn ? '登录后确认' : insufficient ? '刷新余额' : '确认并支付'
   return (
     <div className="screen has-bar">
       <AppBar title="确认订单" fallback={returnToMenu} />
@@ -143,11 +140,31 @@ export default function CheckoutPage() {
             <div className="label">用餐桌号</div>
             <div className="value">{table.tableCode}桌</div>
           </div>
-          <div className="t-note">{table.storeName}</div>
+          <div className="checkout-store"><strong>{table.storeName}</strong><span>堂食 · 请确认桌号后再支付</span></div>
+        </Card>
+
+        <Card className="checkout-payment">
+          <div className="section-heading">
+            <h2 className="card-title">余额支付</h2>
+            {loggedIn && <button className="text-action" disabled={balanceLoading} onClick={() => void refreshBalance()}>{balanceLoading ? '刷新中…' : '刷新余额'}</button>}
+          </div>
+          <div role="status" aria-live="polite">
+            {!loggedIn ? <>
+              <p className="payment-lead">选好的菜品已保留，登录后再确认支付</p>
+              <p className="payment-note">本店使用会员余额。首次用餐或忘记密码，请联系店员协助。</p>
+            </> : balanceLoading ? <p className="payment-note">正在查询余额…</p>
+              : balanceFailed ? <p className="payment-note">暂时无法查询余额，请刷新重试。支付结果以实际余额为准。</p>
+                : balance !== null && <>
+                  <div className="balance-amount"><span>当前可用</span><Price value={yuan(balance)} /></div>
+                  {insufficient
+                    ? <p className="balance-warning">还差 ¥{yuan(total - balance)}，请联系店员充值后刷新余额。</p>
+                    : <p className="payment-note">本次支付 ¥{yuan(total)}，预计剩余 ¥{yuan(balance - total)}</p>}
+                </>}
+          </div>
         </Card>
 
         <Card>
-          <h2 className="card-title">菜品清单（{cartCount(items)} 件）</h2>
+          <div className="section-heading"><h2 className="card-title">已选菜品 · {cartCount(items)} 件</h2><button className="text-action" onClick={() => router.push(returnToMenu)}>返回修改</button></div>
           {items.map((item) => (
             <div className="li" key={item.key}>
               <span className="li-name">
@@ -163,11 +180,12 @@ export default function CheckoutPage() {
         <Card>
           <div className="field-row">
             <span className="t-value">就餐人数</span>
-            <Stepper value={peopleCount} min={1} max={50} onChange={setPeopleCount} />
+            <Stepper label="就餐人数" value={peopleCount} min={1} max={50} onChange={setPeopleCount} />
           </div>
           <div className="field-block">
-            <div className="label">备注</div>
+            <label className="label" htmlFor="order-remark">口味备注<span className="optional-label">选填</span></label>
             <textarea
+              id="order-remark"
               className="textarea"
               value={remark}
               maxLength={100}
@@ -178,32 +196,21 @@ export default function CheckoutPage() {
           </div>
         </Card>
 
-        {balance !== null && (
-          <Card className="balance-card">
-            <span className="t-label">余额</span>
-            <span className="t-value">
-              ¥{yuan(balance)}
-              <button className="mini-btn" style={{ marginLeft: 8 }} onClick={() => void loadBalance()}>刷新</button>
-            </span>
-            {insufficient && <div className="warn-line">余额不够支付本单（差 ¥{yuan(total - balance)}），请联系店员充值后刷新余额。</div>}
-          </Card>
-        )}
-
         <Card>
           <div className="kv"><span>菜品小计</span><span>¥{yuan(total)}</span></div>
           <div className="kv strong"><span>应付</span><span>¥{yuan(total)}</span></div>
         </Card>
-        <p className="t-faint" style={{ margin: '4px 4px 0', lineHeight: 1.6 }}>
-          最终金额以提交后的结算结果为准；支付时从余额抵扣，取消或退款会退回到余额。
+        <p className="checkout-footnote">
+          确认后将从会员余额支付。如菜品价格有变化，会请你重新核对。退款会退回到余额。
         </p>
       </div>
 
       <BottomBar>
         <div className="bar-total grow">
           <span className="label">应付</span>
-          <span className="value">¥{yuan(total)}</span>
+          <span className="value"><Price value={yuan(total)} /></span>
         </div>
-        <PillButton loading={submitting} disabled={!table.storeOpen || insufficient} onClick={submit}>{actionText}</PillButton>
+        <PillButton loading={submitting || (insufficient && balanceLoading)} loadingLabel={submitting ? '正在提交…' : '刷新中…'} disabled={!table.storeOpen} onClick={insufficient && loggedIn ? refreshBalance : submit}>{actionText}</PillButton>
       </BottomBar>
     </div>
   )

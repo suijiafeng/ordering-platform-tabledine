@@ -6,7 +6,7 @@ import { imageSrc, yuan } from '@/lib/format'
 import { hasOptions } from '@/lib/pricing'
 import { getAppShell } from '@/lib/ui'
 import type { Dish } from '@/lib/types'
-import { PillButton, Price, Tile } from './ui'
+import { CloseIcon, PillButton, Price, Tile } from './ui'
 
 interface Props { dish: Dish | null; onClose: () => void; onAdd: (dish: Dish) => void }
 
@@ -18,7 +18,10 @@ export function DishDetail({ dish, onClose, onAdd }: Props) {
   return (
     <Popup visible={dish !== null} position="bottom" getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={onClose}>
       <div className="sheet">
-        <div className="sheet-grip" />
+        <div className="sheet-head">
+          <span className="t-title">菜品详情</span>
+          <button className="icon-button" aria-label="关闭菜品详情" onClick={onClose}><CloseIcon /></button>
+        </div>
         {shown && (
           <div className="sheet-pad">
             <Tile name={shown.name} image={shown.image ? imageSrc(shown.image) : null} className="detail-art" />

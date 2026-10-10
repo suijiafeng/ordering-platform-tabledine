@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { imageSrc, itemOptionsText, yuan } from '@/lib/format'
 import { confirmDialog, getAppShell } from '@/lib/ui'
 import { cartCount, cartTotal, itemMax, useOrdering } from '@/store/ordering'
-import { CartIcon, PillButton, Stepper, Tile } from './ui'
+import { CartIcon, CloseIcon, PillButton, Price, Stepper, Tile } from './ui'
 
 /** 底部购物车栏：点击展开已选商品，可改数量 / 清空；展开时底栏浮在列表上方，可直接下单；打烊时不能下单 */
 export function CartBar({ disabled }: { disabled: boolean }) {
@@ -23,17 +23,20 @@ export function CartBar({ disabled }: { disabled: boolean }) {
   }
 
   return <>
-    <Popup visible={showList} position="bottom" getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={() => setOpen(false)}>
+    <Popup destroyOnClose visible={showList} position="bottom" getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={() => setOpen(false)}>
       <div className="sheet">
         <div className="sheet-head">
-          <span className="t-title">购物车</span>
-          <button className="btn btn-ghost" onClick={clearCart}>清空</button>
+          <span className="t-title">已选菜品</span>
+          <div className="sheet-head-actions">
+            <button className="text-action" onClick={clearCart}>清空</button>
+            <button className="icon-button" aria-label="关闭购物车" onClick={() => setOpen(false)}><CloseIcon /></button>
+          </div>
         </div>
         <div className="sheet-strip">
           <span>{table ? `${table.tableCode}桌 · 堂食` : ''}</span>
           <span>共 {count} 件</span>
         </div>
-        <div className="sheet-scroll" style={{ paddingBottom: 'calc(87px + var(--safe-bottom))' }}>
+        <div className="sheet-scroll cart-items">
           {items.map((item) => (
             <div className="cart-row" key={item.key}>
               <Tile name={item.name} image={item.image ? imageSrc(item.image) : null} />
@@ -42,7 +45,7 @@ export function CartBar({ disabled }: { disabled: boolean }) {
                 {itemOptionsText(item) && <div className="t-cap">{itemOptionsText(item)}</div>}
                 <div className="unit">¥{yuan(item.unitPrice)} / 份</div>
               </div>
-              <Stepper value={item.quantity} min={0} max={itemMax(items, item)} onChange={(value) => setQuantity(item.key, value)} />
+              <Stepper label={item.name} value={item.quantity} min={0} max={itemMax(items, item)} onChange={(value) => setQuantity(item.key, value)} />
             </div>
           ))}
         </div>
@@ -50,18 +53,18 @@ export function CartBar({ disabled }: { disabled: boolean }) {
     </Popup>
 
     <div className={`cart-bar ${showList ? 'lifted' : ''}`.trim()}>
-      <button className="cart-open" onClick={() => count && setOpen((v) => !v)} aria-label="查看购物车">
+      <button className="cart-open" disabled={!count} onClick={() => setOpen((v) => !v)} aria-label={`查看购物车，已选 ${count} 件`} aria-expanded={showList}>
         <span className={`cart-ball ${count ? '' : 'empty'}`.trim()}>
           <CartIcon />
           {count > 0 && <span className="cart-badge">{count}</span>}
         </span>
         <span className="cart-sum">
-          <span className="value">{count ? `¥${yuan(cartTotal(items))}` : '还没选菜'}</span>
+          <span className="value">{count ? <Price value={yuan(cartTotal(items))} /> : '还没选菜'}</span>
           <span className="sub">{count ? `共 ${count} 件，点击查看` : '先去挑几道菜吧'}</span>
         </span>
       </button>
       <PillButton size="md" disabled={!count || disabled} onClick={() => { setOpen(false); router.push('/checkout') }}>
-        {disabled ? '已打烊' : '去下单'}
+        {disabled ? '已打烊' : '去结算'}
       </PillButton>
     </div>
   </>
