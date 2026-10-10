@@ -1,13 +1,14 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useState } from 'react'
-import { applyRefund, cancelOrder, fetchMe, payOrder, withdrawRefund } from '@/lib/api'
+import { Suspense, useState } from 'react'
+import { applyRefund, cancelOrder, payOrder, withdrawRefund } from '@/lib/api'
 import { ignoreShownError } from '@/lib/errors'
 import {
   countdownText, dateTime, dateTimeWithSeconds, itemOptionsText, orderStatusDesc, orderStatusText, refundStatusText, statusLogText, yuan,
 } from '@/lib/format'
 import type { OrderDetail, OrderStatus, RefundRecord } from '@/lib/types'
+import { useMemberBalance } from '@/hooks/useMemberBalance'
 import { useCountdown } from '@/hooks/useCountdown'
 import { useOrderPolling } from '@/hooks/useOrderPolling'
 import { RefundSheet } from '@/components/RefundSheet'
@@ -17,16 +18,16 @@ import { menuPath } from '@/lib/navigation'
 import { useOrdering } from '@/store/ordering'
 import { AppBar, BottomBar, Card, EmptyState, PillButton, Skeleton } from '@/components/ui'
 
-/** 进行中订单的三段进度；PAID（待接单）时三个点都还没亮 */
+/** 已支付、制作中、已出餐：支付完成后立即点亮第一步，避免看起来仍未提交。 */
 const STEPS = [
-  { label: '已接单', from: ['MAKING', 'READY'] },
+  { label: '已支付', from: ['PAID', 'MAKING', 'READY'] },
   { label: '制作中', from: ['MAKING', 'READY'] },
-  { label: '待取餐', from: ['READY'] },
+  { label: '已出餐', from: ['READY'] },
 ] as const
 const IN_PROGRESS: OrderStatus[] = ['PAID', 'MAKING', 'READY']
 
 function StatusCard({ order }: { order: OrderDetail }) {
-  const now = order.status === 'MAKING' ? 1 : order.status === 'READY' ? 2 : -1
+  const now = order.status === 'MAKING' ? 1 : order.status === 'READY' ? 2 : 0
   return (
     <div className="status-card">
       <div className="title">{orderStatusText(order.status)}</div>
@@ -34,7 +35,7 @@ function StatusCard({ order }: { order: OrderDetail }) {
       {IN_PROGRESS.includes(order.status) && (
         <div className="steps">
           {STEPS.map((step, index) => (
-            <div key={step.label} className={`step ${(step.from as readonly string[]).includes(order.status) ? 'done' : ''} ${index === now ? 'now' : ''}`.trim()}>
+            <div key={step.label} aria-current={index === now ? 'step' : undefined} className={`step ${(step.from as readonly string[]).includes(order.status) ? 'done' : ''} ${index === now ? 'now' : ''}`.trim()}>
               <span className="pt" />
               {step.label}
             </div>
@@ -87,17 +88,9 @@ function OrderView() {
   const table = useOrdering((state) => state.table)
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
-  const [balance, setBalance] = useState<number | null>(null)
-  const [actionSeq, setActionSeq] = useState(0)  // 每次操作后 +1，触发余额重新加载
   const pendingPay = order?.status === 'PENDING_PAY'
-
-  // 待支付时显示余额，余额不足的原因一目了然；每次操作（如支付失败）后重新加载
-  useEffect(() => {
-    if (!pendingPay) return
-    let cancelled = false
-    fetchMe().then((me) => { if (!cancelled) setBalance(me.balance) }).catch((e: unknown) => { ignoreShownError(e) })
-    return () => { cancelled = true }
-  }, [pendingPay, actionSeq])
+  const { balance, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(pendingPay)
+  const insufficient = balance !== null && !!order && balance < order.payAmount
 
   const runOrderAction = async (action: () => Promise<unknown>, success?: string) => {
     if (busy) return
@@ -109,13 +102,13 @@ function OrderView() {
       ignoreShownError(e)  // 请求层已提示；下面刷新一次，显示服务端的最新状态
     } finally {
       await refresh()
-      setActionSeq((n) => n + 1)
+      void refreshBalance()
       setBusy(false)
     }
   }
 
   const pay = async () => {
-    if (!order || !(await confirmDialog('确认支付？', `将从余额中支付 ¥${yuan(order.payAmount)}`, '确认支付'))) return
+    if (busy || !order || insufficient || !(await confirmDialog('确认支付？', `将从余额中支付 ¥${yuan(order.payAmount)}`, '确认支付'))) return
     void runOrderAction(async () => {
       if (await payOrder(orderNo)) { router.replace(`/paid?orderNo=${encodeURIComponent(orderNo)}`); return }
       if (await confirmDialog('支付失败', '支付未成功，请检查网络后重试', '重新支付', '稍后再说')) void pay()
@@ -159,14 +152,16 @@ function OrderView() {
         {pendingPay ? <>
           <Cashier order={order} onExpire={() => void refresh()} />
           <Card>
-            <h2 className="card-title">选择支付方式</h2>
+            <div className="section-heading"><h2 className="card-title">余额支付</h2><button className="text-action" disabled={balanceLoading || busy} onClick={() => void refreshBalance()}>{balanceLoading ? '刷新中…' : '刷新余额'}</button></div>
             <div className="pay-row">
               <span className="pay-icon" aria-hidden="true">余</span>
               <div className="pay-main">
-                <div className="name">余额支付</div>
-                {balance !== null && (
+                <div className="name">从本店会员余额支付</div>
+                {balanceLoading && <div className="sub" role="status">正在查询余额…</div>}
+                {balanceFailed && <div className="sub" role="status">余额查询失败，请刷新重试</div>}
+                {!balanceLoading && balance !== null && (
                   <div className={`sub ${balance < order.payAmount ? 'danger' : ''}`.trim()}>
-                    当前余额 ¥{yuan(balance)}{balance < order.payAmount ? `，还差 ¥${yuan(order.payAmount - balance)}，请联系店员充值` : ' · 安全快捷'}
+                    当前余额 ¥{yuan(balance)}{balance < order.payAmount ? `，还差 ¥${yuan(order.payAmount - balance)}，请联系店员充值` : ''}
                   </div>
                 )}
               </div>
@@ -262,7 +257,7 @@ function OrderView() {
 
       {pendingPay ? (
         <BottomBar stack>
-          <PillButton size="lg" block loading={busy} onClick={pay}>确认支付 ¥{yuan(order.payAmount)}</PillButton>
+          <PillButton size="lg" block loading={busy || (insufficient && balanceLoading)} loadingLabel={busy ? '正在处理…' : '刷新中…'} onClick={insufficient ? refreshBalance : pay}>{insufficient ? '充值后刷新余额' : `确认支付 ¥${yuan(order.payAmount)}`}</PillButton>
           <div className="bar-hint">
             支付失败可在「我的订单」中重新支付
             {order.canCancel && <> · <button className="link" disabled={busy} onClick={cancel}>取消订单</button></>}

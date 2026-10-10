@@ -58,6 +58,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ux
       # 与生产部署一致：静态导出，产物与后端 API 同域部署
       - run: npm run build
         env:

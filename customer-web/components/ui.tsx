@@ -41,31 +41,32 @@ type ButtonProps = {
   size?: 'lg' | 'md' | 'sm'
   block?: boolean
   loading?: boolean
+  loadingLabel?: string
   children: ReactNode
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>
 
-export function PillButton({ variant = 'primary', size = 'md', block, loading, disabled, className = '', children, ...rest }: ButtonProps) {
+export function PillButton({ variant = 'primary', size = 'md', block, loading, loadingLabel = '处理中…', disabled, className = '', children, ...rest }: ButtonProps) {
   const classes = ['btn', `btn-${size}`, `btn-${variant}`, block ? 'btn-block' : '', loading ? 'btn-busy' : '', className]
   return (
-    <button className={classes.filter(Boolean).join(' ')} disabled={disabled || loading} {...rest}>
-      {loading ? '处理中…' : children}
+    <button type="button" className={classes.filter(Boolean).join(' ')} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
+      {loading ? loadingLabel : children}
     </button>
   )
 }
 
 /* ---------- 步进器 ---------- */
 
-export function Stepper({ value, min = 0, max = 99, onChange, hideMinusAtMin = false }: {
-  value: number; min?: number; max?: number; onChange: (value: number) => void; hideMinusAtMin?: boolean
+export function Stepper({ value, min = 0, max = 99, onChange, hideMinusAtMin = false, label = '数量' }: {
+  value: number; min?: number; max?: number; onChange: (value: number) => void; hideMinusAtMin?: boolean; label?: string
 }) {
   const showMinus = !(hideMinusAtMin && value <= min)
   return (
     <span className="stepper">
       {showMinus && <>
-        <button className="step-btn step-minus" aria-label="减少" disabled={value <= min} onClick={() => onChange(value - 1)}>−</button>
-        <span className="step-value">{value}</span>
+        <button type="button" className="step-btn step-minus" aria-label={`减少${label}`} disabled={value <= min} onClick={() => onChange(value - 1)}><span>−</span></button>
+        <span className="step-value" aria-live="polite" aria-atomic="true"><span className="sr-only">{label}：</span>{value}</span>
       </>}
-      <button className="step-btn step-plus" aria-label="增加" disabled={value >= max} onClick={() => onChange(value + 1)}>+</button>
+      <button type="button" className="step-btn step-plus" aria-label={`增加${label}`} disabled={value >= max} onClick={() => onChange(value + 1)}><span>+</span></button>
     </span>
   )
 }
@@ -89,7 +90,7 @@ export function Tile({ name, image, className = '' }: { name: string; image?: st
 }
 
 export const Chip = ({ on, onClick, children }: { on?: boolean; onClick?: () => void; children: ReactNode }) =>
-  <button className={`chip ${on ? 'on' : ''}`.trim()} onClick={onClick}>{children}</button>
+  <button type="button" className={`chip ${on ? 'on' : ''}`.trim()} aria-pressed={!!on} onClick={onClick}>{children}</button>
 
 /* ---------- 金额 ---------- */
 
@@ -166,6 +167,12 @@ export function Skeleton({ rows = 3, label = '加载中…', variant = 'media' }
 export const FieldError = ({ children }: { children: ReactNode }) => <div className="field-error">{children}</div>
 
 /* ---------- 图标（内联 SVG，避免 emoji 跨平台不一致） ---------- */
+
+export const CloseIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+    <path d="m6 6 12 12M18 6 6 18" />
+  </svg>
+)
 
 export const SearchIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">

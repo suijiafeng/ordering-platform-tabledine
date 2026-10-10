@@ -7,7 +7,7 @@ import { imageSrc, yuan } from '@/lib/format'
 import type { Dish, Selection } from '@/lib/types'
 import { notify } from '@/store/feedback'
 import { getAppShell } from '@/lib/ui'
-import { Chip, PillButton, Price, Stepper, Tile } from './ui'
+import { Chip, CloseIcon, PillButton, Price, Stepper, Tile } from './ui'
 
 interface Props {
   dish: Dish | null
@@ -28,7 +28,10 @@ export function SpecSheet({ dish, maxQuantity, onClose, onConfirm }: Props) {
   return (
     <Popup visible={dish !== null} position="bottom" getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={onClose} destroyOnClose>
       <div className="sheet">
-        <div className="sheet-grip" />
+        <div className="sheet-head">
+          <span className="t-title">选择规格</span>
+          <button className="icon-button" aria-label="关闭规格选择" onClick={onClose}><CloseIcon /></button>
+        </div>
         {shown && <SpecForm key={shown.id} dish={shown} maxQuantity={maxQuantity} onConfirm={onConfirm} />}
       </div>
     </Popup>

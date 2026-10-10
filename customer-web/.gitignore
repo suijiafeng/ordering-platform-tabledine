@@ -3,3 +3,7 @@ node_modules
 out
 .env*.local
 *.tsbuildinfo
+
+# Browser regression artifacts
+/test-results/
+/playwright-report/
