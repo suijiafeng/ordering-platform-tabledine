@@ -331,7 +331,9 @@ public class CustomerOrderService {
      */
     @Transactional
     public OrderDetail requestCancel(String orderNo, String reason) {
-        Order order = ownOrder(orderNo);
+        Order own = ownOrder(orderNo);
+        // 锁住订单行再判断：退款创建同样先锁订单行，锁内读到的进行中退款是最新的
+        Order order = orderStateService.lockByNo(own.getOrderNo());
         if (!assembler.canRequestCancel(order)) {
             throw new BusinessException(ErrorCode.CONFLICT, cancelRequestBlockedReason(order));
         }
@@ -349,12 +351,15 @@ public class CustomerOrderService {
         return assembler.customerDetail(orderMapper.selectById(order.getId()));
     }
 
-    private static String cancelRequestBlockedReason(Order order) {
+    private String cancelRequestBlockedReason(Order order) {
         if (order.getCancelRequestStatus() != null) {
             return order.isCancelApplying() ? "已申请取消，请等待商家确认" : "该订单已申请过取消";
         }
         if (order.getStatus() == OrderStatus.MAKING && order.getCookingStartedAt() != null) {
             return "后厨已开始制作，无法取消；如有问题请申请退款或联系店员";
+        }
+        if (order.getStatus() == OrderStatus.MAKING && refundService.hasActiveRefund(order.getId())) {
+            return "该订单有进行中的退款，无法申请取消";
         }
         if (order.getStatus() == OrderStatus.PENDING_PAY || order.getStatus() == OrderStatus.PAID) {
             return "商家还未接单，可直接取消订单";

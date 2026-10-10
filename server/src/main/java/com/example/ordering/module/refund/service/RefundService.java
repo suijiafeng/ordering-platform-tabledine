@@ -621,6 +621,10 @@ public class RefundService {
         if (orderScoped && hasActiveRefund(order.getId())) {
             throw new BusinessException(ErrorCode.REFUND_IN_PROGRESS);
         }
+        if (status == RefundStatus.APPLYING && current.isCancelApplying()) {
+            // 顾客申请退款与申请取消互斥：申请取消同样先锁订单行，锁内读到的取消申请是最新的
+            throw new BusinessException(ErrorCode.CONFLICT, "已申请取消，请等待商家确认");
+        }
         if (!orderScoped && payment != null && amount > payment.getAmount() - (payment.getRefundedAmount() == null ? 0 : payment.getRefundedAmount())) {
             throw new BusinessException(ErrorCode.REFUND_AMOUNT_EXCEEDED);
         }

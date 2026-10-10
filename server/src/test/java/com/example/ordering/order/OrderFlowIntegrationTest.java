@@ -542,6 +542,32 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(post("/api/v1/c/orders/" + third + "/cancel-request"), customer)).andExpect(status().isConflict());
     }
 
+    @Test
+    void cancelRequestRejectedWhileRefundActive() throws Exception {
+        String owner = ownerToken();
+        String customer = memberToken();
+        String orderNo = createOrder(customer, List.of(item(1, List.of(), List.of(), 1)));
+        pay(customer, orderNo);
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
+        // 店主部分退款返还失败 → 退款单停在 FAILED（进行中），后厨尚未开工
+        org.mockito.Mockito.doReturn(com.example.ordering.module.pay.channel.RefundResult.failed("余额返还失败（测试）"))
+                .when(balanceChannel).refund(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyLong());
+        mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson(Map.of("type", "CUSTOM", "amount", 100, "reason", "少放了配菜"))))
+                .andExpect(status().isOk());
+        mvc.perform(authed(get("/api/v1/c/orders/" + orderNo), customer))
+                .andExpect(jsonPath("$.data.canRequestCancel").value(false));
+        // 服务端同样拒绝：同一笔钱不能同时走退款与取消
+        mvc.perform(authed(post("/api/v1/c/orders/" + orderNo + "/cancel-request"), customer)
+                        .contentType(MediaType.APPLICATION_JSON).content(json("reason", "不想要了")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(40901))
+                .andExpect(jsonPath("$.message").value("该订单有进行中的退款，无法申请取消"));
+        assertThat(jdbc.queryForObject("SELECT cancel_request_status FROM orders WHERE order_no = ?", String.class, orderNo)).isNull();
+    }
+
     // ==================== 退款 ====================
 
     @Test
