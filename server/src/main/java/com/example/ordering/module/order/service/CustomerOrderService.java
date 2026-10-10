@@ -255,7 +255,7 @@ public class CustomerOrderService {
             }
         }
         if (!seen.containsAll(specIds)) {
-            throw new BusinessException(ErrorCode.PARAM_INVALID, "「" + dish.getName() + "」的规格选择无效，请刷新菜单");
+            throw new BusinessException(ErrorCode.MENU_CHANGED, "「" + dish.getName() + "」的规格选择无效，请刷新菜单");
         }
         seen.clear();
         for (AddonGroupView g : addonGroups) {
@@ -270,7 +270,7 @@ public class CustomerOrderService {
             }
         }
         if (!seen.containsAll(addonIds)) {
-            throw new BusinessException(ErrorCode.PARAM_INVALID, "「" + dish.getName() + "」的加料选择无效，请刷新菜单");
+            throw new BusinessException(ErrorCode.MENU_CHANGED, "「" + dish.getName() + "」的加料选择无效，请刷新菜单");
         }
 
         if (unit < 1) {

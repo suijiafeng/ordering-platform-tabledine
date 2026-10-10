@@ -39,7 +39,9 @@ public enum ErrorCode {
     INTERNAL_ERROR(50000, "系统繁忙，请稍后再试", HttpStatus.INTERNAL_SERVER_ERROR),
 
     SOLD_OUT(60001, "菜品已售罄", HttpStatus.CONFLICT),
-    STORE_CLOSED(60002, "店铺已打烊", HttpStatus.CONFLICT);
+    STORE_CLOSED(60002, "店铺已打烊", HttpStatus.CONFLICT),
+    /** 购物车里的规格 / 加料已被商家删除或改动：前端据此回菜单重新加载并整理购物车 */
+    MENU_CHANGED(60003, "菜单已更新，请刷新菜单", HttpStatus.CONFLICT);
 
     private final int code;
     private final String message;

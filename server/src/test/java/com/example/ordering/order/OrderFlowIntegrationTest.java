@@ -74,6 +74,11 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
                         .content(toJson(orderBody(UUID.randomUUID().toString(), List.of(item(3, List.of(1L), List.of(1L, 2L, 3L), 1))))))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value(42201));
+        // 规格已失效（不属于该菜品 / 已被删除）→ 60003，前端回菜单整理购物车
+        mvc.perform(authed(post("/api/v1/c/orders"), customer).contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson(orderBody(UUID.randomUUID().toString(), List.of(item(3, List.of(1L, 999_999L), List.of(), 1))))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(60003));
         // 桌码无效
         Map<String, Object> bad = orderBody(UUID.randomUUID().toString(), List.of(item(1, List.of(), List.of(), 1)));
         bad.put("qrToken", "no-such-token");
