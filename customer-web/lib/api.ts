@@ -135,7 +135,7 @@ export async function payOrder(orderNo: string): Promise<boolean> {
   return result.params?.paid === true
 }
 
-/** items 为空 = 整单退款（退全部可退余额） */
+/** items 为空 = 整单退款（退全部可退金额） */
 export const applyRefund = (orderNo: string, reason: string, items: { orderItemId: number; quantity: number }[]) =>
   request<RefundRecord>(`${orderPath(orderNo)}/refunds`, post({ reason, items }))
 

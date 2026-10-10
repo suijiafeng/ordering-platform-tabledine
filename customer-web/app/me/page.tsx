@@ -1,6 +1,6 @@
 'use client'
 
-import { Button, ErrorBlock, Input, List, Popup, SpinLoading } from 'antd-mobile'
+import { Popup } from 'antd-mobile'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState, Suspense } from 'react'
 import { changePassword, fetchMe } from '@/lib/api'
@@ -8,12 +8,12 @@ import { logout } from '@/lib/auth'
 import { ignoreShownError } from '@/lib/errors'
 import { yuan } from '@/lib/format'
 import type { CustomerProfile } from '@/lib/types'
-import { PageHeader } from '@/components/PageHeader'
 import { notify } from '@/store/feedback'
 import { confirmDialog, getAppShell } from '@/lib/ui'
 import { menuPath } from '@/lib/navigation'
+import { AppBar, EmptyState, PillButton, Skeleton } from '@/components/ui'
 
-/** 我的账户：余额、订单入口、余额流水入口、修改密码、退出登录 */
+/** 我的：余额、订单入口、余额明细入口、修改密码、退出登录 */
 /** 读取 ?token 需要 useSearchParams：静态导出时必须包在 Suspense 里 */
 export default function MePage() {
   return <Suspense><MeView /></Suspense>
@@ -39,39 +39,41 @@ function MeView() {
   useEffect(() => { void load() }, [load])
 
   const doLogout = async () => {
-    if (!(await confirmDialog('退出登录', '退出后再次下单需要重新登录。', '退出'))) return
+    if (!(await confirmDialog('确定退出登录吗？', '退出后再次下单需要重新登录', '退出登录'))) return
     logout()
-    router.replace('/')
+    router.replace(returnToMenu)
   }
 
   if (!profile) {
-    return <>
-      <PageHeader fallback={returnToMenu}>我的账户</PageHeader>
-      <div className="empty-state">
+    return (
+      <div className="screen">
+        <AppBar title="我的" fallback={returnToMenu} />
         {failed
-          ? <ErrorBlock status="disconnected" title="账户加载失败" description={<Button onClick={() => void load()}>重试</Button>} />
-          : <SpinLoading />}
+          ? <EmptyState icon="!" title="加载失败" desc="请检查网络后重试" action={<PillButton onClick={() => void load()}>重新加载</PillButton>} />
+          : <Skeleton rows={2} variant="card" label="加载中…" />}
       </div>
-    </>
+    )
   }
 
   return (
-    <div className="page">
-      <PageHeader fallback={returnToMenu}>我的账户</PageHeader>
-      <div className="content-page">
-        <section className="section-card balance-card">
-          <div className="balance-owner">{profile.nickname || '会员'} · {profile.phone}</div>
-          <div className="balance-label">账户余额</div>
-          <div className="balance-value">¥{yuan(profile.balance)}</div>
-        </section>
-        <p className="hint">余额由店员充值，下单时直接从余额扣费；取消订单或退款会原路返还到余额。</p>
+    <div className="screen">
+      <AppBar title="我的" fallback={returnToMenu} />
+      <div className="body-pad">
+        <div className="wallet-card">
+          <div className="who">{profile.nickname || '会员'} · {profile.phone}</div>
+          <div className="label">余额</div>
+          <div className="value">¥{yuan(profile.balance)}</div>
+        </div>
+        <p className="t-faint" style={{ margin: '12px 4px 16px', lineHeight: 1.6 }}>
+          余额由店员充值，点餐时直接抵扣；取消订单或退款会退回到余额。
+        </p>
 
-        <List className="section-list">
-          <List.Item clickable onClick={() => router.push('/orders')}>我的订单</List.Item>
-          <List.Item clickable onClick={() => router.push('/wallet')}>余额流水</List.Item>
+        <div className="menu-list">
+          <button onClick={() => router.push('/orders')}>我的订单<span className="arrow">›</span></button>
+          <button onClick={() => router.push('/wallet')}>余额明细<span className="arrow">›</span></button>
           <PasswordItem onChanged={() => router.replace('/login?redirect=%2Fme')} />
-          <List.Item clickable onClick={doLogout}>退出登录</List.Item>
-        </List>
+          <button onClick={doLogout}>退出登录<span className="arrow">›</span></button>
+        </div>
       </div>
     </div>
   )
@@ -86,9 +88,7 @@ function PasswordItem({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
 
   const openPopup = () => {
-    setOldPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
+    setOldPassword(''); setNewPassword(''); setConfirmPassword('')
     setOpen(true)
   }
 
@@ -113,19 +113,19 @@ function PasswordItem({ onChanged }: { onChanged: () => void }) {
   }
 
   return <>
-    <List.Item clickable onClick={openPopup}>修改密码</List.Item>
-    <Popup
-      visible={open}
-      getContainer={getAppShell}
-      onMaskClick={busy ? undefined : () => setOpen(false)}
-      bodyStyle={{ borderRadius: '18px 18px 0 0' }}
-    >
-      <div className="form-popup">
-        <h2>修改密码</h2>
-        <Input type="password" value={oldPassword} onChange={setOldPassword} placeholder="原密码" maxLength={64} clearable autoComplete="current-password" />
-        <Input type="password" value={newPassword} onChange={setNewPassword} placeholder="新密码（至少 6 位）" maxLength={64} clearable autoComplete="new-password" />
-        <Input type="password" value={confirmPassword} onChange={setConfirmPassword} placeholder="再次输入新密码" maxLength={64} clearable autoComplete="new-password" />
-        <Button block color="primary" size="large" loading={busy} onClick={submit}>确认修改</Button>
+    <button onClick={openPopup}>修改密码<span className="arrow">›</span></button>
+    <Popup visible={open} getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={busy ? undefined : () => setOpen(false)}>
+      <div className="sheet">
+        <div className="sheet-grip" />
+        <div className="sheet-pad">
+          <h2 className="t-hero" style={{ marginBottom: 18 }}>修改密码</h2>
+          <div className="login-form" style={{ marginTop: 0 }}>
+            <div className="field"><input type="password" value={oldPassword} placeholder="原密码" maxLength={64} autoComplete="current-password" onChange={(e) => setOldPassword(e.target.value)} /></div>
+            <div className="field"><input type="password" value={newPassword} placeholder="新密码（至少 6 位）" maxLength={64} autoComplete="new-password" onChange={(e) => setNewPassword(e.target.value)} /></div>
+            <div className="field"><input type="password" value={confirmPassword} placeholder="再次输入新密码" maxLength={64} autoComplete="new-password" onChange={(e) => setConfirmPassword(e.target.value)} /></div>
+            <PillButton size="lg" block loading={busy} onClick={submit}>确认修改</PillButton>
+          </div>
+        </div>
       </div>
     </Popup>
   </>
