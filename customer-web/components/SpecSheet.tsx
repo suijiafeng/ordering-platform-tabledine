@@ -1,12 +1,13 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Button, Popup, Stepper } from 'antd-mobile'
+import { Popup } from 'antd-mobile'
 import { defaultSelection, selectionDescription, selectionError, unitPrice } from '@/lib/pricing'
 import { imageSrc, yuan } from '@/lib/format'
 import type { Dish, Selection } from '@/lib/types'
 import { notify } from '@/store/feedback'
 import { getAppShell } from '@/lib/ui'
+import { Chip, PillButton, Price, Stepper, Tile } from './ui'
 
 interface Props {
   dish: Dish | null
@@ -18,15 +19,18 @@ interface Props {
 
 /**
  * 规格 / 加料弹层。dish 为 null 表示关闭：弹层保留上一道菜的内容播放收起动画，
- * 动画结束后销毁表单（destroyOnClose），下次打开时重新初始化选择与数量。
+ * 动画结束后销毁表单，下次打开时重新初始化选择与数量。
  */
 export function SpecSheet({ dish, maxQuantity, onClose, onConfirm }: Props) {
-  const lastDish = useRef<Dish | null>(null)
-  if (dish) lastDish.current = dish
-  const shown = dish ?? lastDish.current
+  const last = useRef<Dish | null>(null)
+  if (dish) last.current = dish
+  const shown = dish ?? last.current
   return (
-    <Popup visible={dish !== null} position="bottom" getContainer={getAppShell} bodyStyle={{ borderRadius: '20px 20px 0 0' }} onMaskClick={onClose} showCloseButton onClose={onClose} destroyOnClose>
-      {shown && <SpecForm key={shown.id} dish={shown} maxQuantity={maxQuantity} onConfirm={onConfirm} />}
+    <Popup visible={dish !== null} position="bottom" getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={onClose} destroyOnClose>
+      <div className="sheet">
+        <div className="sheet-grip" />
+        {shown && <SpecForm key={shown.id} dish={shown} maxQuantity={maxQuantity} onConfirm={onConfirm} />}
+      </div>
     </Popup>
   )
 }
@@ -34,14 +38,13 @@ export function SpecSheet({ dish, maxQuantity, onClose, onConfirm }: Props) {
 function SpecForm({ dish, maxQuantity, onConfirm }: { dish: Dish; maxQuantity: number; onConfirm: Props['onConfirm'] }) {
   const [selection, setSelection] = useState<Selection>(() => defaultSelection(dish))
   const [quantity, setQuantity] = useState(1)
-  const limited = dish.remainingStock != null
   const exhausted = maxQuantity <= 0
-  const total = unitPrice(dish, selection) * quantity
   const desc = selectionDescription(dish, selection)
+  const total = unitPrice(dish, selection) * quantity
+
   const chooseSpec = (groupIds: number[], itemId: number, required: boolean) => setSelection((current) => {
     const remaining = current.specItemIds.filter((id) => !groupIds.includes(id))
-    const next = current.specItemIds.includes(itemId) && !required ? remaining : [...remaining, itemId]
-    return { ...current, specItemIds: next }
+    return { ...current, specItemIds: current.specItemIds.includes(itemId) && !required ? remaining : [...remaining, itemId] }
   })
   const chooseAddon = (groupIds: number[], itemId: number, max: number) => setSelection((current) => {
     if (current.addonItemIds.includes(itemId)) return { ...current, addonItemIds: current.addonItemIds.filter((id) => id !== itemId) }
@@ -57,58 +60,58 @@ function SpecForm({ dish, maxQuantity, onConfirm }: { dish: Dish; maxQuantity: n
     if (error) { notify(error); return }
     onConfirm(dish, selection, quantity)
   }
+
   return (
-    <div className="sheet">
-      <div className="sheet-head">
-        {dish.image ? <img className="sheet-image" src={imageSrc(dish.image)} alt="" /> : <div className="sheet-image" />}
+    <div className="sheet-pad">
+      <div className="spec-head">
+        <Tile name={dish.name} image={dish.image ? imageSrc(dish.image) : null} />
         <div>
-          <div className="sheet-title">{dish.name}</div>
-          <div className="price" style={{ marginTop: 9 }}>¥{yuan(unitPrice(dish, selection))}</div>
-          <div className="muted">{[desc.specDesc, desc.addonDesc].filter(Boolean).join(' · ')}</div>
+          <div className="spec-name">{dish.name}</div>
+          {dish.description && <div className="spec-meta">{dish.description}</div>}
+          <div className="spec-price"><Price value={yuan(unitPrice(dish, selection))} /></div>
         </div>
       </div>
+
       <div className="sheet-scroll">
         {dish.specGroups.map((group) => (
-          <div className="option-group" key={group.id}>
-            <div className="option-title">{group.name}{group.required ? '' : '（可不选）'}</div>
+          <div className="spec-group" key={group.id}>
+            <div className="label">{group.name}{group.required ? '' : '（可不选）'}</div>
             <div className="chips">
               {group.items.map((item) => (
-                <button
-                  className={`chip ${selection.specItemIds.includes(item.id) ? 'active' : ''}`}
-                  key={item.id}
-                  onClick={() => chooseSpec(group.items.map((i) => i.id), item.id, group.required)}
-                >
+                <Chip key={item.id} on={selection.specItemIds.includes(item.id)} onClick={() => chooseSpec(group.items.map((i) => i.id), item.id, group.required)}>
                   {item.name}{item.priceDelta ? ` +¥${yuan(item.priceDelta)}` : ''}
-                </button>
+                </Chip>
               ))}
             </div>
           </div>
         ))}
         {dish.addonGroups.map((group) => (
-          <div className="option-group" key={group.id}>
-            <div className="option-title">{group.name}（最多 {group.maxCount} 项）</div>
+          <div className="spec-group" key={group.id}>
+            <div className="label">{group.name}（最多 {group.maxCount} 项）</div>
             <div className="chips">
               {group.items.map((item) => (
-                <button
-                  className={`chip ${selection.addonItemIds.includes(item.id) ? 'active' : ''}`}
-                  key={item.id}
-                  onClick={() => chooseAddon(group.items.map((i) => i.id), item.id, group.maxCount)}
-                >
+                <Chip key={item.id} on={selection.addonItemIds.includes(item.id)} onClick={() => chooseAddon(group.items.map((i) => i.id), item.id, group.maxCount)}>
                   {item.name}{item.priceDelta ? ` +¥${yuan(item.priceDelta)}` : ''}
-                </button>
+                </Chip>
               ))}
             </div>
           </div>
         ))}
       </div>
-      {limited && (
-        <div className={`stock-note ${exhausted ? 'warning' : 'muted'}`}>
+
+      {(desc.specDesc || desc.addonDesc) && (
+        <div className="spec-selected">已选：{[desc.specDesc, desc.addonDesc].filter(Boolean).join(' · ')} ×{quantity}</div>
+      )}
+      {dish.remainingStock != null && (
+        <div className={`spec-selected ${exhausted ? 'danger' : ''}`.trim()}>
           {exhausted ? `今日仅剩 ${dish.remainingStock} 份，购物车里已经加满` : `今日仅剩 ${dish.remainingStock} 份，本次最多再加 ${maxQuantity} 份`}
         </div>
       )}
       <div className="sheet-foot">
-        <Stepper min={1} max={Math.max(1, maxQuantity)} value={quantity} onChange={setQuantity} disabled={exhausted} />
-        <Button color="primary" size="large" disabled={exhausted} onClick={confirm}>{exhausted ? '已达上限' : `加入购物车 ¥${yuan(total)}`}</Button>
+        <Stepper value={quantity} min={1} max={Math.max(1, maxQuantity)} onChange={setQuantity} />
+        <PillButton className="grow" size="lg" disabled={exhausted} onClick={confirm}>
+          {exhausted ? '已达上限' : `加入购物车 · ¥${yuan(total)}`}
+        </PillButton>
       </div>
     </div>
   )

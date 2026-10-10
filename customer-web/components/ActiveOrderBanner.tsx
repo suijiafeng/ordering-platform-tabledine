@@ -15,7 +15,7 @@ const STALE_AFTER_MS = 20_000
 const RECENT_COUNT = 5
 
 /**
- * 菜单页顶部的「进行中订单」入口：下单后回到菜单，不必经「我的账户 → 我的订单」也能看到状态。
+ * 菜单页顶部的「进行中订单」入口：下单后回到菜单，不必经「我的 → 我的订单」也能看到状态。
  * 从历史订单里取最近一笔未结束的订单（不依赖本地记录，换设备、清缓存也能显示）；未登录时不请求。
  */
 export function ActiveOrderBanner() {
@@ -47,13 +47,13 @@ export function ActiveOrderBanner() {
 
   if (!order) return null
   return (
-    <button className="active-order" onClick={() => router.push(`/order?orderNo=${encodeURIComponent(order.orderNo)}`)}>
-      <span className="active-order-dot" />
-      <span className="active-order-text">
+    <button className="menu-banner" onClick={() => router.push(`/order?orderNo=${encodeURIComponent(order.orderNo)}`)}>
+      <span className="dot" />
+      <span className="grow">
         您有一笔订单<strong>{orderStatusText(order.status)}</strong>
         {order.status === 'PENDING_PAY' ? '，请尽快支付' : ''}
       </span>
-      <span className="active-order-arrow">查看 ›</span>
+      <span className="arrow">查看 ›</span>
     </button>
   )
 }

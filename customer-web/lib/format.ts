@@ -54,7 +54,7 @@ const ORDER_STATUS_DESC: Record<OrderStatus, string> = {
   READY: '菜品已做好，服务员马上送到桌上',
   DONE: '感谢光临，欢迎再来',
   CLOSED: '订单未支付已关闭，可以重新点餐',
-  CANCELLED: '款项已退回账户余额',
+  CANCELLED: '已取消，金额已退回余额',
 }
 export const orderStatusDesc = (status: string) => (ORDER_STATUS_DESC as Record<string, string>)[status] ?? ''
 
@@ -72,13 +72,16 @@ export function statusLogText(toStatus: string, operatorType: string | null): st
     case 'READY': return '已出餐，服务员即将送达'
     case 'DONE': return '已送达，订单完成'
     case 'CLOSED': return who === '您' ? '您取消了订单' : '订单超时未支付，已关闭'
-    case 'CANCELLED': return `${who === '您' ? '您' : who}取消了订单，款项将退回账户余额`
+    case 'CANCELLED': return `${who === '您' ? '您' : who}取消了订单，金额会退回余额`
     default: return '订单状态更新'
   }
 }
 
 export const itemOptionsText = (item: { specDesc?: string | null; addonDesc?: string | null }) =>
   [item.specDesc, item.addonDesc].filter(Boolean).join(' · ')
+
+/** 无图菜品的占位字：取名称第一个字 */
+export const initialOf = (name: string) => (name.trim().charAt(0) || '菜')
 
 export function imageSrc(path: string | null) {
   if (!path) return ''

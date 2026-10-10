@@ -1,14 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Button, ErrorBlock, SearchBar, SpinLoading, Stepper } from 'antd-mobile'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ApiError, fetchMenu, resolveTable } from '@/lib/api'
 import { defaultSelection, hasOptions } from '@/lib/pricing'
 import { imageSrc, yuan } from '@/lib/format'
-import type { Dish, MenuView, TableInfo } from '@/lib/types'
+import type { Dish, MenuView, Selection, TableInfo } from '@/lib/types'
 import { MAX_QUANTITY, dishLimit, dishQuantity, useOrdering } from '@/store/ordering'
 import { notify } from '@/store/feedback'
+import { EmptyState, PersonIcon, Price, PillButton, SearchIcon, Skeleton, Stepper, Tile } from './ui'
 import { ActiveOrderBanner } from './ActiveOrderBanner'
 import { CartBar } from './CartBar'
 import { DishDetail } from './DishDetail'
@@ -19,10 +19,7 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 const STALE_AFTER_MS = 60_000
 
 /** 桌码来源：?token=xxx。桌码链接 /q/<token> 由 Nginx 302 跳转到 /h5/?token=<token> */
-function tokenFromLocation(queryToken: string | null): string | null {
-  return queryToken && TOKEN_PATTERN.test(queryToken) ? queryToken : null
-}
-
+const tokenFromQuery = (value: string | null) => (value && TOKEN_PATTERN.test(value) ? value : null)
 const errorText = (e: unknown) => (e instanceof ApiError ? e.message : '加载失败，请稍后重试')
 
 /** 点餐首页：解析桌码 → 菜单（左分类 / 右菜品，滚动联动）→ 规格弹层 → 购物车 */
@@ -37,20 +34,17 @@ export function MenuClient() {
   const [detailDish, setDetailDish] = useState<Dish | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const dishesRef = useRef<HTMLElement>(null)
-  const scrollingToCategory = useRef<number | null>(null)
+  const dishesRef = useRef<HTMLDivElement>(null)
+  const scrollingTo = useRef<number | null>(null)
   const scrollStopTimer = useRef<number | undefined>(undefined)
   const loadedAt = useRef(0)
 
   /** quiet：后台刷新，不显示加载页；失败时保留当前菜单 */
   const load = useCallback(async (quiet: boolean) => {
-    if (!quiet) {
-      setLoading(true)
-      setError('')
-    }
+    if (!quiet) { setLoading(true); setError('') }
     try {
       const queryToken = searchParams.get('token')
-      const token = tokenFromLocation(queryToken)
+      const token = tokenFromQuery(queryToken)
       const current = useOrdering.getState().table
       let resolved: TableInfo | null = null
       if (queryToken && !token) {
@@ -70,7 +64,6 @@ export function MenuClient() {
         setActiveCategory(null)
         return
       }
-      if (!resolved) return
       setTable(resolved)
       const nextMenu = await fetchMenu(resolved.storeId)
       const { removed, capped } = reconcile(nextMenu)
@@ -101,9 +94,7 @@ export function MenuClient() {
 
   useEffect(() => () => { if (scrollStopTimer.current) window.clearTimeout(scrollStopTimer.current) }, [])
 
-  useEffect(() => {
-    if (table?.storeName) document.title = `${table.storeName} · 扫码点餐`
-  }, [table?.storeName])
+  useEffect(() => { if (table?.storeName) document.title = `${table.storeName} · 扫码点餐` }, [table?.storeName])
 
   const matched = useMemo(() => {
     const term = keyword.trim().toLowerCase()
@@ -116,11 +107,11 @@ export function MenuClient() {
   const syncActiveCategory = () => {
     const container = dishesRef.current
     if (!container || !menu) return
-    if (scrollingToCategory.current !== null) {
+    if (scrollingTo.current !== null) {
       if (scrollStopTimer.current) window.clearTimeout(scrollStopTimer.current)
       scrollStopTimer.current = window.setTimeout(() => {
-        const target = scrollingToCategory.current
-        scrollingToCategory.current = null
+        const target = scrollingTo.current
+        scrollingTo.current = null
         if (target !== null) setActiveCategory(target)
       }, 120)
       return
@@ -128,7 +119,7 @@ export function MenuClient() {
     const containerTop = container.getBoundingClientRect().top
     let current = menu.categories[0]?.id ?? null
     for (const category of menu.categories) {
-      const section = document.getElementById(`category-${category.id}`)
+      const section = document.getElementById(`cat-${category.id}`)
       if (section && section.getBoundingClientRect().top - containerTop <= 24) current = category.id
     }
     setActiveCategory(current)
@@ -136,162 +127,151 @@ export function MenuClient() {
 
   const scrollToCategory = (categoryId: number) => {
     const container = dishesRef.current
-    const section = document.getElementById(`category-${categoryId}`)
+    const section = document.getElementById(`cat-${categoryId}`)
     if (!section || !container) return
-    scrollingToCategory.current = categoryId
+    scrollingTo.current = categoryId
     setActiveCategory(categoryId)
     if (scrollStopTimer.current) window.clearTimeout(scrollStopTimer.current)
-    scrollStopTimer.current = window.setTimeout(() => { scrollingToCategory.current = null }, 700)
-    const top = container.scrollTop + section.getBoundingClientRect().top - container.getBoundingClientRect().top
-    container.scrollTo({ top, behavior: 'smooth' })
+    scrollStopTimer.current = window.setTimeout(() => { scrollingTo.current = null }, 700)
+    container.scrollTo({ top: container.scrollTop + section.getBoundingClientRect().top - container.getBoundingClientRect().top, behavior: 'smooth' })
   }
 
   /** 加入购物车并提示；限量菜达到上限时说明剩余份数 */
-  const addToCart = (dish: Dish, selection = defaultSelection(dish), quantity = 1) => {
+  const addToCart = (dish: Dish, selection: Selection = defaultSelection(dish), quantity = 1) => {
     const added = add(dish, selection, quantity)
     if (added === quantity) notify('已加入购物车', 'success')
     else if (added > 0) notify(`「${dish.name}」今日仅剩 ${dishLimit(dish)} 份，已加入 ${added} 份`)
     else notify(`「${dish.name}」今日仅剩 ${dishLimit(dish)} 份，购物车已达上限`)
-    return added
   }
 
-  const addDish = (dish: Dish) => {
-    if (hasOptions(dish)) setSpecDish(dish)
-    else addToCart(dish)
-  }
-
-  /** 列表里的「仅剩 N 份」角标：限量且剩余不多时才显示，避免菜单到处都是数字 */
-  const stockHint = (dish: Dish) =>
-    dish.remainingStock != null && dish.remainingStock > 0 && dish.remainingStock <= 10
-      ? <span className="stock-hint">仅剩 {dish.remainingStock} 份</span>
-      : null
+  const addDish = (dish: Dish) => { if (hasOptions(dish)) setSpecDish(dish); else addToCart(dish) }
 
   const changeDirectQuantity = (dish: Dish, value: number) => {
     const item = items.find((i) => i.dishId === dish.id)
     if (item) setQuantity(item.key, value)
   }
 
-  const dishView = (dish: Dish) => {
+  const goAccount = () => router.push(table ? `/me?token=${encodeURIComponent(table.qrToken)}` : '/me')
+  /** 顶栏里是头像圆钮（省地方，长店名也不会把它挤变形）；白底空状态页用文字按钮 */
+  const accountButton = (onWhite?: boolean) => (
+    onWhite
+      ? <button className="mini-btn" onClick={goAccount}>我的</button>
+      : <button className="menu-avatar" aria-label="我的" onClick={goAccount}><PersonIcon /></button>
+  )
+
+  const dishRow = (dish: Dish) => {
     const quantity = dishQuantity(items, dish.id)
+    const limited = dish.remainingStock != null && dish.remainingStock > 0 && dish.remainingStock <= 10
     let action: React.ReactNode
     if (dish.soldOut) {
-      action = <span className="muted">已售罄</span>
+      action = <span className="t-note">已售罄</span>
     } else if (hasOptions(dish)) {
-      action = (
-        <Badge content={quantity || null}>
-          <Button size="mini" color="primary" shape="rounded" onClick={() => addDish(dish)}>选规格</Button>
-        </Badge>
-      )
-    } else if (quantity) {
-      action = <Stepper min={0} max={dishLimit(dish)} value={quantity} onChange={(value) => changeDirectQuantity(dish, value)} />
+      action = <PillButton size="sm" onClick={() => addDish(dish)}>选规格</PillButton>
     } else {
-      action = <button className="round-add" aria-label={`添加${dish.name}`} onClick={() => addDish(dish)}>+</button>
+      action = (
+        <Stepper
+          value={quantity}
+          min={0}
+          max={dishLimit(dish)}
+          hideMinusAtMin
+          onChange={(value) => (quantity ? changeDirectQuantity(dish, value) : addDish(dish))}
+        />
+      )
     }
     return (
-      <div className={`dish ${dish.soldOut ? 'sold-out' : ''}`} key={dish.id}>
-        <button className="dish-media" aria-label={`查看${dish.name}详情`} onClick={() => setDetailDish(dish)}>
-          {dish.image
-            ? <img className="dish-image" src={imageSrc(dish.image)} alt="" loading="lazy" />
-            : <div className="dish-placeholder" />}
+      <article className={`dish ${dish.soldOut ? 'off' : ''}`.trim()} key={dish.id}>
+        <button className="dish-tile" aria-label={`查看${dish.name}详情`} onClick={() => setDetailDish(dish)}>
+          <Tile name={dish.name} image={dish.image ? imageSrc(dish.image) : null} className="dish-tile-inner" />
         </button>
-        <div className="dish-info">
+        <div className="dish-main">
           <div className="dish-name" onClick={() => setDetailDish(dish)}>{dish.name}</div>
           {dish.description && <div className="dish-desc" onClick={() => setDetailDish(dish)}>{dish.description}</div>}
-          <div className="dish-bottom">
-            <span className="price">¥{yuan(dish.price)}{hasOptions(dish) && <small>起</small>}{stockHint(dish)}</span>
+          <div className="dish-foot">
+            <span>
+              <Price value={yuan(dish.price)} suffix={hasOptions(dish) ? '起' : undefined} />
+              {limited && <span className="stock-tip">仅剩 {dish.remainingStock} 份</span>}
+            </span>
             {action}
           </div>
         </div>
-      </div>
+      </article>
     )
   }
 
-  const accountLinks = (
-    <div className="top-links">
-      <button className="soft-link" onClick={() => router.push(table ? `/me?token=${encodeURIComponent(table.qrToken)}` : '/me')}>我的账户</button>
-    </div>
-  )
-
-  if (loading) {
-    return (
-      <div className="empty-state">
-        <SpinLoading color="primary" />
-        <div className="muted">正在加载桌台和菜单…</div>
-      </div>
-    )
-  }
+  if (loading) return <div className="screen on-white"><Skeleton rows={5} label="菜品加载中…" /></div>
   if (error) {
     return (
-      <div className="empty-state">
-        <ErrorBlock status="disconnected" title="菜单加载失败" description={error} />
-        <Button color="primary" onClick={() => void load(false)}>重新加载</Button>
-        {accountLinks}
+      <div className="screen on-white">
+        <EmptyState icon="!" title="菜单加载失败" desc={error} action={<>
+          <PillButton onClick={() => void load(false)}>重新加载</PillButton>
+        </>} />
+        <div className="center">{accountButton(true)}</div>
       </div>
     )
   }
   if (!table) {
     return (
-      <div className="empty-state">
-        <div className="brand-mark">餐</div>
-        <h1>请扫描桌上的二维码点餐</h1>
-        <p className="muted">用手机相机或浏览器扫码即可打开菜单；下单时登录会员账号，从账户余额支付。</p>
+      <div className="center-state full">
+        <span className="login-mark" style={{ margin: 0 }}>餐</span>
+        <div className="t-hero">请扫描桌上的二维码点餐</div>
+        <div className="t-note">用手机相机或浏览器扫码即可打开菜单；下单时登录会员账号，从余额支付。</div>
         {process.env.NODE_ENV === 'development' && (
-          <Button color="primary" onClick={() => router.replace('/?token=dev-table-a1')}>打开开发桌台 A1</Button>
+          <PillButton onClick={() => router.replace('/?token=dev-table-a1')}>打开开发桌台 A1</PillButton>
         )}
-        {accountLinks}
+        {accountButton(true)}
       </div>
     )
   }
 
   return (
-    <div className="menu-page">
-      <header className="topbar">
-        <div>
-          <h1 className="store-name">{table.storeName}</h1>
-          <span className="table-pill">桌号 {table.tableCode}</span>
+    <div className="menu">
+      <header className="menu-hero">
+        <div className="menu-hero-row">
+          <div>
+            <div className="menu-store">{table.storeName}</div>
+            <div className="menu-table">{table.tableCode}桌 · 堂食</div>
+          </div>
+          {accountButton()}
         </div>
-        {accountLinks}
+        <div className="search-field">
+          <SearchIcon />
+          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索菜品" aria-label="搜索菜品" />
+        </div>
       </header>
-      {!table.storeOpen && <div className="notice">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
+      {!table.storeOpen && <div className="menu-closed">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
       <ActiveOrderBanner />
-      <div className="search-wrap">
-        <SearchBar placeholder="搜索菜品" value={keyword} onChange={setKeyword} onClear={() => setKeyword('')} />
-      </div>
 
       {matched ? (
-        <section className="dishes search-result">
-          {matched.length
-            ? matched.map(dishView)
-            : <ErrorBlock status="empty" title={`没有找到「${keyword.trim()}」相关菜品`} description="" />}
-        </section>
+        <div className="dishes" style={{ flex: 1, minHeight: 0 }}>
+          {matched.length ? matched.map(dishRow) : <EmptyState inset title="没有找到相关菜品" desc={`试试换个词，当前搜索「${keyword.trim()}」`} />}
+        </div>
       ) : (
-        <div className="menu-layout">
-          <nav className="categories">
+        <div className="menu-body">
+          <nav className="cats">
             {menu?.categories.map((category) => {
               const count = category.dishes.reduce((sum, dish) => sum + dishQuantity(items, dish.id), 0)
               return (
                 <button
                   key={category.id}
-                  type="button"
-                  className={`category ${activeCategory === category.id ? 'active' : ''}`}
+                  className={`cat ${activeCategory === category.id ? 'on' : ''}`.trim()}
                   aria-current={activeCategory === category.id ? 'true' : undefined}
                   onClick={() => scrollToCategory(category.id)}
                 >
-                  {category.name}
-                  {count > 0 && <span className="category-count" aria-label={`已选 ${count} 份`}>{count}</span>}
+                  <span className="cat-label">{category.name}</span>
+                  {count > 0 && <span className="cat-badge" aria-label={`已选 ${count} 份`}>{count}</span>}
                 </button>
               )
             })}
           </nav>
-          <section className="dishes" ref={dishesRef} onScroll={syncActiveCategory}>
-            {menu && menu.categories.length === 0 && <ErrorBlock status="empty" title="暂无菜品" description="" />}
+          <div className="dishes" ref={dishesRef} onScroll={syncActiveCategory}>
+            {menu && menu.categories.length === 0 && <EmptyState inset title="暂无菜品" desc="店家还没有上架菜品" />}
             {menu?.categories.map((category) => (
-              <div id={`category-${category.id}`} key={category.id}>
-                <h2 className="category-title">{category.name}</h2>
-                {category.dishes.map(dishView)}
-              </div>
+              <section id={`cat-${category.id}`} key={category.id}>
+                <h2 className="cat-head">{category.name}</h2>
+                {category.dishes.map(dishRow)}
+              </section>
             ))}
-          </section>
+          </div>
         </div>
       )}
 
@@ -301,10 +281,7 @@ export function MenuClient() {
         dish={specDish}
         maxQuantity={specDish ? dishLimit(specDish) - dishQuantity(items, specDish.id) : MAX_QUANTITY}
         onClose={() => setSpecDish(null)}
-        onConfirm={(dish, selection, quantity) => {
-          addToCart(dish, selection, quantity)
-          setSpecDish(null)
-        }}
+        onConfirm={(dish, selection, quantity) => { addToCart(dish, selection, quantity); setSpecDish(null) }}
       />
     </div>
   )
