@@ -47,7 +47,9 @@ public class MemberService {
             w.and(q -> q.like(Customer::getPhone, k).or().like(Customer::getNickname, k));
         }
         w.orderByDesc(Customer::getId);
-        return PageResult.of(customerMapper.selectPage(new Page<>(page, pageSize), w), MemberView::of);
+        // 店员只看脱敏手机号；建号 / 改密 / 充值等返回完整号码的接口本身只对店主开放
+        boolean fullPhone = LoginUser.currentStaff().isOwner();
+        return PageResult.of(customerMapper.selectPage(new Page<>(page, pageSize), w), c -> MemberView.of(c, fullPhone));
     }
 
     /** 数据库事务：建号与可选的首次充值一起提交 */

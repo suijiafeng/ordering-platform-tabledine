@@ -61,7 +61,11 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(post("/api/v1/m/members/" + memberId + "/recharge"), owner).contentType(MediaType.APPLICATION_JSON)
                         .content(json("amount", 3000, "remark", "现金充值")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.balance").value(8000));
+        // 店员按手机号能搜到，但只看到脱敏号码；店主看完整号码
+        String masked = phone.substring(0, 3) + "****" + phone.substring(7);
         mvc.perform(authed(get("/api/v1/m/members?keyword=" + phone), staff))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.list[0].phone").value(masked));
+        mvc.perform(authed(get("/api/v1/m/members?keyword=" + phone), owner))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.list[0].phone").value(phone));
         JsonNode txns = getData("/api/v1/m/members/" + memberId + "/transactions", staff);
         assertThat(txns.path("total").asLong()).isEqualTo(2);
