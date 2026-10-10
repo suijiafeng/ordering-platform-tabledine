@@ -3,6 +3,7 @@ package com.example.ordering.module.menu.controller;
 import com.example.ordering.common.Result;
 import com.example.ordering.module.menu.dto.MenuView;
 import com.example.ordering.module.menu.service.CustomerMenuService;
+import com.example.ordering.ratelimit.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,7 @@ public class CustomerMenuController {
     }
 
     @Operation(summary = "完整菜单：分类 + 菜品 + 规格 + 加料 + 售罄状态")
+    @RateLimit(permits = 300, windowSeconds = 60)
     @GetMapping("/api/v1/c/stores/{storeId}/menu")
     public Result<MenuView> menu(@PathVariable Long storeId) {
         return Result.ok(menuService.menu(storeId));

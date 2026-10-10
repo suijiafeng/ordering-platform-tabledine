@@ -51,7 +51,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import com.example.ordering.module.menu.mapper.CategoryMapper;
-import com.example.ordering.module.menu.service.MerchantMenuService;
+import com.example.ordering.module.menu.service.DailyStockService;
 import java.util.LinkedHashMap;
 
 /**
@@ -68,7 +68,7 @@ public class CustomerOrderService {
     private final DiningTableMapper tableMapper;
     private final MenuGroupLoader groupLoader;
     private final CategoryMapper categoryMapper;
-    private final MerchantMenuService menuService;
+    private final DailyStockService dailyStockService;
     private final StoreService storeService;
     private final OrderStateService orderStateService;
     private final OrderViewAssembler assembler;
@@ -80,7 +80,7 @@ public class CustomerOrderService {
     public CustomerOrderService(OrderMapper orderMapper, OrderItemMapper orderItemMapper, DishMapper dishMapper,
                         DiningTableMapper tableMapper, MenuGroupLoader groupLoader,
                         CategoryMapper categoryMapper,
-                        MerchantMenuService menuService, StoreService storeService,
+                        DailyStockService dailyStockService, StoreService storeService,
                         OrderStateService orderStateService, OrderViewAssembler assembler, PayService payService,
                         RefundService refundService, TransactionTemplate tx, CustomerMapper customerMapper) {
         this.orderMapper = orderMapper;
@@ -89,7 +89,7 @@ public class CustomerOrderService {
         this.tableMapper = tableMapper;
         this.groupLoader = groupLoader;
         this.categoryMapper = categoryMapper;
-        this.menuService = menuService;
+        this.dailyStockService = dailyStockService;
         this.storeService = storeService;
         this.orderStateService = orderStateService;
         this.assembler = assembler;
@@ -174,7 +174,7 @@ public class CustomerOrderService {
         }
 
         // 3. 限量库存扣减（同一事务内，失败整体回滚）；先补做可能错过的 0 点重置
-        menuService.ensureStockFresh();
+        dailyStockService.ensureFresh();
         Map<Long, Integer> qtyByDish = new LinkedHashMap<>();
         for (OrderItem item : items) {
             qtyByDish.merge(item.getDishId(), item.getQuantity(), Integer::sum);

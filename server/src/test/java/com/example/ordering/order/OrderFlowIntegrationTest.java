@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OrderFlowIntegrationTest extends AbstractIntegrationTest {
 
     @org.springframework.beans.factory.annotation.Autowired
-    com.example.ordering.module.menu.service.MerchantMenuService menuService;
+    com.example.ordering.module.menu.service.DailyStockService dailyStockService;
 
     // ==================== 下单 ====================
 
@@ -152,12 +152,12 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
             assertThat(stock(2)).isEqualTo(1);
             // 模拟跨天：业务日期回到昨天 → 幂等重置补做，今日剩余回到每日限量
             jdbc.update("UPDATE dish SET stock_date = stock_date - 1 WHERE id = 2");
-            menuService.resetDailyStock();
+            dailyStockService.resetDaily();
             assertThat(stock(2)).isEqualTo(3);
             // 再次调用不会重复重置：今天卖 1 份后仍是 2
             String todayOrder = createOrder(customer, List.of(item(2, List.of(), List.of(), 1)));
             assertThat(stock(2)).isEqualTo(2);
-            menuService.resetDailyStock();
+            dailyStockService.resetDaily();
             assertThat(stock(2)).isEqualTo(2);
             // 昨天的订单今天取消：占用的是昨天的限量，不回补今天的剩余
             jdbc.update("UPDATE orders SET created_at = created_at - interval '1 day' WHERE order_no = ?", orderNo);

@@ -3,6 +3,7 @@ package com.example.ordering.module.store.controller;
 import com.example.ordering.common.Result;
 import com.example.ordering.module.store.dto.StoreView;
 import com.example.ordering.module.store.service.StoreService;
+import com.example.ordering.ratelimit.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,7 @@ public class CustomerStoreController {
     }
 
     @Operation(summary = "店铺信息（含营业状态）")
+    @RateLimit(permits = 300, windowSeconds = 60)
     @GetMapping("/api/v1/c/stores/{storeId}")
     public Result<StoreView> get(@PathVariable Long storeId) {
         return Result.ok(StoreView.of(storeService.getRequired(storeId)));
