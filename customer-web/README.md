@@ -26,6 +26,8 @@ npm run typecheck
 
 ## 约定
 
+- 视觉：令牌与基元见 [顾客端设计规范](../docs/顾客端设计规范.md)。页面用 `components/ui.tsx` 的基元搭建，
+  antd-mobile 只用于弹层等行为类组件，不使用也不覆盖它的外观类组件
 - 错误处理：请求层统一提示；页面用 `ignoreShownError(e)` 只忽略已提示的 `ApiError`，其他异常继续抛出（见 `docs/编码规范.md`）
 - Next.js App Router 自带 React 19：antd-mobile 的命令式弹层通过 `components/AntdMobileCompat.tsx` 改用 `createRoot`
 

@@ -14,7 +14,7 @@
 
 - [项目架构](docs/项目架构.md)：整体结构、核心流程、全局约定。接手先读这篇
 - [部署](deploy/README.md)：首次部署、更新、运维、常见问题
-- [上线清单](docs/上线清单.md)、[编码规范](docs/编码规范.md)
+- [上线清单](docs/上线清单.md)、[编码规范](docs/编码规范.md)、[顾客端设计规范](docs/顾客端设计规范.md)
 - [customer-web/README.md](customer-web/README.md)：顾客端页面与约定
 
 ## 本地开发
