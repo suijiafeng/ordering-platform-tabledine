@@ -47,8 +47,12 @@ public class JwtService {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** 签发结果 */
-    public record IssuedToken(String token, long expiresInSeconds) {
+    /**
+     * 签发结果
+     *
+     * @param tokenId JWT jti；refresh token 用它做轮换记录（见 StaffAuthService）
+     */
+    public record IssuedToken(String token, long expiresInSeconds, String tokenId, Instant expiresAt) {
     }
 
     /**
@@ -57,28 +61,26 @@ public class JwtService {
      */
     public IssuedToken issueCustomerToken(Long customerId, int tokenVersion) {
         Duration ttl = props.getMemberTtl();
-        String token = baseBuilder(UserType.CUSTOMER, customerId, TYPE_ACCESS, ttl)
-                .claim(CLAIM_TOKEN_VERSION, tokenVersion)
-                .compact();
-        return new IssuedToken(token, ttl.toSeconds());
+        return issue(baseBuilder(UserType.CUSTOMER, customerId, TYPE_ACCESS, ttl)
+                .claim(CLAIM_TOKEN_VERSION, tokenVersion), ttl);
     }
 
     public IssuedToken issueStaffAccessToken(Staff staff) {
         Duration ttl = props.getStaffAccessTtl();
-        String token = baseBuilder(UserType.STAFF, staff.getId(), TYPE_ACCESS, ttl)
+        return issue(baseBuilder(UserType.STAFF, staff.getId(), TYPE_ACCESS, ttl)
                 .claim(CLAIM_STORE, staff.getStoreId())
                 .claim(CLAIM_ROLE, staff.getRole())
-                .claim(CLAIM_TOKEN_VERSION, staff.getTokenVersion())
-                .compact();
-        return new IssuedToken(token, ttl.toSeconds());
+                .claim(CLAIM_TOKEN_VERSION, staff.getTokenVersion()), ttl);
     }
 
     public IssuedToken issueStaffRefreshToken(Staff staff) {
         Duration ttl = props.getStaffRefreshTtl();
-        String token = baseBuilder(UserType.STAFF, staff.getId(), TYPE_REFRESH, ttl)
-                .claim(CLAIM_TOKEN_VERSION, staff.getTokenVersion())
-                .compact();
-        return new IssuedToken(token, ttl.toSeconds());
+        return issue(baseBuilder(UserType.STAFF, staff.getId(), TYPE_REFRESH, ttl)
+                .claim(CLAIM_TOKEN_VERSION, staff.getTokenVersion()), ttl);
+    }
+
+    private static IssuedToken issue(Builder builder, Duration ttl) {
+        return new IssuedToken(builder.jwts.compact(), ttl.toSeconds(), builder.id, builder.expiresAt);
     }
 
     /**
@@ -110,16 +112,37 @@ public class JwtService {
         return UserType.fromAudience(claims.getAudience().iterator().next());
     }
 
-    private io.jsonwebtoken.JwtBuilder baseBuilder(UserType type, Long subjectId, String tokenType, Duration ttl) {
+    /** 构建中的 token 连同它的 jti 与过期时间，签发后一起返回给调用方 */
+    private static final class Builder {
+        final io.jsonwebtoken.JwtBuilder jwts;
+        final String id;
+        final Instant expiresAt;
+
+        Builder(io.jsonwebtoken.JwtBuilder jwts, String id, Instant expiresAt) {
+            this.jwts = jwts;
+            this.id = id;
+            this.expiresAt = expiresAt;
+        }
+
+        Builder claim(String name, Object value) {
+            jwts.claim(name, value);
+            return this;
+        }
+    }
+
+    private Builder baseBuilder(UserType type, Long subjectId, String tokenType, Duration ttl) {
         Instant now = Instant.now();
-        return Jwts.builder()
-                .id(UUID.randomUUID().toString())
+        Instant expiresAt = now.plus(ttl);
+        String id = UUID.randomUUID().toString();
+        io.jsonwebtoken.JwtBuilder jwts = Jwts.builder()
+                .id(id)
                 .issuer(props.getIssuer())
                 .subject(String.valueOf(subjectId))
                 .audience().add(type.audience()).and()
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plus(ttl)))
+                .expiration(Date.from(expiresAt))
                 .claim(CLAIM_TYPE, tokenType)
                 .signWith(key);
+        return new Builder(jwts, id, expiresAt);
     }
 }

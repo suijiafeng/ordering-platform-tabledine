@@ -26,8 +26,14 @@ let refreshing: Promise<string> | null = null
 
 function refreshAccessToken(): Promise<string> {
   if (!refreshing) {
-    const { refreshToken, setTokens, logout } = useAuthStore.getState()
     refreshing = (async () => {
+      // 先看 localStorage：另一个标签页可能刚续期过（refresh token 只能用一次），直接复用它的新 token
+      const store = useAuthStore.getState()
+      const staleAccess = store.accessToken
+      if (store.syncFromStorage() && useAuthStore.getState().accessToken && useAuthStore.getState().accessToken !== staleAccess) {
+        return useAuthStore.getState().accessToken as string
+      }
+      const { refreshToken, setTokens, logout } = useAuthStore.getState()
       if (!refreshToken) {
         throw new ApiError(UNAUTHORIZED, '登录已失效')
       }

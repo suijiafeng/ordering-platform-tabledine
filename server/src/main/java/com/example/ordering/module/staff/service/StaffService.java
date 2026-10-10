@@ -3,6 +3,7 @@ package com.example.ordering.module.staff.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
+import com.example.ordering.module.auth.service.StaffAuthService;
 import com.example.ordering.module.staff.dto.ChangePasswordRequest;
 import com.example.ordering.module.staff.dto.StaffCreateRequest;
 import com.example.ordering.module.staff.dto.StaffUpdateRequest;
@@ -13,6 +14,7 @@ import com.example.ordering.security.LoginUser;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
@@ -27,10 +29,12 @@ public class StaffService {
 
     private final StaffMapper staffMapper;
     private final PasswordEncoder passwordEncoder;
+    private final StaffAuthService staffAuthService;
 
-    public StaffService(StaffMapper staffMapper, PasswordEncoder passwordEncoder) {
+    public StaffService(StaffMapper staffMapper, PasswordEncoder passwordEncoder, StaffAuthService staffAuthService) {
         this.staffMapper = staffMapper;
         this.passwordEncoder = passwordEncoder;
+        this.staffAuthService = staffAuthService;
     }
 
     public List<StaffView> list() {
@@ -56,6 +60,8 @@ public class StaffService {
         return StaffView.of(s);
     }
 
+    /** 事务：数据库事务（重置密码时连同 refresh token 记录一起清理） */
+    @Transactional
     public StaffView update(Long id, StaffUpdateRequest req) {
         Staff s = getRequired(id);
         LoginUser me = LoginUser.currentStaff();
@@ -78,9 +84,14 @@ public class StaffService {
                     .setSql("token_version = token_version + 1");
         }
         staffMapper.update(null, w);
+        if (resetPassword) {
+            staffAuthService.revokeRefreshTokens(id);
+        }
         return StaffView.of(getRequired(id));
     }
 
+    /** 事务：数据库事务（停用时连同 refresh token 记录一起清理） */
+    @Transactional
     public StaffView setEnabled(Long id, boolean enabled) {
         Staff s = getRequired(id);
         LoginUser me = LoginUser.currentStaff();
@@ -99,10 +110,14 @@ public class StaffService {
             w.setSql("token_version = token_version + 1");
         }
         staffMapper.update(null, w);
+        if (!enabled) {
+            staffAuthService.revokeRefreshTokens(id);
+        }
         return StaffView.of(getRequired(id));
     }
 
-    /** 当前登录员工修改自己的密码；成功后旧 token 失效，需重新登录 */
+    /** 当前登录员工修改自己的密码；成功后旧 token 失效，需重新登录。事务：数据库事务 */
+    @Transactional
     public void changeOwnPassword(ChangePasswordRequest req) {
         LoginUser me = LoginUser.currentStaff();
         Staff s = getRequired(me.id());
@@ -123,6 +138,7 @@ public class StaffService {
         if (rows == 0) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
+        staffAuthService.revokeRefreshTokens(s.getId());
     }
 
     private Staff getRequired(Long id) {

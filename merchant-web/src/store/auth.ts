@@ -14,6 +14,8 @@ interface AuthState {
   refreshToken: string | null
   staff: StaffProfile | null
   setTokens: (res: StaffTokenResponse) => void
+  /** 以 localStorage 为准重读登录态（另一个标签页可能已经续期过）；返回是否有变化 */
+  syncFromStorage: () => boolean
   logout: () => void
 }
 
@@ -55,9 +57,30 @@ export const useAuthStore = create<AuthState>((set) => ({
     save({ accessToken: res.accessToken, refreshToken: res.refreshToken, staff: res.staff })
     set({ accessToken: res.accessToken, refreshToken: res.refreshToken, staff: res.staff })
   },
+  syncFromStorage: () => {
+    const stored = load()
+    const current = useAuthStore.getState()
+    if ((stored?.accessToken ?? null) === current.accessToken && (stored?.refreshToken ?? null) === current.refreshToken) {
+      return false
+    }
+    set({ accessToken: stored?.accessToken ?? null, refreshToken: stored?.refreshToken ?? null, staff: stored?.staff ?? null })
+    return true
+  },
   logout: () => {
     save(null)
     set({ accessToken: null, refreshToken: null, staff: null })
     logoutListeners.forEach((listener) => listener())
   },
 }))
+
+// refresh token 只能用一次（后端轮换）：一个标签页续期后，其他标签页必须改用新 token，否则会被判为登录失效。
+// storage 事件只在「其他」标签页触发，正好用来同步；本页退出登录时其他页也跟着退出。
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== STORAGE_KEY && event.key !== null) return
+    const changed = useAuthStore.getState().syncFromStorage()
+    if (changed && !useAuthStore.getState().accessToken) {
+      logoutListeners.forEach((listener) => listener())
+    }
+  })
+}

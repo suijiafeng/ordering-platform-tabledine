@@ -61,7 +61,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String token = resolveToken(request);
             // 登录 / 刷新接口不解析请求头里的旧 token：否则旧 token 会注入门店上下文，
             // 多租户插件把登录查询限定到旧门店，换门店账号登录会被误判为密码错误
-            if (isAuthEndpoint(request.getRequestURI())) {
+            if (PublicEndpoints.isAuthEndpoint(request.getRequestURI())) {
                 token = null;
             }
             if (expected != null && token != null) {
@@ -70,7 +70,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     Claims claims = parsed.get();
                     UserType actual = JwtService.audienceOf(claims);
                     if (actual != null && actual != expected) {
-                        if (isPublic(request)) {
+                        if (PublicEndpoints.isPublic(request)) {
                             // 公开接口带了另一端的旧 token：忽略 token，按未登录处理
                             chain.doFilter(request, response);
                             return;
@@ -119,20 +119,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, authorities);
         SecurityContextHolder.getContext().setAuthentication(authentication);
-    }
-
-    private static boolean isAuthEndpoint(String uri) {
-        return uri.startsWith("/api/v1/c/auth/") || uri.equals("/api/v1/m/auth/login") || uri.equals("/api/v1/m/auth/refresh");
-    }
-
-    /** 与 SecurityConfig 中的公开接口保持一致 */
-    private static boolean isPublic(HttpServletRequest request) {
-        String uri = request.getRequestURI();
-        return uri.startsWith("/api/v1/c/auth/")
-                || uri.startsWith("/api/v1/c/qr/")
-                || uri.equals("/api/v1/m/auth/login")
-                || uri.equals("/api/v1/m/auth/refresh")
-                || ("GET".equals(request.getMethod()) && uri.startsWith("/api/v1/c/stores/"));
     }
 
     static UserType expectedAudience(String uri) {

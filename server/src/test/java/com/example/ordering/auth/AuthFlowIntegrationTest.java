@@ -36,10 +36,22 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.payTimeoutMin").value(15));
 
         String refresh = data.path("refreshToken").asText();
-        mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+        MvcResult refreshed = mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + refresh + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andReturn();
+        String rotated = data(refreshed).path("refreshToken").asText();
+        assertThat(rotated).isNotEqualTo(refresh);
+
+        // 轮换：用过的 refresh token 再用一次被拒（泄露的 token 只能用一次），新的可以继续用
+        mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + refresh + "\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40101));
+        mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + rotated + "\"}"))
+                .andExpect(status().isOk());
 
         // access token 不能当作 refresh token 使用
         mvc.perform(post("/api/v1/m/auth/refresh").contentType(MediaType.APPLICATION_JSON)

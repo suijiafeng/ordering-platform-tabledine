@@ -3,6 +3,7 @@ package com.example.ordering.config;
 import com.example.ordering.common.ErrorCode;
 import com.example.ordering.common.BusinessException;
 import com.example.ordering.security.JwtAuthFilter;
+import com.example.ordering.security.PublicEndpoints;
 import com.example.ordering.security.RestAccessDeniedHandler;
 import com.example.ordering.security.RestAuthenticationEntryPoint;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -29,20 +30,6 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    /** 无需登录即可访问的接口 */
-    private static final String[] PUBLIC_PATHS = {
-            "/api/v1/c/auth/**",
-            "/api/v1/c/qr/**",
-            "/api/v1/m/auth/login",
-            "/api/v1/m/auth/refresh",
-            "/actuator/health",
-            "/uploads/**",
-            "/v3/api-docs/**",
-            "/swagger-ui/**",
-            "/swagger-ui.html",
-            "/error"
-    };
-
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtAuthFilter jwtAuthFilter,
@@ -59,9 +46,9 @@ public class SecurityConfig {
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(PUBLIC_PATHS).permitAll()
-                        // 店铺信息与菜单允许未登录浏览
-                        .requestMatchers(HttpMethod.GET, "/api/v1/c/stores/**").permitAll()
+                        // 公开接口统一定义在 PublicEndpoints，JwtAuthFilter 也用同一份
+                        .requestMatchers(PublicEndpoints.ANY_METHOD.toArray(String[]::new)).permitAll()
+                        .requestMatchers(HttpMethod.GET, PublicEndpoints.GET_ONLY.toArray(String[]::new)).permitAll()
                         .requestMatchers("/api/v1/c/**").hasRole("CUSTOMER")
                         .requestMatchers("/api/v1/m/**").hasRole("STAFF")
                         .anyRequest().denyAll())
