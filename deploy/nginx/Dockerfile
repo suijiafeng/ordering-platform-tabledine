@@ -22,5 +22,6 @@ RUN npm run build
 FROM nginx:1.27-alpine
 # nginx 官方镜像启动时会把 /etc/nginx/templates/*.template 用环境变量渲染到 /etc/nginx/conf.d/
 COPY deploy/nginx/templates/ /etc/nginx/templates/
+COPY deploy/nginx/includes/ /etc/nginx/includes/
 COPY --from=merchant /app/dist /usr/share/nginx/merchant
 COPY --from=customer /app/out /usr/share/nginx/h5

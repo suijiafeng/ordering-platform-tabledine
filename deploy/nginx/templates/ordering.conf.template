@@ -25,16 +25,24 @@ server {
 
     client_max_body_size 10m;
 
+    # 安全响应头与 CSP（见 includes/ 下各文件的说明）；server 级默认按商家后台配置，/h5/ 单独覆盖
+    include /etc/nginx/includes/security-headers.inc;
+    include /etc/nginx/includes/csp-merchant.inc;
+
     # 顾客 H5 点餐应用（customer-web 静态导出，basePath=/h5）：浏览、下单、会员余额支付
     location /h5/ {
         alias /usr/share/nginx/h5/;
         try_files $uri $uri/ /h5/index.html;
+        include /etc/nginx/includes/security-headers.inc;
+        include /etc/nginx/includes/csp-h5.inc;
         add_header Cache-Control "no-cache";
     }
 
     # 带内容哈希的构建产物可以长期缓存
     location /h5/_next/static/ {
         alias /usr/share/nginx/h5/_next/static/;
+        include /etc/nginx/includes/security-headers.inc;
+        include /etc/nginx/includes/csp-h5.inc;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
@@ -60,6 +68,7 @@ server {
     location /uploads/ {
         alias /data/uploads/;
         expires 7d;
+        include /etc/nginx/includes/security-headers.inc;
         add_header Cache-Control "public";
     }
 
