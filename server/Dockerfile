@@ -1,7 +1,9 @@
 # ---- 构建阶段 ----
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
-COPY pom.xml .
+# checkstyle.xml 必须一起拷进来：pom 把 checkstyle:check 绑在 validate 阶段，
+# 缺这个文件 package 会直接失败（configLocation 找不到）
+COPY pom.xml checkstyle.xml ./
 RUN mvn -q -B dependency:go-offline
 COPY src ./src
 RUN mvn -q -B -DskipTests package
