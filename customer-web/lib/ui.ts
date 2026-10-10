@@ -1,3 +1,5 @@
+import { useDialog } from '@/store/dialog'
+
 export function getAppShell() {
   return document.querySelector<HTMLElement>('.app-shell') ?? document.body
 }
@@ -25,8 +27,12 @@ export async function copyText(text: string): Promise<boolean> {
   return ok
 }
 
-/** 确认对话框；返回用户是否确认 */
-export async function confirmDialog(title: string, content: string, confirmText = '确认'): Promise<boolean> {
-  const { Dialog } = await import('antd-mobile')
-  return Dialog.confirm({ title, content, confirmText, cancelText: '再想想' })
+/** 双按钮确认框；返回用户是否确认。样式见 components/DialogHost.tsx */
+export function confirmDialog(title: string, content: string, confirmText = '确认', cancelText = '再想想'): Promise<boolean> {
+  return useDialog.getState().open({ title, content, confirmText, cancelText })
+}
+
+/** 单按钮提示框（只有「知道了」），用于告知结果 */
+export function alertDialog(title: string, content?: string, confirmText = '知道了'): Promise<boolean> {
+  return useDialog.getState().open({ title, content, confirmText })
 }
