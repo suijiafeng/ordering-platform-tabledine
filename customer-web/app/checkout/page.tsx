@@ -19,8 +19,8 @@ import { AppBar, BottomBar, Card, EmptyState, PillButton, Price, Skeleton, Stepp
 const REQUEST_ID_KEY = 'ordering_checkout_request_id'
 // 未登录时先保存人数和备注，登录回来后恢复
 const DRAFT_KEY = 'ordering_checkout_draft'
-/** 下单失败后应回菜单重新加载的业务码：售罄 / 库存不足、打烊、菜品已下架（状态冲突）、桌码失效 */
-const BACK_TO_MENU_CODES = new Set([60001, 60002, 40901, 40402])
+/** 下单失败后应回菜单重新加载的业务码：售罄 / 库存不足、打烊、规格加料已失效、菜品已下架（状态冲突）、桌码失效 */
+const BACK_TO_MENU_CODES = new Set([60001, 60002, 60003, 40901, 40402])
 
 /** crypto.randomUUID 只在 HTTPS / localhost 可用；局域网 http 真机联调时降级为随机字节 */
 function newRequestId() {
@@ -143,7 +143,7 @@ export default function CheckoutPage() {
       if (!orderNo) setSubmitting(false)
       ignoreShownError(e)
       if (!orderNo && e instanceof ApiError && BACK_TO_MENU_CODES.has(e.code)) {
-        // 菜单已变化（售罄、下架、打烊、桌码失效）：留在结算页重试没有意义，回菜单重新加载并整理购物车
+        // 菜单已变化（售罄、下架、打烊、规格加料失效、桌码失效）：留在结算页重试没有意义，回菜单重新加载并整理购物车
         router.replace(returnToMenu)
         return
       }
