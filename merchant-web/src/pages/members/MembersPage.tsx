@@ -52,9 +52,9 @@ export default function MembersPage() {
   const rechargeRequest = useRef<{ memberId: number; amount: number; id: string } | null>(null)
   /**
    * 结果未知的充值（超时 / 断网：服务端可能已经入账）。关掉窗口再打开同一会员时沿用原金额和请求号，
-   * 再次提交如果其实已入账，服务端会识别为重复而不会二次入账。
+   * 再次提交如果其实已入账，服务端会识别为重复而不会二次入账。按会员分别记录，互不覆盖。
    */
-  const [uncertain, setUncertain] = useState<{ memberId: number; amount: number; id: string; balanceBefore: number } | null>(null)
+  const [uncertainByMember, setUncertainByMember] = useState<Record<number, { amount: number; id: string; balanceBefore: number }>>({})
   // 会员管理：店主与前厅（后厨在路由层已拦截，这里再兜底一次）
   const canManage = !useIsKitchen()
   // 重置会员密码后即可登录该会员、动用余额：仅店主可操作
@@ -70,6 +70,8 @@ export default function MembersPage() {
   const [form] = Form.useForm<{ phone: string; name: string; password?: string; initialYuan?: number }>()
 
   const [recharging, setRecharging] = useState<MemberItem | null>(null)
+  // 当前充值弹窗对应会员的未确认充值
+  const uncertain = recharging ? uncertainByMember[recharging.id] : undefined
   const [rechargeForm] = Form.useForm<{ yuan: number; remark?: string }>()
 
   const [txnMember, setTxnMember] = useState<MemberItem | null>(null)
@@ -147,7 +149,11 @@ export default function MembersPage() {
 
   /** 第二步：带上操作人密码真正提交充值 */
   const executeRecharge = async (member: MemberItem, amount: number, remark: string | undefined, operatorPassword: string): Promise<VerifyResult> => {
-    if (!rechargeRequest.current || rechargeRequest.current.memberId !== member.id || rechargeRequest.current.amount !== amount) {
+    const pending = uncertainByMember[member.id]
+    if (pending?.amount === amount) {
+      // 金额与未确认的那笔一致：始终沿用原请求号（中途改过金额再改回来也一样）
+      rechargeRequest.current = { memberId: member.id, amount, id: pending.id }
+    } else if (!rechargeRequest.current || rechargeRequest.current.memberId !== member.id || rechargeRequest.current.amount !== amount) {
       rechargeRequest.current = { memberId: member.id, amount, id: newRequestId() }
     }
     const requestId = rechargeRequest.current.id
@@ -157,7 +163,14 @@ export default function MembersPage() {
       // 服务端保证：同一请求号只按同一金额入账，所以这里的金额就是实际入账金额
       message.success(`已为 ${updated.name} 充值 ${formatYuan(amount)}，当前余额 ${formatYuan(updated.balance)}`)
       rechargeRequest.current = null
-      setUncertain(null)
+      // 只清掉本会员、且就是这一笔的未确认记录；换了金额的新充值不代表原来那笔没入账
+      if (pending?.id === requestId) {
+        setUncertainByMember((old) => {
+          const next = { ...old }
+          delete next[member.id]
+          return next
+        })
+      }
       setPendingVerify(null)
       setRecharging(null)
       void load()
@@ -167,8 +180,8 @@ export default function MembersPage() {
       setPendingVerify(null)
       if (e instanceof ApiError && e.code === -1) {
         // 超时 / 断网 / 网关错误：请求可能已经到达服务端并入账，不能当作「没充上」
-        const balanceBefore = uncertain?.memberId === member.id ? uncertain.balanceBefore : member.balance
-        setUncertain({ memberId: member.id, amount, id: requestId, balanceBefore })
+        const balanceBefore = pending ? pending.balanceBefore : member.balance
+        setUncertainByMember((old) => ({ ...old, [member.id]: { amount, id: requestId, balanceBefore } }))
         // 手机号已脱敏，按会员 ID 重新查余额
         const fresh = await getMember(member.id).catch(() => undefined)
         if (fresh) setRecharging(fresh)
@@ -226,7 +239,8 @@ export default function MembersPage() {
   const openRecharge = (r: MemberItem) => {
     rechargeForm.resetFields()
     // 同一会员有结果未知的充值：沿用原金额与请求号，避免关窗重开后换了请求号导致重复入账
-    rechargeRequest.current = uncertain?.memberId === r.id ? { memberId: r.id, amount: uncertain.amount, id: uncertain.id } : null
+    const pending = uncertainByMember[r.id]
+    rechargeRequest.current = pending ? { memberId: r.id, amount: pending.amount, id: pending.id } : null
     setRecharging(r)
   }
 
@@ -356,7 +370,7 @@ export default function MembersPage() {
         {recharging && (
           <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan(recharging.balance)}</Typography.Text></Typography.Paragraph>
         )}
-        {recharging && uncertain?.memberId === recharging.id && (
+        {recharging && uncertain && (
           <Alert
             type="warning"
             showIcon
@@ -370,7 +384,7 @@ export default function MembersPage() {
           form={rechargeForm}
           layout="vertical"
           autoComplete="off"
-          initialValues={recharging && uncertain?.memberId === recharging.id ? { yuan: uncertain.amount / 100 } : undefined}
+          initialValues={uncertain ? { yuan: uncertain.amount / 100 } : undefined}
         >
           <Form.Item name="yuan" label="充值金额（元）" rules={[{ required: true, type: 'number', min: 0.01, max: 1000000, message: '请输入 0.01 ~ 1000000 之间的金额' }]}>
             <InputNumber min={0.01} max={1000000} precision={2} style={{ width: '100%' }} prefix="¥" autoFocus />
