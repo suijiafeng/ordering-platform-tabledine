@@ -106,8 +106,11 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
   /** 返回是否成功 */
   const runOrderAction = async (fn: () => Promise<OrderDetail>, ok: string): Promise<boolean> => {
     setActing(true)
+    // 操作期间切到了别的订单（如点了新订单通知）：结果不能覆盖抽屉里已经换成的那一单
+    const seq = loadSeq.current
     try {
-      setOrder(await fn())
+      const updated = await fn()
+      if (seq === loadSeq.current) setOrder(updated)
       message.success(ok)
       onChanged?.()
       return true
