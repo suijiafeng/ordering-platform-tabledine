@@ -4,22 +4,28 @@
  * 按 Figma 设计稿实现的 UI 基元。页面只用这些组件搭建，样式集中在 app/globals.css，
  * 不要在页面里写行内样式，也不要覆盖 antd-mobile 的外观（它只用于弹层等行为类场景）。
  */
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useEffect, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { currentRoutePath } from '@/lib/navigation'
 
 /* ---------- 顶栏 ---------- */
 
-/** 本次整页加载的落地地址：落地页没有站内上一页，返回时走 fallback */
+/**
+ * 本次整页加载的落地地址：落地页没有站内上一页，返回时走 fallback。
+ * 必须在进入站点时就记下（由根布局里的 LandingRecorder 记录），不能等第一次点返回时再记：
+ * 菜单页没有顶栏，否则扫码进来后第一个点返回的页面会被误当成落地页。
+ */
 let landingUrl: string | null = null
+
+/** 挂在根布局里，整页加载时记录一次落地地址；站内跳转不会重新挂载，刷新页面会重新记录 */
+export function LandingRecorder() {
+  useEffect(() => { landingUrl ??= currentRoutePath() }, [])
+  return null
+}
+
 function isLandingPage() {
   if (typeof window === 'undefined') return true
-  landingUrl ??= sessionStorage.getItem('landing_url') ?? (() => {
-    const path = currentRoutePath()
-    sessionStorage.setItem('landing_url', path)
-    return path
-  })()
-  return currentRoutePath() === landingUrl
+  return currentRoutePath() === (landingUrl ?? currentRoutePath())
 }
 
 export function AppBar({ title, fallback = '/', right }: { title: ReactNode; fallback?: string; right?: ReactNode }) {
