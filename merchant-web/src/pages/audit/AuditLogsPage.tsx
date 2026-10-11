@@ -28,7 +28,7 @@ const OP_TYPES: Record<AuditOpType, { label: string; color: string }> = {
 }
 
 /** 模块（与后端拦截器的模块映射一致） */
-const CATEGORIES = ['订单', '退款', '会员', '菜品', '桌台', '员工', '店铺设置', '数据', '登录', '顾客', '支付', '文件', '审计']
+const CATEGORIES = ['订单', '退款', '会员', '菜品', '桌台', '员工', '店铺设置', '数据', '登录', '顾客', '支付', '余额', '文件', '审计']
 
 const ACTOR_LABEL: Record<AuditLogItem['actorType'], string> = { STAFF: '员工', CUSTOMER: '顾客', SYSTEM: '系统', ANONYMOUS: '未登录' }
 
