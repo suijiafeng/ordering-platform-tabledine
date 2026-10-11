@@ -9,6 +9,7 @@ import com.example.ordering.common.ErrorCode;
 import com.example.ordering.common.PageResult;
 import com.example.ordering.config.RefundExecutorConfig;
 import com.example.ordering.module.order.entity.Order;
+import com.example.ordering.module.order.entity.OrderItem;
 import com.example.ordering.module.order.entity.OrderStatus;
 import com.example.ordering.module.order.mapper.OrderMapper;
 import com.example.ordering.module.order.service.OrderNoGenerator;
@@ -624,6 +625,19 @@ public class RefundService {
         if (status == RefundStatus.APPLYING && current.isCancelApplying()) {
             // 顾客申请退款与申请取消互斥：申请取消同样先锁订单行，锁内读到的取消申请是最新的
             throw new BusinessException(ErrorCode.CONFLICT, "已申请取消，请等待商家确认");
+        }
+        if (!items.isEmpty()) {
+            // 锁内按最新的 order_item 重新校验可退份数：调用方的 buildItems 在加锁前读取，
+            // 并发的另一笔菜品退款可能刚刚入账，用旧值放行会在入账时违反 ck_order_item_refunded
+            Map<Long, OrderItem> latest = orderStateService.items(order.getId()).stream()
+                    .collect(Collectors.toMap(OrderItem::getId, Function.identity()));
+            for (RefundItem item : items) {
+                OrderItem orderItem = latest.get(item.getOrderItemId());
+                if (orderItem == null || item.getQuantity() > orderItem.refundableQty()) {
+                    throw new BusinessException(ErrorCode.PARAM_INVALID, orderItem == null ? "退款菜品不属于该订单"
+                            : "「" + orderItem.getDishName() + "」可退数量不足（可退 " + orderItem.refundableQty() + " 份）");
+                }
+            }
         }
         if (!orderScoped && payment != null && amount > payment.getAmount() - (payment.getRefundedAmount() == null ? 0 : payment.getRefundedAmount())) {
             throw new BusinessException(ErrorCode.REFUND_AMOUNT_EXCEEDED);
