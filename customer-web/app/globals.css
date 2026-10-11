@@ -200,6 +200,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .center-state { min-height: 60vh; display: grid; place-content: center; justify-items: center; gap: 16px; padding: 30px; text-align: center; }
 .center-state.full { min-height: 100vh; min-height: 100dvh; background: #fff; }
 .spinner { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin .8s linear infinite; }
+/* 加载更多失败：替代 InfiniteScroll，手动重试 */
+.load-more-retry { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 16px; font-size: 12px; color: var(--ink-4); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .notice { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--danger-bg); color: var(--danger); font-size: 13px; }
 

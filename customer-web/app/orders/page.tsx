@@ -50,6 +50,10 @@ export default function OrdersPage() {
   const [total, setTotal] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
+  // 加载更多失败：停止自动翻页，改为手动重试，避免 InfiniteScroll 立刻重发形成死循环
+  const [moreFailed, setMoreFailed] = useState(false)
+  // 翻到空页（翻页期间有新订单使 total 与去重后的条数对不上）：视为已到底
+  const [exhausted, setExhausted] = useState(false)
   const [cancelling, setCancelling] = useState<string | null>(null)
   // 下拉刷新与加载更多可能交错：只采纳最后一次发起的请求
   const seq = useRef(0)
@@ -67,9 +71,14 @@ export default function OrdersPage() {
       setPage(nextPage)
       setTotal(result.total)
       setFailed(false)
+      setMoreFailed(false)
+      setExhausted(nextPage > 1 && result.list.length === 0)
     } catch (e) {
-      ignoreShownError(e)  // 请求层已提示；首屏失败显示重试
-      if (mine === seq.current && nextPage === 1) setFailed(true)
+      ignoreShownError(e)  // 请求层已提示；首屏失败显示重试，翻页失败显示「点击重试」
+      if (mine === seq.current) {
+        if (nextPage === 1) setFailed(true)
+        else setMoreFailed(true)
+      }
     } finally {
       if (mine === seq.current) setLoaded(true)
     }
@@ -94,7 +103,7 @@ export default function OrdersPage() {
     }
   }
 
-  const hasMore = loaded && !failed && orders.length < total
+  const hasMore = loaded && !failed && !moreFailed && !exhausted && orders.length < total
   const visible = orders.filter((order) => matchesFilter(order, filter))
 
   let content: React.ReactNode
@@ -106,7 +115,7 @@ export default function OrdersPage() {
     content = <EmptyState title="还没有订单" desc="下单后可在这里查看进度" action={<PillButton onClick={() => router.push('/')}>去点餐</PillButton>} />
   } else {
     content = <>
-    {!visible.length && !hasMore && <EmptyState inset title={filter === 'active' ? '没有进行中的订单' : '没有已结束的订单'} desc="切换上面的筛选看看其他订单" />}
+    {!visible.length && !hasMore && !moreFailed && <EmptyState inset title={filter === 'active' ? '没有进行中的订单' : '没有已结束的订单'} desc="切换上面的筛选看看其他订单" />}
     {visible.map((order) => (
       <article className="order-card" key={order.orderNo} onClick={() => openOrder(order.orderNo)}>
         <div className="order-top">
@@ -131,9 +140,13 @@ export default function OrdersPage() {
         )}
       </article>
     ))}
-    <InfiniteScroll loadMore={() => load(page + 1)} hasMore={hasMore}>
-      {hasMore ? <Spinner /> : <span className="t-cap">没有更多了</span>}
-    </InfiniteScroll>
+    {moreFailed
+      ? <div className="load-more-retry" role="status">
+          加载失败，<PillButton size="sm" variant="plain" onClick={() => void load(page + 1)}>点击重试</PillButton>
+        </div>
+      : <InfiniteScroll loadMore={() => load(page + 1)} hasMore={hasMore}>
+          {hasMore ? <Spinner /> : <span className="t-cap">没有更多了</span>}
+        </InfiniteScroll>}
     </>
   }
 
