@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * 会员账号与余额支付：商家建号 / 充值 → 会员密码登录 → 下单从余额扣费 → 取消订单余额返还；
- * 余额不足不下扣、不留支付单；资金操作仅店主；改密 / 停用后旧登录失效。
+ * 余额不足不下扣、不留支付单；前厅可建号，资金操作须复核操作人自己的登录密码；改密 / 停用后旧登录失效。
  */
 class MemberWalletIntegrationTest extends AbstractIntegrationTest {
 
@@ -42,10 +42,14 @@ class MemberWalletIntegrationTest extends AbstractIntegrationTest {
         String staff = staffToken();
         String phone = randomPhone();
 
-        // 建号 + 开户充值 50 元；店员无权建号 / 充值，可查看列表
+        // 前厅可以建号（会员管理：店主与前厅）；开户充值须复核自己的登录密码（用店主的密码复核失败，不建号）
         mvc.perform(authed(post("/api/v1/m/members"), staff).contentType(MediaType.APPLICATION_JSON)
-                        .content(json("phone", phone, "name", "张三", "password", "pw123456")))
-                .andExpect(status().isForbidden());
+                        .content(json("phone", "139" + phone.substring(3), "name", "王五", "password", "pw123456")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.balance").value(0));
+        mvc.perform(authed(post("/api/v1/m/members"), staff).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("phone", phone, "name", "张三", "password", "pw123456", "initialAmount", 5000, "operatorPassword", "admin123")))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(40302));
+        // 店主建号 + 开户充值 50 元
         MvcResult created = mvc.perform(authed(post("/api/v1/m/members"), owner).contentType(MediaType.APPLICATION_JSON)
                         .content(json("phone", phone, "name", "张三", "password", "pw123456", "initialAmount", 5000, "operatorPassword", "admin123")))
                 .andExpect(status().isOk())
