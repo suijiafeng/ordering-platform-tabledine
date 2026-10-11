@@ -152,7 +152,8 @@ public class OrderStateService {
         return true;
     }
 
-    /** 流转失败即抛 40901 */
+    /** 流转失败即抛 40901；自调用 transition 不经过代理，这里自己开事务，保证状态更新与日志同一事务 */
+    @Transactional
     public void transitionOrConflict(Order order, OrderStatus from, OrderStatus to, OperatorType operatorType,
                                      Long operatorId, String remark) {
         if (!transition(order, from, to, operatorType, operatorId, remark)) {

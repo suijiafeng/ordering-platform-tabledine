@@ -150,6 +150,7 @@ public class MerchantOrderService {
 
     // ==================== 履约流转 ====================
 
+    @Transactional
     public OrderDetail accept(String orderNo) {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
@@ -193,8 +194,11 @@ public class MerchantOrderService {
         return assembler.merchantDetail(orderStateService.getByNo(orderNo));
     }
 
+    @Transactional
     public OrderDetail ready(String orderNo) {
-        Order order = orderStateService.getByNo(orderNo);
+        // 锁住订单行再判断取消申请：与顾客「申请取消」（条件更新要求 status = MAKING）互斥，
+        // 否则并发下可能出餐后仍挂着一条没人能处理的取消申请
+        Order order = orderStateService.lockByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
         if (order.isCancelApplying()) {
             throw new BusinessException(ErrorCode.CONFLICT, "顾客正在申请取消，请先处理取消申请");
@@ -203,6 +207,7 @@ public class MerchantOrderService {
         return assembler.merchantDetail(order);
     }
 
+    @Transactional
     public OrderDetail deliver(String orderNo) {
         Order order = orderStateService.getByNo(orderNo);
         LoginUser staff = LoginUser.currentStaff();
