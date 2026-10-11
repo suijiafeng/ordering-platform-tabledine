@@ -37,6 +37,8 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
     [items, qty],
   )
   const refundable = order?.refundableAmount ?? 0
+  // 线下收款（前厅代客下单）：钱不在系统里，退款由员工当面退还
+  const offline = order?.payment?.channel === 'OFFLINE'
   const finalAmount = type === 'FULL' ? refundable : type === 'ITEM' ? itemAmount : yuanToFen(amountYuan)
 
   const columns: ColumnsType<OrderItemView> = [
@@ -85,10 +87,10 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
       message.warning(`退款金额不能超过可退余额 ${formatYuan(refundable)}`)
       return
     }
-    // 退款提交后立即退回顾客余额、无法撤回：再核对一次金额
+    // 退款提交后无法撤回：再核对一次金额
     const ok = await modal.confirm({
       title: `确认退款 ${formatYuan(finalAmount)}？`,
-      content: `订单 ${order.orderNo}（${order.tableCode ?? '-'} 桌）。退款会立即退回顾客会员余额，提交后无法撤回。`,
+      content: `订单 ${order.orderNo}（${order.tableCode ?? '-'} 桌）。${offline ? '该单为线下收款，系统只记为线下退款，请当面退还顾客' : '退款会立即退回顾客会员余额'}，提交后无法撤回。`,
       okText: '确认退款',
       okButtonProps: { danger: true },
     })
@@ -140,7 +142,7 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
               <span>本次退款 <Typography.Text type="danger" strong>{formatYuan(finalAmount)}</Typography.Text></span>
             </Space>
           }
-          description="退款退回顾客的会员余额；退款不改变订单履约状态。"
+          description={offline ? '线下收款订单：系统不退余额，记为线下退款，请当面退还顾客；退款不改变订单履约状态。' : '退款退回顾客的会员余额；退款不改变订单履约状态。'}
         />
       </Form>
     </Modal>
