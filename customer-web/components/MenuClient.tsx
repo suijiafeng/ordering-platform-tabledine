@@ -247,7 +247,6 @@ export function MenuClient() {
         <span className="menu-note-link">须知 ›</span>
       </button>
       {!table.storeOpen && <div className="menu-closed">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
-      {/* <ActiveOrderBanner /> */}
 
       {matched ? (
         <div className="dishes search-results">

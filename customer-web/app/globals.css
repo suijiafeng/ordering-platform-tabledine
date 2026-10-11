@@ -244,11 +244,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .dish.off .dish-name, .dish.off .dish-desc { color: #aaa; }
 .dish.off .tile { filter: grayscale(1); opacity: .55; }
 .stock-tip { align-self: flex-start; margin-top: 8px; padding: 1px 6px; border-radius: 6px; background: var(--danger-bg); color: var(--danger); font-size: 11px; font-weight: 500; vertical-align: 2px; }
-.menu-banner { display: flex; align-items: center; gap: 9px; width: 100%; padding: 11px 16px; border: 0; border-bottom: 1px solid #ffe3d6; background: var(--brand-strip); color: var(--brand-strip-ink); font-size: 13px; text-align: left; }
-.menu-banner .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 3px rgba(245,86,43,.18); }
-.menu-banner .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu-banner .grow strong { margin: 0 2px; font-weight: 700; }
-.menu-banner .arrow { flex: none; font-weight: 500; }
 .menu-closed { padding: 10px 16px; background: var(--danger-bg); color: var(--danger); font-size: 13px; }
 
 /* 购物车底栏 */
