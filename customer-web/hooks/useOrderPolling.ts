@@ -23,17 +23,22 @@ export function useOrderPolling(orderNo: string) {
   const [fatal, setFatal] = useState<string | null>(orderNo ? null : '缺少订单号')
   const timer = useRef<number | undefined>(undefined)
   const stopped = useRef(false)
+  // 轮询与操作后的 refresh() 可能并发：只采纳最后一次发起的请求，也只由它安排下一次轮询
+  const seq = useRef(0)
 
   const refresh = useCallback(async () => {
     clearTimeout(timer.current)
     if (!orderNo || stopped.current) return
+    const mine = ++seq.current
     let next: OrderDetail | null = null
     try {
       next = await fetchOrder(orderNo)
+      if (mine !== seq.current) return
       setOrder(next)
       setLoadFailed(false)
     } catch (e) {
       if (!(e instanceof ApiError)) throw e
+      if (mine !== seq.current) return
       if (e.code === NOT_FOUND || e.code === UNAUTHORIZED || e.status === 404) {
         stopped.current = true
         setFatal(e.code === UNAUTHORIZED ? '请先登录' : '订单不存在')
