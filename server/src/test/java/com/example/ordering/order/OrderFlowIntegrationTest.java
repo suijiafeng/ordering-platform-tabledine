@@ -568,6 +568,38 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT cancel_request_status FROM orders WHERE order_no = ?", String.class, orderNo)).isNull();
     }
 
+    @Test
+    void ownerCancelRestoresStockOnlyBeforeCooking() throws Exception {
+        String owner = ownerToken();
+        String customer = memberToken();
+        String kitchen = kitchenToken();
+        mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
+                .contentType(MediaType.APPLICATION_JSON).content(json("stockQuantity", 5))).andExpect(status().isOk());
+        try {
+            // 已接单、后厨未开工：店主整单取消回补库存
+            String orderNo = createOrder(customer, List.of(item(2, List.of(), List.of(), 2)));
+            pay(customer, orderNo);
+            mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
+            assertThat(stock(2)).isEqualTo(3);
+            mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/cancel"), owner)
+                            .contentType(MediaType.APPLICATION_JSON).content(json("reason", "食材不足")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("CANCELLED"));
+            assertThat(stock(2)).isEqualTo(5);
+            // 后厨已开工：取消不回补
+            String second = createOrder(customer, List.of(item(2, List.of(), List.of(), 2)));
+            pay(customer, second);
+            mvc.perform(authed(post("/api/v1/m/orders/" + second + "/accept"), owner)).andExpect(status().isOk());
+            mvc.perform(authed(post("/api/v1/m/orders/" + second + "/start"), kitchen)).andExpect(status().isOk());
+            mvc.perform(authed(post("/api/v1/m/orders/" + second + "/cancel"), owner)
+                            .contentType(MediaType.APPLICATION_JSON).content(json("reason", "顾客离店")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("CANCELLED"));
+            assertThat(stock(2)).isEqualTo(3);
+        } finally {
+            mvc.perform(authed(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/m/dishes/2/stock"), owner)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":null}")).andExpect(status().isOk());
+        }
+    }
+
     // ==================== 退款 ====================
 
     @Test

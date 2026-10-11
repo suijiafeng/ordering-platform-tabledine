@@ -215,7 +215,7 @@ public class MerchantOrderService {
         return assembler.merchantDetail(order);
     }
 
-    /** 整单取消（店主）：制作中 / 待送餐 → 已取消 + 全额退款；已开始制作不回补库存 */
+    /** 整单取消（店主）：制作中 / 待送餐 → 已取消 + 全额退款；后厨未开始制作时回补库存，已开始制作不回补 */
     @Transactional
     public OrderDetail cancel(String orderNo, String reason) {
         // 锁住订单行再判断是否已结账：否则与先吃后付结账并发时，可能按「未结账」取消，钱收了却不退
@@ -233,8 +233,13 @@ public class MerchantOrderService {
             throw new BusinessException(ErrorCode.CONFLICT, "当前状态不能整单取消");
         }
         boolean unsettled = order.isUnsettled();
+        // 与同意顾客取消申请同一口径：制作中且后厨还没开始做，限量库存没被消耗，回补
+        boolean cookingNotStarted = from == OrderStatus.MAKING && order.getCookingStartedAt() == null;
         orderStateService.transitionOrConflict(order, from, OrderStatus.CANCELLED, OperatorType.MERCHANT, staff.id(),
                 unsettled ? remark + "（先吃后付未结账，无需退款）" : remark);
+        if (cookingNotStarted) {
+            orderStateService.restoreStock(order.getId());
+        }
         if (!unsettled) {
             // 先吃后付还没结账：钱没收，取消即可；已收款的才需要退款
             refundService.refundOrder(order, RefundInitiator.MERCHANT, staff.id(), remark);
