@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { App } from 'antd'
+import { App, ConfigProvider } from 'antd'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { refundOrder } from '../../api/order'
 import type { OrderDetail, RefundView } from '../../api/types'
@@ -47,7 +47,12 @@ function fillCustomRefund() {
   fireEvent.change(screen.getByPlaceholderText('如：菜品缺料无法制作'), { target: { value: '售后补偿' } })
 }
 function modal(current: OrderDetail, open = true, onDone = vi.fn()) {
-  return <RefundModal order={current} open={open} onClose={vi.fn()} onDone={onDone} />
+  // Exercise real Ant Design controls without CSS/RAF animation timing in jsdom.
+  return (
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <RefundModal order={current} open={open} onClose={vi.fn()} onDone={onDone} />
+    </ConfigProvider>
+  )
 }
 
 describe('merchant refund request identity', () => {
@@ -73,22 +78,47 @@ describe('merchant refund request identity', () => {
   })
 
   it('restores an unresolved refund across close, reopen and remount', async () => {
-    vi.mocked(refundOrder).mockRejectedValueOnce(new ApiError(-1, '响应丢失'))
-    const { rerender, unmount } = render(modal(order()))
+    const lostResponse = deferred<RefundView>()
+    const retryResponse = deferred<RefundView>()
+    vi.mocked(refundOrder).mockReturnValueOnce(lostResponse.promise).mockReturnValueOnce(retryResponse.promise)
+    const onDone = vi.fn()
+    const { rerender, unmount } = render(modal(order(), true, onDone))
     fillCustomRefund()
-    fireEvent.click(refundButton())
-    await screen.findByRole('button', { name: '重试确认原退款' })
-    await waitFor(() => expect(screen.getByRole('button', { name: '重试确认原退款' }).classList.contains('ant-btn-loading')).toBe(false))
+    // Flush confirmation separately, then settle the API inside act so assertions do
+    // not race React updates or wait on the spinner's transient accessible name.
+    await act(async () => { fireEvent.click(refundButton()) })
+    expect(refundOrder).toHaveBeenCalledOnce()
     const original = vi.mocked(refundOrder).mock.calls[0][1]
-    rerender(modal(order(), false))
-    rerender(modal(order('A', 9000)))
-    expect(loadPendingRefund('A')?.request).toEqual(original)
+    await act(async () => { lostResponse.reject(new ApiError(-1, '响应丢失')) })
+
+    const expectRestoredRefund = () => {
+      const retry = screen.getByRole('button', { name: '重试确认原退款' })
+      expect(retry.classList.contains('ant-btn-loading')).toBe(false)
+      const amount = screen.getByRole('spinbutton') as HTMLInputElement
+      expect(amount.value).toBe('10.00')
+      expect(amount.disabled).toBe(true)
+      const reason = screen.getByPlaceholderText('如：菜品缺料无法制作') as HTMLTextAreaElement
+      expect(reason.value).toBe('售后补偿')
+      expect(reason.disabled).toBe(true)
+      expect(loadPendingRefund('A')?.request).toEqual(original)
+      return retry
+    }
+    expectRestoredRefund()
+    expect(onDone).not.toHaveBeenCalled()
+    rerender(modal(order(), false, onDone))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    rerender(modal(order('A', 9000), true, onDone))
+    expectRestoredRefund()
     unmount()
-    render(modal(order('A', 9000)))
-    await screen.findByRole('button', { name: '重试确认原退款' })
-    fireEvent.click(screen.getByRole('button', { name: '重试确认原退款' }))
-    await waitFor(() => expect(refundOrder).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(refundOrder).mock.calls[1][1]).toEqual(original)
+    render(modal(order('A', 9000), true, onDone))
+    const retry = expectRestoredRefund()
+    expect(refundOrder).toHaveBeenCalledOnce()
+    await act(async () => { fireEvent.click(retry) })
+    expect(refundOrder).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(refundOrder).mock.calls[1]).toEqual(['A', original])
+    await act(async () => { retryResponse.resolve(receipt) })
+    expect(onDone).toHaveBeenCalledOnce()
+    expect(loadPendingRefund('A')).toBeNull()
   })
 
   it('opens one confirmation and sends one request on an immediate double click', async () => {
