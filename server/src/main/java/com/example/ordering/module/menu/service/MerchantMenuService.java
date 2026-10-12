@@ -196,20 +196,23 @@ public class MerchantMenuService {
 
     /**
      * 设置每日限量；null 取消限量。
-     * 今日剩余 = 新限量 − 今日已占用（原限量 − 原剩余）：中午把 10 改成 12 时已卖 5 份，剩余应是 7 而不是 12。
+     * 今日剩余 = max(0, 新限量 − 今日已占用)；占用单独保存，降低至已售以下或取消限量也不丢失。
+     * 单条条件更新加入调用方事务；日期检查和重算都使用更新时锁定的行，避免并发下单被旧值覆盖。
      */
     public void updateStock(Long id, Integer dailyStock) {
         requireDish(id);
+        dailyStockService.ensureFresh();
+        var today = DailyStockService.today();
         var w = Wrappers.<Dish>lambdaUpdate()
                 .set(Dish::getUpdatedAt, OffsetDateTime.now())
+                .setSql("stock_occupied = CASE WHEN stock_date = {0} THEN stock_occupied ELSE 0 END", today)
+                .set(Dish::getStockDate, today)
                 .eq(Dish::getId, id);
         if (dailyStock == null) {
             w.set(Dish::getDailyStock, null).set(Dish::getStockQuantity, null);
         } else {
-            dailyStockService.ensureFresh();  // 先把可能错过的 0 点重置补上，再按今日已占用重算
-            w.setSql("stock_quantity = GREATEST(0, " + dailyStock + " - (COALESCE(daily_stock, 0) - COALESCE(stock_quantity, 0)))")
-                    .set(Dish::getDailyStock, dailyStock)
-                    .set(Dish::getStockDate, DailyStockService.today());
+            w.setSql("stock_quantity = GREATEST(0, {0} - CASE WHEN stock_date = {1} THEN stock_occupied ELSE 0 END)", dailyStock, today)
+                    .set(Dish::getDailyStock, dailyStock);
         }
         dishMapper.update(null, w);
     }

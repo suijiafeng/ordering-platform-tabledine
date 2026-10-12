@@ -37,7 +37,7 @@ class RefundAsyncExecutionTest extends AbstractIntegrationTest {
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/accept"), owner)).andExpect(status().isOk());
 
         MvcResult r = mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
-                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("type", "FULL", "reason", "异步返还"))))
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", "异步返还"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"))
                 .andReturn();

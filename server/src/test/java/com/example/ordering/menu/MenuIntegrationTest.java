@@ -161,6 +161,8 @@ class MenuIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void stockZeroShowsSoldOutAndNullRestores() throws Exception {
+        // 种子菜品与订单测试共用；关闭限量不会清除当天已消耗的占用，显式隔离测试数据。
+        jdbc.update("UPDATE dish SET stock_occupied = 0 WHERE id = 2");
         String owner = ownerToken();
         mvc.perform(authed(put("/api/v1/m/dishes/2/stock"), owner)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"stockQuantity\":0}"))

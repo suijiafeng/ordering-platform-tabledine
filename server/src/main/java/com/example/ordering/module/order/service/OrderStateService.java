@@ -6,6 +6,7 @@ import com.example.ordering.common.BusinessException;
 import com.example.ordering.common.ErrorCode;
 import com.example.ordering.module.menu.entity.Dish;
 import com.example.ordering.module.menu.mapper.DishMapper;
+import com.example.ordering.module.menu.service.DailyStockService;
 import com.example.ordering.module.order.entity.OperatorType;
 import com.example.ordering.module.order.entity.Order;
 import com.example.ordering.module.order.entity.OrderItem;
@@ -174,19 +175,21 @@ public class OrderStateService {
 
     // ==================== 每日限量库存 ====================
 
-    /** 扣减库存（仅对启用限量的菜品生效）；库存不足返回 false */
+    /**
+     * 加入下单事务：原子记录今日占用，启用限量时同时扣减剩余；库存不足返回 false。
+     * 不限量期间也计数；更新时按日期补做重置，不能依赖进程缓存或之前读到的剩余。
+     */
     public boolean deductStock(Long dishId, int quantity) {
+        LocalDate today = DailyStockService.today();
         int rows = dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                .setSql("stock_quantity = stock_quantity - " + quantity)
+                .setSql("stock_occupied = CASE WHEN stock_date = {0} THEN stock_occupied ELSE 0 END + {1}", today, quantity)
+                .setSql("stock_quantity = CASE WHEN daily_stock IS NULL THEN NULL "
+                        + "ELSE daily_stock - (CASE WHEN stock_date = {0} THEN stock_occupied ELSE 0 END) - {1} END", today, quantity)
+                .set(Dish::getStockDate, today)
                 .eq(Dish::getId, dishId)
-                .isNotNull(Dish::getStockQuantity)
-                .ge(Dish::getStockQuantity, quantity));
-        if (rows > 0) {
-            return true;
-        }
-        // 未启用限量的菜品不需要扣减：区分「不限量」与「库存不足」
-        Dish dish = dishMapper.selectById(dishId);
-        return dish != null && dish.getStockQuantity() == null;
+                .apply("(daily_stock IS NULL OR daily_stock - (CASE WHEN stock_date = {0} THEN stock_occupied ELSE 0 END) >= {1})",
+                        today, quantity));
+        return rows > 0;
     }
 
     /**
@@ -201,11 +204,11 @@ public class OrderStateService {
         LocalDate orderDay = order.getCreatedAt().atZoneSameInstant(ZoneId.of("Asia/Shanghai")).toLocalDate();
         for (OrderItem item : items(orderId)) {
             dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
-                    .setSql("stock_quantity = LEAST(stock_quantity + " + item.getQuantity() + ", daily_stock)")
+                    .setSql("stock_quantity = CASE WHEN daily_stock IS NULL THEN NULL "
+                            + "ELSE GREATEST(0, daily_stock - GREATEST(0, stock_occupied - {0})) END", item.getQuantity())
+                    .setSql("stock_occupied = GREATEST(0, stock_occupied - {0})", item.getQuantity())
                     .eq(Dish::getId, item.getDishId())
-                    .eq(Dish::getStockDate, orderDay)
-                    .isNotNull(Dish::getStockQuantity)
-                    .isNotNull(Dish::getDailyStock));
+                    .eq(Dish::getStockDate, orderDay));
         }
     }
 }

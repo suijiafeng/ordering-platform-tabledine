@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * 每日限量的「今日剩余」重置。
  * <p>
  * dish.daily_stock = 店主设置的每日限量，dish.stock_quantity = 今日剩余，dish.stock_date = 剩余归属的业务日期。
- * 重置是幂等的：业务日期落后于今天的限量菜，把今日剩余重置为每日限量并推进日期。
+ * dish.stock_occupied 独立保存今日占用；不限量期间也计数，重新开启限量时不会重复售卖已占用份数。
+ * 重置是幂等的：业务日期落后于今天的菜，把占用清零、今日剩余重置为每日限量并推进日期。
  * 0 点定时任务、服务启动、下单前、顾客拉菜单时都会调用，停机错过 0 点也不会漏掉。
  * 作用于所有门店（无门店上下文时租户插件不过滤）。
  * <p>
@@ -62,8 +63,8 @@ public class DailyStockService {
         LocalDate today = today();
         int rows = dishMapper.update(null, Wrappers.<Dish>lambdaUpdate()
                 .setSql("stock_quantity = daily_stock")
+                .set(Dish::getStockOccupied, 0L)
                 .set(Dish::getStockDate, today)
-                .isNotNull(Dish::getDailyStock)
                 .and(q -> q.isNull(Dish::getStockDate).or().lt(Dish::getStockDate, today)));
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

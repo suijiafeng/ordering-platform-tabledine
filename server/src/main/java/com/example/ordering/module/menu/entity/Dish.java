@@ -42,7 +42,9 @@ public class Dish {
     /** 店主设置的每日限量（null 不限量）；每天 0 点 stock_quantity 重置为此值 */
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Integer dailyStock;
-    /** 今日剩余所属的业务日期（Asia/Shanghai）；跨天的订单取消不回补，停机错过 0 点按此补做重置 */
+    /** 今日已占用（含已消耗）份数，独立于限量；降低 / 取消限量时也不能丢失 */
+    private Long stockOccupied;
+    /** 库存计数所属的业务日期（Asia/Shanghai）；跨天的订单取消不回补，停机错过 0 点按此补做重置 */
     private LocalDate stockDate;
     @TableLogic
     private Integer deleted;

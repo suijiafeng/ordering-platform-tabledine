@@ -25,6 +25,13 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
     @org.springframework.beans.factory.annotation.Autowired
     com.example.ordering.module.menu.service.DailyStockService dailyStockService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void resetStockFixture() {
+        // 独立测试共用种子菜品；取消限量会保留今日占用，不能再把它当作测试数据清理。
+        jdbc.update("UPDATE dish SET daily_stock = NULL, stock_quantity = NULL, stock_occupied = 0, "
+                + "stock_date = (now() AT TIME ZONE 'Asia/Shanghai')::date WHERE id = 2");
+    }
+
     // ==================== 下单 ====================
 
     @Test
@@ -376,7 +383,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.unsettledCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
         // 还没结账不能退款；结账必须选收款方式
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner).contentType(MediaType.APPLICATION_JSON)
-                .content(json("type", "FULL", "reason", "x"))).andExpect(status().isConflict());
+                .content(json("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", "x"))).andExpect(status().isConflict());
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/settle"), staff).contentType(MediaType.APPLICATION_JSON)
                 .content(json("payRemark", "x"))).andExpect(status().is4xxClientError());
         // 后厨不能结账
@@ -555,7 +562,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
                         org.mockito.ArgumentMatchers.anyLong());
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "CUSTOM", "amount", 100, "reason", "少放了配菜"))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "CUSTOM", "amount", 100, "reason", "少放了配菜"))))
                 .andExpect(status().isOk());
         mvc.perform(authed(get("/api/v1/c/orders/" + orderNo), customer))
                 .andExpect(jsonPath("$.data.canRequestCancel").value(false));
@@ -704,22 +711,22 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
         // 自定义金额：店员 40301；超可退余额 42202；店主 4999 分成功
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), staff)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "CUSTOM", "reason", "补偿", "amount", 100))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "CUSTOM", "reason", "补偿", "amount", 100))))
                 .andExpect(status().isForbidden());
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "CUSTOM", "reason", "补偿", "amount", 5001))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "CUSTOM", "reason", "补偿", "amount", 5001))))
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(42202));
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "CUSTOM", "reason", "补偿", "amount", 4999))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "CUSTOM", "reason", "补偿", "amount", 4999))))
                 // 响应在事务内构建，返还余额在提交后：先返回 PROCESSING，随即成功
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PROCESSING"));
         assertThat(getData("/api/v1/m/orders/" + orderNo, owner).path("refundableAmount").asLong()).isEqualTo(1);
         // 再退 2 分（超 1 分余额）
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "CUSTOM", "reason", "补偿", "amount", 2))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "CUSTOM", "reason", "补偿", "amount", 2))))
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(42202));
     }
 
@@ -737,7 +744,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
                         org.mockito.ArgumentMatchers.anyLong());
         MvcResult r = mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "FULL", "reason", "退款测试"))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", "退款测试"))))
                 .andExpect(status().isOk())
                 .andReturn();
         String refundNo = data(r).path("refundNo").asText();
@@ -746,7 +753,7 @@ class OrderFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.failReason").isNotEmpty());
         // 失败期间不能再发起新退款
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
-                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("type", "FULL", "reason", "again"))))
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", "again"))))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(40902));
         // 重试仍失败（原因未变）→ 登记线下退款 → 计入已退
         mvc.perform(authed(post("/api/v1/m/refunds/" + refundNo + "/retry"), owner)).andExpect(status().isOk());

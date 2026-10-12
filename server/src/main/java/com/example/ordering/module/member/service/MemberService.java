@@ -87,6 +87,7 @@ public class MemberService {
         return MemberView.of(customerMapper.selectById(c.getId()));
     }
 
+    /** 单条 UPDATE 原子保存密码并撤销会话；加入调用方事务，无外部副作用 */
     public MemberView update(Long id, MemberUpdateRequest req) {
         Customer c = ownMember(id);
         var u = Wrappers.<Customer>lambdaUpdate().eq(Customer::getId, c.getId());
@@ -103,7 +104,7 @@ public class MemberService {
             operatorVerifier.verify(req.operatorPassword(), "重置会员密码");
             // 重置密码：token_version 递增，该会员的旧登录立即失效
             u.set(Customer::getPasswordHash, passwordEncoder.encode(req.password()))
-                    .set(Customer::getTokenVersion, (c.getTokenVersion() == null ? 0 : c.getTokenVersion()) + 1);
+                    .setSql("token_version = token_version + 1");
             changed = true;
         }
         if (changed) {

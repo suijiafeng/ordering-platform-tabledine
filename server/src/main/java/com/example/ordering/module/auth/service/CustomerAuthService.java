@@ -68,7 +68,7 @@ public class CustomerAuthService {
     /**
      * 会员修改自己的密码：成功后 token_version 递增，所有旧 token 失效，需重新登录。
      * 原密码错误返回 422（不是 401：顾客端遇到 401 会当成登录失效而退出登录）；连续错误按登录同一策略锁定，
-     * 防止拿到 token 的人逐个试原密码。
+     * 防止拿到 token 的人逐个试原密码。单条 UPDATE 原子保存密码并撤销会话，加入调用方事务。
      */
     public void changeOwnPassword(CustomerChangePasswordRequest req, String clientIp) {
         LoginUser user = LoginUser.currentCustomer();
@@ -87,7 +87,7 @@ public class CustomerAuthService {
         attemptGuard.onSuccess(account, clientIp);
         customerMapper.update(null, Wrappers.<Customer>lambdaUpdate()
                 .set(Customer::getPasswordHash, passwordEncoder.encode(req.newPassword()))
-                .set(Customer::getTokenVersion, customer.getTokenVersion() + 1)
+                .setSql("token_version = token_version + 1")
                 .eq(Customer::getId, customer.getId()));
     }
 

@@ -220,16 +220,31 @@ public class RefundService {
      */
     @Transactional
     public RefundView merchantInitiate(Order order, MerchantRefundRequest req, LoginUser staff) {
+        // 店主权限先于幂等结果查询；锁内读取请求编号与最新余额，串行化同一订单的并发重试。
+        if (!staff.isOwner()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "主动退款仅店主可操作");
+        }
+        MerchantRefundIdentity identity = MerchantRefundIdentity.of(order.getId(), req);
+        order = orderMapper.selectOne(Wrappers.<Order>lambdaQuery()
+                .eq(Order::getId, order.getId()).eq(Order::getStoreId, order.getStoreId()).last("FOR UPDATE"));
+        if (order == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "订单不存在");
+        }
+        Refund existing = refundMapper.selectOne(Wrappers.<Refund>lambdaQuery()
+                .eq(Refund::getStoreId, order.getStoreId()).eq(Refund::getClientRequestId, identity.clientRequestId()));
+        if (existing != null) {
+            if (!identity.requestFingerprint().equals(existing.getRequestFingerprint())) {
+                throw new BusinessException(ErrorCode.CONFLICT, "退款请求编号已用于其他退款内容，请核对原退款记录");
+            }
+            // 必须先返回原单：成功后的余额 / 可退份数已变化，不能重算，更不能创建第二笔退款。
+            return view(existing, order);
+        }
         if (order.getStatus() == OrderStatus.PAID) {
             // 待接单订单只退款不改状态会让后厨继续接单制作，必须走拒单（取消 + 全额退款 + 回补库存）
             throw new BusinessException(ErrorCode.CONFLICT, "待接单订单请使用拒单，将自动全额退款");
         }
         if (!(order.getStatus().isActivePaid() || order.getStatus() == OrderStatus.DONE)) {
             throw new BusinessException(ErrorCode.CONFLICT, "当前订单状态不支持退款");
-        }
-        // 需求 §4：商家主动退款仅店主（拒单产生的退款除外，走 reject）
-        if (!staff.isOwner()) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "主动退款仅店主可操作");
         }
         List<RefundItem> items = new ArrayList<>();
         long amount = switch (req.type()) {
@@ -248,7 +263,7 @@ public class RefundService {
             }
         };
         Refund refund = create(order, req.type(), RefundInitiator.MERCHANT, amount, req.reason(), staff.id(),
-                items, RefundStatus.PROCESSING);
+                items, RefundStatus.PROCESSING, null, identity);
         submitAfterCommit(refund);
         return view(refund, order);
     }
@@ -605,6 +620,12 @@ public class RefundService {
 
     private Refund create(Order order, RefundType type, RefundInitiator initiator, long amount, String reason,
                           Long operatorId, List<RefundItem> items, RefundStatus status, Payment payment) {
+        return create(order, type, initiator, amount, reason, operatorId, items, status, payment, null);
+    }
+
+    private Refund create(Order order, RefundType type, RefundInitiator initiator, long amount, String reason,
+                          Long operatorId, List<RefundItem> items, RefundStatus status, Payment payment,
+                          MerchantRefundIdentity identity) {
         if (amount <= 0) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "退款金额必须大于 0");
         }
@@ -644,6 +665,10 @@ public class RefundService {
         }
         Refund refund = new Refund();
         refund.setRefundNo(OrderNoGenerator.refundNo());
+        if (identity != null) {
+            refund.setClientRequestId(identity.clientRequestId());
+            refund.setRequestFingerprint(identity.requestFingerprint());
+        }
         refund.setStoreId(order.getStoreId());
         refund.setOrderId(order.getId());
         refund.setPaymentId(payment == null ? null : payment.getId());
@@ -658,6 +683,10 @@ public class RefundService {
         try {
             refundMapper.insert(refund);
         } catch (DuplicateKeyException e) {
+            if (identity != null) {
+                // 同订单请求已由订单锁串行化；跨订单误用同一请求编号仍由唯一索引兜底。
+                throw new BusinessException(ErrorCode.CONFLICT, "退款请求冲突，请核对原退款记录");
+            }
             // uk_refund_order_active：并发下同一订单已有进行中的退款
             throw new BusinessException(ErrorCode.REFUND_IN_PROGRESS);
         }

@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,6 +58,12 @@ public class CustomerOrderController {
     @GetMapping("/orders/{orderNo}")
     public Result<OrderDetail> detail(@PathVariable String orderNo) {
         return Result.ok(customerOrderService.detail(orderNo));
+    }
+
+    @Operation(summary = "按原请求编号查询本人订单（未查到不代表原请求已失败）")
+    @GetMapping("/orders/by-request/{clientRequestId}")
+    public Result<OrderDetail> byRequest(@PathVariable @Size(max = 64) String clientRequestId) {
+        return Result.ok(customerOrderService.detailByClientRequest(clientRequestId));
     }
 
     @Operation(summary = "历史订单")

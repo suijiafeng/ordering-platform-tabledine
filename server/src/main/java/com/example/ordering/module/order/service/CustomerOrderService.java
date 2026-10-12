@@ -383,6 +383,12 @@ public class CustomerOrderService {
         return assembler.customerDetail(ownOrder(orderNo));
     }
 
+    /** 只读恢复下单结果：他人请求编号与不存在的编号都返回 null，不暴露订单存在性。 */
+    public OrderDetail detailByClientRequest(String clientRequestId) {
+        Order order = findByClientRequest(LoginUser.currentCustomer().id(), clientRequestId);
+        return order == null ? null : assembler.customerDetail(order);
+    }
+
     public PageResult<OrderSummary> history(int page, int pageSize) {
         LoginUser user = LoginUser.currentCustomer();
         Page<Order> result = orderMapper.selectPage(new Page<>(page, pageSize), Wrappers.<Order>lambdaQuery()

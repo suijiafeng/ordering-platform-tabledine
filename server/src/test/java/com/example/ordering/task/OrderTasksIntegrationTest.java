@@ -79,7 +79,7 @@ class OrderTasksIntegrationTest extends AbstractIntegrationTest {
                 .when(balanceChannel).refund(anyString(), anyString(), anyLong());
         MvcResult r = mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "FULL", "reason", "补偿测试"))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", "补偿测试"))))
                 .andExpect(status().isOk()).andReturn();
         String refundNo = data(r).path("refundNo").asText();
         assertThat(refundStatus(refundNo)).isEqualTo("PROCESSING");

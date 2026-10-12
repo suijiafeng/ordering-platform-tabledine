@@ -18,6 +18,10 @@ public class Refund {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String refundNo;
+    /** 商家创建请求的永久幂等键；退款成功后仍保留，历史 / 顾客 / 自动退款为空 */
+    private String clientRequestId;
+    /** 创建请求的不可变指纹，用于拒绝同一请求编号对应不同订单或退款内容 */
+    private String requestFingerprint;
     private Long storeId;
     private Long orderId;
     private Long paymentId;

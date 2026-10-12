@@ -43,7 +43,7 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
         pay(customer, orderNo);
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(toJson(Map.of("type", "FULL", "reason", "不想做了"))))
+                        .content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", "不想做了"))))
                 .andExpect(status().isConflict());
         assertThat(orderStatus(orderNo)).isEqualTo("PAID");  // 仍可正常拒单
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/reject"), owner)
@@ -206,7 +206,7 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
     void staffCannotInitiateMerchantRefund() throws Exception {
         String orderNo = acceptedOrder();
         mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), staffToken())
-                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("type", "FULL", "reason", "店员想退"))))
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", "店员想退"))))
                 .andExpect(status().isForbidden());
     }
 
@@ -329,7 +329,7 @@ class RefundEdgeCasesIntegrationTest extends AbstractIntegrationTest {
 
     private String merchantFullRefund(String owner, String orderNo, String reason) throws Exception {
         MvcResult r = mvc.perform(authed(post("/api/v1/m/orders/" + orderNo + "/refunds"), owner)
-                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("type", "FULL", "reason", reason))))
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("clientRequestId", java.util.UUID.randomUUID().toString(), "type", "FULL", "reason", reason))))
                 .andExpect(status().isOk()).andReturn();
         return data(r).path("refundNo").asText();
     }
