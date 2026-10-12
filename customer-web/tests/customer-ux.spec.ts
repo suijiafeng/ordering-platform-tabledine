@@ -23,7 +23,7 @@ function makeOrder(status: OrderDetail['status'] = 'PENDING_PAY', amount = 3800)
 }
 
 async function setup(page: Page, options: { authenticated?: boolean; cart?: boolean; status?: OrderDetail['status']; storeOpen?: boolean } = {}) {
-  const state = { balance: 10000, balanceFailure: false, orderFailure: false, price: 3800, order: makeOrder(options.status), created: [] as Record<string, unknown>[], paid: 0 }
+  const state = { balance: 10000, balanceFailure: false, orderFailure: false, price: 3800, order: makeOrder(options.status), created: [] as Record<string, unknown>[], paid: 0, cancelled: 0, lostCreateResponse: false, hideRequestLookup: false, lookupFailure: false, lookups: [] as string[], requests: new Map<string, OrderDetail>(), profileId: 1 }
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(({ table, authenticated, cart }) => {
@@ -45,14 +45,38 @@ async function setup(page: Page, options: { authenticated?: boolean; cart?: bool
     else if (path.endsWith('/password-login')) data = { token: 'test-only-token', expiresIn: 3600 }
     else if (path.endsWith('/me')) {
       if (state.balanceFailure) { await route.fulfill({ status: 503, json: { code: 50001, message: '暂时不可用' } }); return }
-      data = { id: 1, nickname: '测试会员', phone: '13800000001', member: true, balance: state.balance }
+      data = { id: state.profileId, nickname: '测试会员', phone: '13800000001', member: true, balance: state.balance }
     } else if (path === '/api/v1/c/orders' && method === 'POST') {
-      state.created.push(route.request().postDataJSON() as Record<string, unknown>)
-      state.order = makeOrder('PENDING_PAY', state.price)
+      const payload = route.request().postDataJSON() as { clientRequestId: string; peopleCount: number; remark?: string; items: { quantity: number }[] }
+      state.created.push(payload)
+      const existing = state.requests.get(payload.clientRequestId)
+      if (existing) data = existing
+      else {
+        const quantity = payload.items[0]?.quantity || 1
+        state.order = makeOrder('PENDING_PAY', state.price * quantity)
+        state.order.peopleCount = payload.peopleCount
+        state.order.remark = payload.remark || null
+        state.order.items[0].quantity = quantity
+        state.order.items[0].unitPrice = state.price
+        state.order.itemCount = quantity
+        state.requests.set(payload.clientRequestId, state.order)
+        data = state.order
+      }
+      if (state.lostCreateResponse) { state.lostCreateResponse = false; await route.abort('failed'); return }
+    } else if (path.includes('/orders/by-request/')) {
+      const requestId = decodeURIComponent(path.split('/').pop()!)
+      state.lookups.push(requestId)
+      if (state.lookupFailure) { await route.fulfill({ status: 503, json: { code: 50000, message: '暂时不可用' } }); return }
+      data = state.hideRequestLookup ? null : state.requests.get(requestId) || null
+    } else if (path.endsWith('/cancel')) {
+      state.cancelled++
+      state.order.status = 'CLOSED'
+      state.order.canCancel = false
       data = state.order
     } else if (path.endsWith('/pay')) {
       state.paid++
-      state.order = { ...state.order, status: 'PAID', paidAt: new Date().toISOString() }
+      state.order.status = 'PAID'
+      state.order.paidAt = new Date().toISOString()
       data = { orderNo: state.order.orderNo, outTradeNo: state.order.orderNo, amount: state.order.payAmount, params: { balance: true, paid: true } }
     } else if (path === `/api/v1/c/orders/${state.order.orderNo}`) {
       if (state.orderFailure) { await route.fulfill({ status: 503, json: { code: 50001, message: '暂时不可用' } }); return }
@@ -207,4 +231,95 @@ test('打烊时结算不能创建订单', async ({ page }) => {
   await page.goto('/h5/checkout/')
   await expect(page.getByRole('button', { name: '已打烊' })).toBeDisabled()
   expect(state.created).toHaveLength(0)
+})
+
+
+async function loseCheckoutResponse(page: Page) {
+  const fixture = await setup(page, { cart: true })
+  fixture.state.lostCreateResponse = true
+  await page.goto('/h5/checkout/')
+  await page.getByLabel('口味备注').fill('原备注：少盐')
+  await page.getByRole('button', { name: '增加就餐人数' }).click()
+  await page.getByRole('button', { name: '确认并支付', exact: true }).click()
+  await page.getByRole('button', { name: '确认支付', exact: true }).click()
+  await expect(page.getByText('确认上次下单结果', { exact: true })).toBeVisible()
+  return fixture
+}
+
+async function changeCartAndReload(page: Page) {
+  await page.getByRole('button', { name: '返回修改购物车' }).click()
+  await page.locator('.dishes').getByRole('button', { name: '增加招牌红烧肉', exact: true }).click()
+  await page.goto('/h5/checkout/')
+  await page.reload()
+  await expect(page.getByText('确认上次下单结果', { exact: true })).toBeVisible()
+}
+
+test('下单响应丢失后修改购物车并刷新，只恢复原订单；明确取消后才创建新订单', async ({ page }) => {
+  const { state, errors } = await loseCheckoutResponse(page)
+  await expect(page.getByRole('button', { name: '查看原订单' })).toBeVisible()
+  const originalId = state.created[0].clientRequestId
+  await changeCartAndReload(page)
+  await expect(page.getByRole('button', { name: '查看原订单' })).toBeVisible()
+  expect(state.created).toHaveLength(1)
+  expect(state.requests.size).toBe(1)
+  expect(state.lookups.every(id => id === originalId)).toBe(true)
+  expect(state.paid).toBe(0)
+  expect(state.cancelled).toBe(0)
+  await expect(page.getByRole('button', { name: '确认并支付', exact: true })).toHaveCount(0)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ordering-customer-state')!).state.items[0].quantity)).toBe(2)
+
+  await page.getByRole('button', { name: '查看原订单' }).click()
+  await page.getByRole('button', { name: '取消订单', exact: true }).click()
+  await page.getByRole('button', { name: '确定取消', exact: true }).click()
+  await expect(page.getByText('已关闭', { exact: true }).first()).toBeVisible()
+  await page.goto('/h5/checkout/')
+  await page.getByRole('button', { name: '已确认，继续当前购物车' }).click()
+  await page.getByRole('button', { name: '确认并支付', exact: true }).click()
+  await page.getByRole('button', { name: '确认支付', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '支付成功', exact: true })).toBeVisible()
+  expect(state.created).toHaveLength(2)
+  expect(state.created[1].clientRequestId).not.toBe(originalId)
+  expect(state.created[1].items).toEqual([{ dishId: 1, specItemIds: [], addonItemIds: [], quantity: 2 }])
+  expect(state.cancelled).toBe(1)
+  expect(errors).toEqual([])
+})
+
+test('未查到的原请求仍可能处理中：修改后刷新不释放编号，重试只发原内容且不支付', async ({ page }) => {
+  const { state, errors } = await loseCheckoutResponse(page)
+  state.hideRequestLookup = true
+  await changeCartAndReload(page)
+  await expect(page.getByText(/暂未查到原订单/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '确认并支付', exact: true })).toHaveCount(0)
+  expect(state.created).toHaveLength(1)
+  await page.getByRole('button', { name: '按原内容重试', exact: true }).click()
+  await expect(page.getByText(/重试不会自动支付/)).toBeVisible()
+  await page.getByRole('button', { name: '再想想', exact: true }).click()
+  expect(state.created).toHaveLength(1)
+  await page.getByRole('button', { name: '按原内容重试', exact: true }).click()
+  await page.getByRole('button', { name: '重试原订单', exact: true }).click()
+  await expect(page.getByRole('button', { name: '查看原订单' })).toBeVisible()
+  expect(state.created).toHaveLength(2)
+  expect(state.created[1]).toEqual(state.created[0])
+  expect(state.created[1]).toMatchObject({ peopleCount: 2, remark: '原备注：少盐' })
+  expect(state.requests.size).toBe(1)
+  expect(state.paid).toBe(0)
+  expect(state.cancelled).toBe(0)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ordering-customer-state')!).state.items[0].quantity)).toBe(2)
+  expect(errors).toEqual([])
+})
+
+test('查询失败和更换会员后不能用新编号替换原请求，也不能替其他会员重试', async ({ page }) => {
+  const { state } = await loseCheckoutResponse(page)
+  state.lookupFailure = true
+  await page.reload()
+  await expect(page.getByText(/暂时无法查询原订单/)).toBeVisible()
+  expect(state.created).toHaveLength(1)
+  state.lookupFailure = false
+  state.hideRequestLookup = true
+  state.profileId = 2
+  await page.getByRole('button', { name: '查询原订单', exact: true }).click()
+  await page.getByRole('button', { name: '按原内容重试', exact: true }).click()
+  await expect(page.getByText('请使用上次下单的会员账号查询或重试', { exact: true })).toBeVisible()
+  expect(state.created).toHaveLength(1)
+  expect(state.paid).toBe(0)
 })

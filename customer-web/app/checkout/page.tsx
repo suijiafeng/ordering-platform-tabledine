@@ -1,10 +1,12 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { ApiError, createOrder, payOrder, resolveTable } from '@/lib/api'
+import { useEffect, useRef, useState } from 'react'
+import { ApiError, createOrder, fetchMe, payOrder, resolveTable } from '@/lib/api'
 import type { CartItem, OrderDetail } from '@/lib/types'
 import { getToken } from '@/lib/auth'
+import { beginCheckout, checkoutMatchesCart, checkoutPayload, CheckoutStorageError, finishCheckout, readPendingCheckout, type PendingCheckout } from '@/lib/checkout-request'
+import { CheckoutRecovery } from '@/components/CheckoutRecovery'
 import { ignoreShownError } from '@/lib/errors'
 import { itemOptionsText, payNote, yuan } from '@/lib/format'
 import { cartCount, cartTotal, useOrdering } from '@/store/ordering'
@@ -14,39 +16,13 @@ import { confirmDialog } from '@/lib/ui'
 import { useMemberBalance } from '@/hooks/useMemberBalance'
 import { AppBar, BottomBar, Card, EmptyState, PillButton, Price, Skeleton, Stepper } from '@/components/ui'
 
-// 同一份内容的重复提交（含刷新页面后重试）复用同一个 clientRequestId，服务端据此幂等；
-// 购物车、人数、备注任一变化就换新编号，否则改完购物车再提交会拿回服务端上一次创建的旧订单
-const REQUEST_ID_KEY = 'ordering_checkout_request_id'
 // 未登录时先保存人数和备注，登录回来后恢复
 const DRAFT_KEY = 'ordering_checkout_draft'
-/** 下单失败后应回菜单重新加载的业务码：售罄 / 库存不足、打烊、规格加料已失效、菜品已下架（状态冲突）、桌码失效 */
+/** 下单失败后应回菜单重新加载的业务码 */
 const BACK_TO_MENU_CODES = new Set([60001, 60002, 60003, 40901, 40402])
-
-/** crypto.randomUUID 只在 HTTPS / localhost 可用；局域网 http 真机联调时降级为随机字节 */
-function newRequestId() {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function requestId(fingerprint: string) {
-  try {
-    const stored = JSON.parse(sessionStorage.getItem(REQUEST_ID_KEY) ?? 'null') as { id: string; fingerprint: string } | null
-    if (stored?.id && stored.fingerprint === fingerprint) return stored.id
-  } catch {
-    // 旧格式或损坏：重新生成
-  }
-  const created = newRequestId()
-  sessionStorage.setItem(REQUEST_ID_KEY, JSON.stringify({ id: created, fingerprint }))
-  return created
-}
 
 /** 服务端返回的订单是否就是这次提交的内容（按菜品 + 份数比对）；幂等返回旧订单时能发现不一致 */
 function orderMatchesCart(order: OrderDetail, items: CartItem[]) {
-  const expected = new Map<string, number>()
-  for (const item of items) {
-    const key = `${item.dishId}|${[...item.specItemIds].sort().join(',')}|${[...item.addonItemIds].sort().join(',')}`
-    expected.set(key, (expected.get(key) ?? 0) + item.quantity)
-  }
   const byDish = (list: { dishId: number; quantity: number }[]) => {
     const m = new Map<number, number>()
     for (const i of list) m.set(i.dishId, (m.get(i.dishId) ?? 0) + i.quantity)
@@ -69,6 +45,9 @@ export default function CheckoutPage() {
   const [peopleCount, setPeopleCount] = useState(1)
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const submitLock = useRef(false)
+  const [pending, setPending] = useState<PendingCheckout | null>(null)
+  const [storageFailed, setStorageFailed] = useState(false)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)  // null：尚未在浏览器端读取登录态
   const { balance, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(loggedIn === true)
   const total = cartTotal(items)
@@ -78,6 +57,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     setLoggedIn(getToken() != null)
+    try { setPending(readPendingCheckout(sessionStorage)) } catch { setStorageFailed(true) }
     const draft = sessionStorage.getItem(DRAFT_KEY)
     if (draft) {
       sessionStorage.removeItem(DRAFT_KEY)
@@ -101,33 +81,35 @@ export default function CheckoutPage() {
   }, [setTable])
 
   const submit = async () => {
-    if (!table || !table.storeOpen || !items.length || submitting) return
+    if (!table || !table.storeOpen || !items.length || submitLock.current) return
     if (!getToken()) {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ peopleCount, remark }))
       router.push(`/login?redirect=${encodeURIComponent('/checkout')}`)
       return
     }
-    if (insufficient) { notify('余额不足，请联系店员充值'); return }
-    // 下单即扣款：提交前确认金额，避免误点直接付款（桌号与明细已在本页展示，弹窗只说金额）
-    if (!(await confirmDialog(`确认支付 ¥${yuan(total)}？`, payNote(balance, total), '确认支付'))) return
-    setSubmitting(true)
+    // 同步锁从确认框之前开始，重复点击不会打开第二个下单流程。
+    submitLock.current = true
+    let attempt: PendingCheckout | null = null
     let orderNo = ''
     try {
-      const payload = {
-        qrToken: table.qrToken,
-        peopleCount,
-        remark: remark.trim() || undefined,
-        items: items.map((item) => ({
-          dishId: item.dishId, specItemIds: item.specItemIds, addonItemIds: item.addonItemIds, quantity: item.quantity,
-        })),
-      }
-      const order = await createOrder({ clientRequestId: requestId(JSON.stringify(payload)), ...payload })
+      const unresolved = readPendingCheckout(sessionStorage)
+      if (unresolved) { setPending(unresolved); return }
+      if (insufficient) { notify('余额不足，请联系店员充值'); return }
+      if (!(await confirmDialog(`确认支付 ¥${yuan(total)}？`, payNote(balance, total), '确认支付'))) return
+      setSubmitting(true)
+      const profile = await fetchMe()
+      if (profile.balance < total) { notify('余额不足，请联系店员充值'); return }
+      const payload = checkoutPayload(table.qrToken, peopleCount, remark, items)
+      attempt = beginCheckout(sessionStorage, payload, profile.id, items, table.tableCode)
+      setPending(attempt)
+      const order = await createOrder(attempt.payload!)
       orderNo = order.orderNo
-      sessionStorage.removeItem(REQUEST_ID_KEY)
-      clear()
-      // 拿回的订单必须和这次提交的内容、金额一致，否则先交给顾客在详情页核对，不能直接付款
-      if (!orderMatchesCart(order, items)) {
-        notify('订单内容与购物车不一致，请核对后支付')
+      const current = useOrdering.getState()
+      const cartUnchanged = checkoutMatchesCart(attempt, current.table?.qrToken, current.items)
+      if (cartUnchanged) clear()
+      // 改过购物车、恢复原请求、菜价变化都交给详情页确认，不沿用旧的支付意图。
+      if (!cartUnchanged || !orderMatchesCart(order, items)) {
+        notify('订单内容与当前购物车不同，请核对原订单后支付')
         router.replace(`/order?orderNo=${encodeURIComponent(orderNo)}`)
         return
       }
@@ -136,23 +118,35 @@ export default function CheckoutPage() {
         router.replace(`/order?orderNo=${encodeURIComponent(orderNo)}`)
         return
       }
-      if (await payOrder(orderNo)) { router.replace(`/paid?orderNo=${encodeURIComponent(orderNo)}`); return }
-      notify('支付未完成，可在订单中重试')
-    } catch (e) {
-      // 下单失败：保留 requestId，重试时服务端幂等；支付失败（如余额不足）：订单已创建，去详情页继续处理
-      if (!orderNo) setSubmitting(false)
-      ignoreShownError(e)
-      if (!orderNo && e instanceof ApiError && BACK_TO_MENU_CODES.has(e.code)) {
-        // 菜单已变化（售罄、下架、打烊、规格加料失效、桌码失效）：留在结算页重试没有意义，回菜单重新加载并整理购物车
-        router.replace(returnToMenu)
+      if (await payOrder(orderNo)) {
+        finishCheckout(sessionStorage, attempt.id)
+        router.replace(`/paid?orderNo=${encodeURIComponent(orderNo)}`)
         return
       }
+      notify('支付未完成，可在订单中重试')
+    } catch (e) {
+      // 仅首次请求明确被业务校验拒绝时可释放编号；网络/5xx/解析失败均保留原请求。
+      if (!orderNo && attempt && e instanceof ApiError && e.code > 0 && e.status >= 400 && e.status < 500) {
+        finishCheckout(sessionStorage, attempt.id)
+        setPending(null)
+      }
+      if (e instanceof CheckoutStorageError) {
+        setStorageFailed(true)
+        notify('无法保存或读取下单记录，请先在我的订单中核对，避免重复下单')
+      } else {
+        ignoreShownError(e)
+        if (!orderNo && e instanceof ApiError && BACK_TO_MENU_CODES.has(e.code)) router.replace(returnToMenu)
+      }
+    } finally {
+      submitLock.current = false
+      if (!orderNo) setSubmitting(false)
     }
-    // 成功：保持 submitting，直到详情页替换掉本页（否则先渲染一帧「购物车是空的」）
     if (orderNo) router.replace(`/order?orderNo=${encodeURIComponent(orderNo)}`)
   }
 
   if (loggedIn === null) return <div className="screen"><AppBar title="确认订单" fallback={returnToMenu} /><Skeleton variant="card" rows={3} label="正在准备结算…" /></div>
+  if (storageFailed) return <div className="screen"><AppBar title="确认订单" fallback={returnToMenu} /><EmptyState title="无法读取下单记录" desc="为避免重复下单，请先在我的订单中核对原订单，或联系店员协助。" action={<PillButton onClick={() => router.push('/orders')}>查看我的订单</PillButton>} /></div>
+  if (pending && !submitting) return <CheckoutRecovery pending={pending} loggedIn={loggedIn} returnToMenu={returnToMenu} onResolved={() => setPending(null)} />
   if (submitting && !items.length) return <div className="center-state full" role="status"><span className="spinner" /><div className="t-title">正在确认支付结果</div><div className="t-note">请稍候，可在「我的订单」查看进度</div></div>
   if (!table || !items.length) {
     return (
@@ -213,7 +207,7 @@ export default function CheckoutPage() {
         <Card>
           <div className="field-row">
             <span className="t-value">就餐人数</span>
-            <Stepper label="就餐人数" value={peopleCount} min={1} max={50} onChange={setPeopleCount} />
+            <Stepper label="就餐人数" value={peopleCount} min={1} max={50} onChange={value => { if (!submitting) setPeopleCount(value) }} />
           </div>
           <div className="field-block">
             <label className="label" htmlFor="order-remark">口味备注<span className="optional-label">选填</span></label>
@@ -221,6 +215,7 @@ export default function CheckoutPage() {
               id="order-remark"
               className="textarea"
               value={remark}
+              disabled={submitting}
               maxLength={100}
               rows={2}
               placeholder="口味偏好，如：少盐、不放葱"

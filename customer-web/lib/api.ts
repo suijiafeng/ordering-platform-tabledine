@@ -114,6 +114,10 @@ export const fetchOrders = (page: number, pageSize = 20) =>
 /** silent：轮询时失败不打扰，由页面显示「加载失败」 */
 export const fetchOrder = (orderNo: string) => request<OrderDetail>(orderPath(orderNo), { silent: true })
 
+/** 仅查询当前会员的原请求；null 不代表原请求已失败，可能还在服务端处理中。 */
+export const fetchOrderByRequest = (clientRequestId: string) =>
+  request<OrderDetail | null>(`/api/v1/c/orders/by-request/${encodeURIComponent(clientRequestId)}`, { silent: true, cache: 'no-store' })
+
 export interface CreateOrderPayload {
   clientRequestId: string
   qrToken: string
