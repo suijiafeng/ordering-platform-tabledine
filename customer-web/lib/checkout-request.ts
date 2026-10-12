@@ -1,5 +1,5 @@
 import type { CreateOrderPayload } from './api'
-import type { CartItem } from './types'
+import type { CartItem, OrderDetail } from './types'
 
 export const CHECKOUT_REQUEST_KEY = 'ordering_checkout_request_id'
 type Storage = Pick<globalThis.Storage, 'getItem' | 'setItem' | 'removeItem'>
@@ -63,6 +63,13 @@ export function finishCheckout(storage: Storage, id: string) {
   if (readPendingCheckout(storage)?.id === id) {
     try { storage.removeItem(CHECKOUT_REQUEST_KEY) } catch { throw new CheckoutStorageError('无法更新下单记录') }
   }
+}
+
+/** 只有服务端已建立永久停止屏障，且没有返回已存在订单，才释放本地请求。 */
+export function finishAbandonedCheckout(storage: Storage, id: string, result: { abandoned: boolean; order: OrderDetail | null }) {
+  if (!result.abandoned || result.order !== null || readPendingCheckout(storage)?.id !== id) return false
+  finishCheckout(storage, id)
+  return true
 }
 
 export function checkoutMatchesCart(pending: PendingCheckout, qrToken: string | undefined, items: CartItem[]) {

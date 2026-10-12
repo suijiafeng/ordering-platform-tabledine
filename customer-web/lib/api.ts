@@ -118,6 +118,10 @@ export const fetchOrder = (orderNo: string) => request<OrderDetail>(orderPath(or
 export const fetchOrderByRequest = (clientRequestId: string) =>
   request<OrderDetail | null>(`/api/v1/c/orders/by-request/${encodeURIComponent(clientRequestId)}`, { silent: true, cache: 'no-store' })
 
+/** 服务端与创建操作串行化：未创建的请求永久停用，已有订单仅返回供顾客核对。 */
+export const abandonOrderRequest = (clientRequestId: string) =>
+  request<{ abandoned: boolean; order: OrderDetail | null }>(`/api/v1/c/orders/by-request/${encodeURIComponent(clientRequestId)}/abandon`, post())
+
 export interface CreateOrderPayload {
   clientRequestId: string
   qrToken: string

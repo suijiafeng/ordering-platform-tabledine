@@ -23,7 +23,7 @@ function makeOrder(status: OrderDetail['status'] = 'PENDING_PAY', amount = 3800)
 }
 
 async function setup(page: Page, options: { authenticated?: boolean; cart?: boolean; status?: OrderDetail['status']; storeOpen?: boolean } = {}) {
-  const state = { balance: 10000, balanceFailure: false, orderFailure: false, price: 3800, order: makeOrder(options.status), created: [] as Record<string, unknown>[], paid: 0, cancelled: 0, lostCreateResponse: false, hideRequestLookup: false, lookupFailure: false, lookups: [] as string[], requests: new Map<string, OrderDetail>(), profileId: 1 }
+  const state = { balance: 10000, balanceFailure: false, orderFailure: false, price: 3800, order: makeOrder(options.status), created: [] as Record<string, unknown>[], paid: 0, cancelled: 0, lostCreateResponse: false, hideRequestLookup: false, lookupFailure: false, lookups: [] as string[], requests: new Map<string, OrderDetail>(), profileId: 1, abandoned: [] as string[], tombstones: new Set<string>(), rejectCreateWithoutResponse: false, lostAbandonResponse: false }
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(({ table, authenticated, cart }) => {
@@ -49,6 +49,15 @@ async function setup(page: Page, options: { authenticated?: boolean; cart?: bool
     } else if (path === '/api/v1/c/orders' && method === 'POST') {
       const payload = route.request().postDataJSON() as { clientRequestId: string; peopleCount: number; remark?: string; items: { quantity: number }[] }
       state.created.push(payload)
+      if (state.tombstones.has(payload.clientRequestId)) {
+        await route.fulfill({ status: 409, json: { code: 40901, message: '原请求已停止，请重新下单' } })
+        return
+      }
+      if (state.rejectCreateWithoutResponse) {
+        state.rejectCreateWithoutResponse = false
+        await route.abort('failed')
+        return
+      }
       const existing = state.requests.get(payload.clientRequestId)
       if (existing) data = existing
       else {
@@ -63,6 +72,16 @@ async function setup(page: Page, options: { authenticated?: boolean; cart?: bool
         data = state.order
       }
       if (state.lostCreateResponse) { state.lostCreateResponse = false; await route.abort('failed'); return }
+    } else if (path.includes('/orders/by-request/') && path.endsWith('/abandon')) {
+      const requestId = decodeURIComponent(path.split('/').at(-2)!)
+      state.abandoned.push(requestId)
+      const existing = state.requests.get(requestId)
+      if (existing) data = { abandoned: false, order: existing }
+      else {
+        state.tombstones.add(requestId)
+        data = { abandoned: true, order: null }
+      }
+      if (state.lostAbandonResponse) { state.lostAbandonResponse = false; await route.abort('failed'); return }
     } else if (path.includes('/orders/by-request/')) {
       const requestId = decodeURIComponent(path.split('/').pop()!)
       state.lookups.push(requestId)
@@ -322,4 +341,80 @@ test('查询失败和更换会员后不能用新编号替换原请求，也不�
   await expect(page.getByText('请使用上次下单的会员账号查询或重试', { exact: true })).toBeVisible()
   expect(state.created).toHaveLength(1)
   expect(state.paid).toBe(0)
+})
+
+
+test('旧版未知请求不存在时，明确确认原会员账号后可安全停止并重新结算', async ({ page }) => {
+  const { state } = await setup(page, { cart: true })
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('legacy-fixture')) {
+      sessionStorage.setItem('legacy-fixture', 'yes')
+      sessionStorage.setItem('ordering_checkout_request_id', JSON.stringify({ id: 'legacy-request', fingerprint: 'legacy-cart' }))
+    }
+  })
+  await page.goto('/h5/checkout/')
+  await expect(page.getByText(/暂未查到原订单/)).toBeVisible()
+  await page.getByRole('button', { name: '停止原请求，保留购物车' }).click()
+  await expect(page.getByText(/旧版记录没有保存会员身份/)).toBeVisible()
+  await page.getByRole('button', { name: '再想想', exact: true }).click()
+  expect(state.abandoned).toEqual([])
+  await page.getByRole('button', { name: '停止原请求，保留购物车' }).click()
+  await page.getByRole('button', { name: '是原账号，停止原请求', exact: true }).click()
+  await expect(page.getByRole('button', { name: '确认并支付', exact: true })).toBeVisible()
+  expect(state.tombstones.has('legacy-request')).toBe(true)
+  expect(await page.evaluate(() => sessionStorage.getItem('ordering_checkout_request_id'))).toBeNull()
+  expect(state.created).toHaveLength(0)
+  expect(state.paid).toBe(0)
+})
+
+test('失败的原请求可停止；停止响应丢失时保留编号，刷新后重复停止可恢复', async ({ page }) => {
+  const { state } = await setup(page, { cart: true })
+  state.rejectCreateWithoutResponse = true
+  await page.goto('/h5/checkout/')
+  await page.getByRole('button', { name: '确认并支付', exact: true }).click()
+  await page.getByRole('button', { name: '确认支付', exact: true }).click()
+  await expect(page.getByText(/暂未查到原订单/)).toBeVisible()
+  const originalId = state.created[0].clientRequestId as string
+  state.lostAbandonResponse = true
+  await page.getByRole('button', { name: '停止原请求，保留购物车' }).click()
+  await page.getByRole('button', { name: '停止原请求', exact: true }).click()
+  await expect(page.getByText(/未能确认原请求已停止/)).toBeVisible()
+  expect(state.tombstones.has(originalId)).toBe(true)
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('ordering_checkout_request_id')!).id)).toBe(originalId)
+  await page.reload()
+  await page.getByRole('button', { name: '停止原请求，保留购物车' }).click()
+  await page.getByRole('button', { name: '停止原请求', exact: true }).click()
+  await expect(page.getByRole('button', { name: '确认并支付', exact: true })).toBeVisible()
+  expect(state.abandoned).toEqual([originalId, originalId])
+  await page.getByRole('button', { name: '确认并支付', exact: true }).click()
+  await page.getByRole('button', { name: '确认支付', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '支付成功', exact: true })).toBeVisible()
+  expect(state.created[1].clientRequestId).not.toBe(originalId)
+  expect(state.requests.size).toBe(1)
+})
+
+test('停止请求与创建并发时，服务端返回已有订单则继续核对，不清记录或取消付款', async ({ page }) => {
+  const { state } = await loseCheckoutResponse(page)
+  state.hideRequestLookup = true
+  await page.reload()
+  await expect(page.getByText(/暂未查到原订单/)).toBeVisible()
+  await page.getByRole('button', { name: '停止原请求，保留购物车' }).click()
+  await page.getByRole('button', { name: '停止原请求', exact: true }).click()
+  await expect(page.getByRole('button', { name: '查看原订单' })).toBeVisible()
+  expect(state.tombstones.size).toBe(0)
+  expect(state.created).toHaveLength(1)
+  expect(state.cancelled).toBe(0)
+  expect(state.paid).toBe(0)
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('ordering_checkout_request_id')!).id)).toBe(state.created[0].clientRequestId)
+})
+
+test('新记录不允许更换会员后停止原请求', async ({ page }) => {
+  const { state } = await loseCheckoutResponse(page)
+  state.hideRequestLookup = true
+  state.profileId = 2
+  await page.reload()
+  await page.getByRole('button', { name: '停止原请求，保留购物车' }).click()
+  await expect(page.getByText('请使用上次下单的会员账号停止原请求', { exact: true })).toBeVisible()
+  expect(state.abandoned).toHaveLength(0)
+  expect(state.tombstones.size).toBe(0)
 })

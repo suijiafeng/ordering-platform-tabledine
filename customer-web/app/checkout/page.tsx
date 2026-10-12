@@ -97,7 +97,9 @@ export default function CheckoutPage() {
       if (insufficient) { notify('余额不足，请联系店员充值'); return }
       if (!(await confirmDialog(`确认支付 ¥${yuan(total)}？`, payNote(balance, total), '确认支付'))) return
       setSubmitting(true)
+      const token = getToken()
       const profile = await fetchMe()
+      if (getToken() !== token) { notify('登录账号已变化，请重新确认后支付'); return }
       if (profile.balance < total) { notify('余额不足，请联系店员充值'); return }
       const payload = checkoutPayload(table.qrToken, peopleCount, remark, items)
       attempt = beginCheckout(sessionStorage, payload, profile.id, items, table.tableCode)
@@ -125,11 +127,7 @@ export default function CheckoutPage() {
       }
       notify('支付未完成，可在订单中重试')
     } catch (e) {
-      // 仅首次请求明确被业务校验拒绝时可释放编号；网络/5xx/解析失败均保留原请求。
-      if (!orderNo && attempt && e instanceof ApiError && e.code > 0 && e.status >= 400 && e.status < 500) {
-        finishCheckout(sessionStorage, attempt.id)
-        setPending(null)
-      }
+      // 失败仍保留原编号；顾客明确停止请求后由服务端立下永久屏障，再允许新编号。
       if (e instanceof CheckoutStorageError) {
         setStorageFailed(true)
         notify('无法保存或读取下单记录，请先在我的订单中核对，避免重复下单')

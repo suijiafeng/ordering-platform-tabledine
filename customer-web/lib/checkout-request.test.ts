@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { beginCheckout, CHECKOUT_REQUEST_KEY, checkoutMatchesCart, checkoutPayload, finishCheckout, readPendingCheckout } from './checkout-request'
-import type { CartItem } from './types'
+import { beginCheckout, CHECKOUT_REQUEST_KEY, checkoutMatchesCart, checkoutPayload, finishAbandonedCheckout, finishCheckout, readPendingCheckout } from './checkout-request'
+import type { CartItem, OrderDetail } from './types'
 
 function storage() {
   const values = new Map<string, string>()
@@ -46,5 +46,33 @@ describe('unresolved checkout identity', () => {
     expect(() => beginCheckout(saved, payload, 7, cart, 'A1')).toThrow()
     expect(saved.getItem(CHECKOUT_REQUEST_KEY)).toBe('broken json')
     expect(() => beginCheckout({ ...storage(), setItem: () => { throw new Error('quota') } }, payload, 7, cart, 'A1')).toThrow('无法保存下单记录')
+  })
+
+  it('can release a legacy record only after server-confirmed abandonment', () => {
+    const saved = storage()
+    saved.setItem(CHECKOUT_REQUEST_KEY, JSON.stringify({ id: 'legacy', fingerprint: JSON.stringify(payload) }))
+    expect(finishAbandonedCheckout(saved, 'legacy', { abandoned: false, order: null })).toBe(false)
+    expect(readPendingCheckout(saved)?.id).toBe('legacy')
+    expect(finishAbandonedCheckout(saved, 'legacy', { abandoned: true, order: null })).toBe(true)
+    expect(readPendingCheckout(saved)).toBeNull()
+    expect(beginCheckout(saved, payload, 7, cart, 'A1').id).not.toBe('legacy')
+  })
+
+  it('keeps an existing original order blocked for review when abandonment loses the race', () => {
+    const saved = storage()
+    const original = beginCheckout(saved, payload, 7, cart, 'A1')
+    const order = { orderNo: 'original', status: 'PENDING_PAY' } as OrderDetail
+    expect(finishAbandonedCheckout(saved, original.id, { abandoned: false, order })).toBe(false)
+    expect(readPendingCheckout(saved)?.id).toBe(original.id)
+    expect(finishAbandonedCheckout(saved, original.id, { abandoned: true, order })).toBe(false)
+  })
+
+  it('a stale abandonment response cannot release a newer request', () => {
+    const saved = storage()
+    const original = beginCheckout(saved, payload, 7, cart, 'A1')
+    finishCheckout(saved, original.id)
+    const newer = beginCheckout(saved, payload, 7, cart, 'A1')
+    expect(finishAbandonedCheckout(saved, original.id, { abandoned: true, order: null })).toBe(false)
+    expect(readPendingCheckout(saved)?.id).toBe(newer.id)
   })
 })
