@@ -2,6 +2,7 @@ package com.example.ordering.module.order.controller;
 
 import com.example.ordering.common.PageResult;
 import com.example.ordering.common.Result;
+import com.example.ordering.module.order.dto.AbandonCheckoutResult;
 import com.example.ordering.module.order.dto.CancelRequest;
 import com.example.ordering.module.order.dto.CreateOrderRequest;
 import com.example.ordering.module.order.dto.OrderDetail;
@@ -16,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -64,6 +66,13 @@ public class CustomerOrderController {
     @GetMapping("/orders/by-request/{clientRequestId}")
     public Result<OrderDetail> byRequest(@PathVariable @Size(max = 64) String clientRequestId) {
         return Result.ok(customerOrderService.detailByClientRequest(clientRequestId));
+    }
+
+    @Operation(summary = "安全放弃未生成订单的原请求；已有订单只返回详情，不自动取消或支付")
+    @RateLimit(permits = 10, windowSeconds = 60)
+    @PostMapping("/orders/by-request/{clientRequestId}/abandon")
+    public Result<AbandonCheckoutResult> abandon(@PathVariable @NotBlank @Size(max = 64) String clientRequestId) {
+        return Result.ok(customerOrderService.abandonCheckout(clientRequestId));
     }
 
     @Operation(summary = "历史订单")

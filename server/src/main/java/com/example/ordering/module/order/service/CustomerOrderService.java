@@ -13,10 +13,12 @@ import com.example.ordering.module.menu.dto.SpecGroupView;
 import com.example.ordering.module.menu.entity.Dish;
 import com.example.ordering.module.menu.mapper.DishMapper;
 import com.example.ordering.module.menu.service.MenuGroupLoader;
+import com.example.ordering.module.order.dto.AbandonCheckoutResult;
 import com.example.ordering.module.order.dto.CreateOrderRequest;
 import com.example.ordering.module.order.dto.OrderDetail;
 import com.example.ordering.module.order.dto.OrderSummary;
 import com.example.ordering.module.order.dto.PayInitResult;
+import com.example.ordering.module.order.entity.CheckoutRequest;
 import com.example.ordering.module.order.entity.OperatorType;
 import com.example.ordering.module.order.entity.Order;
 import com.example.ordering.module.order.entity.OrderItem;
@@ -24,6 +26,7 @@ import com.example.ordering.module.order.entity.OrderStatus;
 import com.example.ordering.module.order.entity.RefundStatusOfOrder;
 import com.example.ordering.module.order.mapper.OrderItemMapper;
 import com.example.ordering.module.order.mapper.OrderMapper;
+import com.example.ordering.module.order.mapper.CheckoutRequestMapper;
 import com.example.ordering.module.pay.service.PayService;
 import com.example.ordering.module.refund.dto.CustomerRefundRequest;
 import com.example.ordering.module.refund.dto.RefundView;
@@ -35,7 +38,6 @@ import com.example.ordering.module.table.entity.DiningTable;
 import com.example.ordering.module.table.mapper.DiningTableMapper;
 import com.example.ordering.security.LoginUser;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -63,6 +65,7 @@ import java.util.LinkedHashMap;
 public class CustomerOrderService {
 
     private final OrderMapper orderMapper;
+    private final CheckoutRequestMapper checkoutRequestMapper;
     private final OrderItemMapper orderItemMapper;
     private final DishMapper dishMapper;
     private final DiningTableMapper tableMapper;
@@ -82,8 +85,10 @@ public class CustomerOrderService {
                         CategoryMapper categoryMapper,
                         DailyStockService dailyStockService, StoreService storeService,
                         OrderStateService orderStateService, OrderViewAssembler assembler, PayService payService,
-                        RefundService refundService, TransactionTemplate tx, CustomerMapper customerMapper) {
+                        RefundService refundService, TransactionTemplate tx, CustomerMapper customerMapper,
+                        CheckoutRequestMapper checkoutRequestMapper) {
         this.orderMapper = orderMapper;
+        this.checkoutRequestMapper = checkoutRequestMapper;
         this.orderItemMapper = orderItemMapper;
         this.dishMapper = dishMapper;
         this.tableMapper = tableMapper;
@@ -101,24 +106,42 @@ public class CustomerOrderService {
 
     // ==================== 创建 ====================
 
+    /** 数据库事务：模板显式包住请求行锁、库存和订单；内部调用不能依赖 @Transactional 代理。 */
     public OrderDetail create(CreateOrderRequest req) {
         LoginUser user = LoginUser.currentCustomer();
-        // 幂等：同一顾客同一 clientRequestId 直接返回已有订单
-        Order existing = findByClientRequest(user.id(), req.clientRequestId());
-        if (existing != null) {
-            return assembler.customerDetail(existing);
-        }
-        try {
-            Order order = tx.execute(status -> doCreate(user, req));
-            return assembler.customerDetail(order);
-        } catch (DuplicateKeyException e) {
-            // 并发重复提交：唯一键 (customer_id, client_request_id) 冲突，返回先创建成功的那笔
-            Order order = findByClientRequest(user.id(), req.clientRequestId());
-            if (order != null) {
-                return assembler.customerDetail(order);
+        Order order = tx.execute(status -> {
+            CheckoutRequest request = lockCheckoutRequest(user.id(), req.clientRequestId());
+            Order existing = findByClientRequest(user.id(), req.clientRequestId());
+            if (existing != null) {
+                return existing;
             }
-            throw e;
-        }
+            if (request.isAbandoned()) {
+                throw new BusinessException(ErrorCode.CONFLICT, "原下单请求已放弃，请刷新后重新确认订单");
+            }
+            return doCreate(user, req);
+        });
+        return assembler.customerDetail(order);
+    }
+
+    /** 数据库事务：与创建共用请求行锁；只封存尚未产生订单的请求，不改变已有订单或资金。 */
+    public AbandonCheckoutResult abandonCheckout(String clientRequestId) {
+        LoginUser user = LoginUser.currentCustomer();
+        return tx.execute(status -> {
+            lockCheckoutRequest(user.id(), clientRequestId);
+            // 也查升级前的订单，不能因其缺少请求账本而把仍待支付的订单视作不存在。
+            Order existing = findByClientRequest(user.id(), clientRequestId);
+            if (existing != null) {
+                return new AbandonCheckoutResult(false, assembler.customerDetail(existing));
+            }
+            checkoutRequestMapper.abandon(user.id(), clientRequestId);
+            return new AbandonCheckoutResult(true, null);
+        });
+    }
+
+    private CheckoutRequest lockCheckoutRequest(Long customerId, String clientRequestId) {
+        // 不能只锁不存在的行：先原子插入，竞争者在唯一键冲突处等待首个事务，再锁同一行。
+        checkoutRequestMapper.ensureExists(customerId, clientRequestId);
+        return checkoutRequestMapper.lock(customerId, clientRequestId);
     }
 
     private Order findByClientRequest(Long customerId, String clientRequestId) {
