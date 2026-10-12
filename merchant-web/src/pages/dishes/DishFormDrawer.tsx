@@ -53,8 +53,11 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
 
   useEffect(() => {
     const isLatest = beginLoad()  // 关闭也算一次新的「打开状态」，让进行中的加载失效
+    const invalidate = () => { beginLoad() }
+    // 关闭和新建没有后续请求来清理 loading；旧请求的 finally 已失效，必须由新会话重置。
+    setLoading(false)
     if (!open) {
-      return
+      return invalidate
     }
     form.resetFields()
     if (!dishId) {
@@ -64,7 +67,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
         specGroups: [],
         addonGroups: [],
       })
-      return
+      return invalidate
     }
     setLoading(true)
     getDish(dishId)
@@ -94,6 +97,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       })
       .catch(() => { if (isLatest()) onCloseRef.current() })
       .finally(() => { if (isLatest()) setLoading(false) })
+    return invalidate
   }, [open, dishId, defaultCategoryId, categories, form, beginLoad])
 
   const submit = async () => {

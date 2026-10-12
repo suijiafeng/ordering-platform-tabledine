@@ -386,6 +386,8 @@ export interface WalletTransaction {
 
 
 export interface MerchantRefundRequest {
+  /** 一次退款意图的不可变编号；网络重试必须沿用，确认成功后新退款才换号 */
+  clientRequestId: string
   type: RefundType
   reason: string
   items?: { orderItemId: number; quantity: number }[]

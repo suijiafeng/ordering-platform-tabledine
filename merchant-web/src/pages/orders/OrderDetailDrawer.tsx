@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Alert, App, Button, Descriptions, Divider, Drawer, Input, Modal, Space, Spin, Table, Tag, Timeline, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -71,56 +71,87 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
   // reject 拒单 / cancel 店主整单取消 / rejectCancel 拒绝顾客的取消申请
   const [reasonModal, setReasonModal] = useState<'reject' | 'cancel' | 'rejectCancel' | null>(null)
   const [reason, setReason] = useState('')
+  const cancelConfirmation = useRef<ReturnType<typeof modal.confirm> | null>(null)
   // 调用方传的是内联箭头函数，父页面每 5 秒轮询重渲染都会换一个新引用；
   // 若把 onClose 放进 load 的依赖，抽屉就会每 5 秒清空重拉。用 ref 持有最新回调。
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
+  // 一次打开是一段独立会话；关闭后重开同一订单也不能接收上次打开时的异步结果。
+  // layout cleanup 在切换提交时立即失效旧会话，避免旧操作的 catch 再启动一次旧订单加载。
+  const session = useMemo(() => ({ open, orderNo }), [open, orderNo])
+  const currentSession = useRef<typeof session | null>(null)
+  useLayoutEffect(() => {
+    currentSession.current = session
+    return () => { currentSession.current = null }
+  }, [session])
+  const isCurrentSession = useCallback(
+    () => session.open && !!session.orderNo && currentSession.current === session,
+    [session],
+  )
+
   // 只采纳最后一次发起的加载：加载 A 时切到订单 B（如点了新订单通知），A 晚到的结果不能覆盖 B
   const loadSeq = useRef(0)
   const load = useCallback(async () => {
-    if (!orderNo) {
+    if (!isCurrentSession() || !session.orderNo) {
       return
     }
     const seq = ++loadSeq.current
+    const isLatest = () => isCurrentSession() && seq === loadSeq.current
     setLoading(true)
     try {
-      const detail = await getOrder(orderNo)
-      if (seq === loadSeq.current) setOrder(detail)
+      const detail = await getOrder(session.orderNo)
+      if (isLatest()) setOrder(detail)
     } catch (e) {
       // 打开详情失败（订单不存在 / 无权限）：请求层已提示，关闭抽屉回到列表
-      if (seq === loadSeq.current) onCloseRef.current()
+      if (isLatest()) onCloseRef.current()
       ignoreShownError(e)
     } finally {
-      if (seq === loadSeq.current) setLoading(false)
+      if (isLatest()) setLoading(false)
     }
-  }, [orderNo])
+  }, [isCurrentSession, session])
 
   useEffect(() => {
-    if (open) {
-      setOrder(null)
+    setOrder(null)
+    setLoading(false)
+    setActing(false)
+    setRefundOpen(false)
+    setSettleOpen(false)
+    setReasonModal(null)
+    setReason('')
+    if (session.open) {
       void load()
     }
-  }, [open, load])
+    return () => {
+      cancelConfirmation.current?.destroy()
+      cancelConfirmation.current = null
+    }
+  }, [session, load])
 
+  const actionSeq = useRef(0)
   /** 返回是否成功 */
   const runOrderAction = async (fn: () => Promise<OrderDetail>, ok: string): Promise<boolean> => {
+    // 也拦住已切走订单的确认弹窗回调，不能在新会话中发起旧操作。
+    if (!isCurrentSession()) return false
+    const action = ++actionSeq.current
+    const isCurrentAction = () => isCurrentSession() && action === actionSeq.current
     setActing(true)
     // 操作期间切到了别的订单（如点了新订单通知）：结果不能覆盖抽屉里已经换成的那一单
     const seq = loadSeq.current
     try {
       const updated = await fn()
+      if (!isCurrentAction()) return false
       if (seq === loadSeq.current) setOrder(updated)
       message.success(ok)
       onChanged?.()
       return true
     } catch (e) {
       // 操作失败（通常是状态已被别人改变）：请求层已提示，重新拉取详情让按钮与最新状态一致
-      void load()
+      if (isCurrentAction()) void load()
       ignoreShownError(e)
       return false
     } finally {
-      setActing(false)
+      if (isCurrentAction()) setActing(false)
     }
   }
 
@@ -140,12 +171,13 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
           : cancelOrder(order.orderNo, reason.trim())),
       kind === 'reject' ? '已拒单，退款处理中' : kind === 'rejectCancel' ? '已拒绝取消申请，订单继续制作' : '已取消，退款处理中')
     // 失败时保留已填写的原因，再次打开可以直接重试
-    if (ok) setReason('')
+    if (ok && isCurrentSession()) setReason('')
   }
 
   const approveCancel = () => {
     if (!order) return
-    modal.confirm({
+    cancelConfirmation.current?.destroy()
+    cancelConfirmation.current = modal.confirm({
       title: '同意顾客取消订单？',
       content: `订单将取消，实付 ${formatYuan(order.payAmount)} 全额退回顾客会员余额，后厨不再制作。`,
       okText: '同意取消并退款',
@@ -368,8 +400,8 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
         </>
       )}
 
-      <SettleModal order={order} open={settleOpen} onClose={() => setSettleOpen(false)} onDone={() => { setSettleOpen(false); void load(); onChanged?.() }} />
-      <RefundModal order={order} open={refundOpen} onClose={() => setRefundOpen(false)} onDone={() => { setRefundOpen(false); void load(); onChanged?.() }} />
+      <SettleModal order={order} open={settleOpen} onClose={() => { if (isCurrentSession()) setSettleOpen(false) }} onDone={() => { if (!isCurrentSession()) return; setSettleOpen(false); void load(); onChanged?.() }} />
+      <RefundModal order={order} open={refundOpen} onClose={() => { if (isCurrentSession()) setRefundOpen(false) }} onDone={() => { if (!isCurrentSession()) return; setRefundOpen(false); void load(); onChanged?.() }} />
 
       <Modal
         title={reasonModal === 'reject' ? '拒单并全额退款' : reasonModal === 'rejectCancel' ? '拒绝顾客的取消申请' : '整单取消并全额退款'}
