@@ -12,8 +12,7 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN}
-    # 每 6 小时 reload 一次：让 certbot 续期后的新证书生效（否则要到容器重启才换证书）
-    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"
+    # 保留官方 nginx CMD，让 entrypoint 先渲染 DOMAIN 模板；证书 reload 由启动钩子负责。
     volumes:
       - uploads:/data/uploads:ro            # 菜品图片（后端写入，nginx 只读提供）
       - certbot-conf:/etc/letsencrypt:ro    # 证书

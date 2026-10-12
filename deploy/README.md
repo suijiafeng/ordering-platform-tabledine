@@ -30,6 +30,13 @@ cd deploy && ./deploy.sh
 
 证书已有就跳过签发；数据库结构升级由后端启动时自动执行。
 
+### V16 / V17 升级注意事项
+
+商家退款新增永久 `clientRequestId` 与请求指纹。应用数据库迁移时同步发布后端与商家端；旧页面缺少编号会返回 422，要求刷新，不会退化成无幂等退款。历史退款保持空编号，不猜测或回填；升级前已提交但响应丢失的请求，须先在退款管理核对。新页面在提交前保存编号和原始内容，未知结果时锁定编辑，关闭重开或刷新仍确认同一笔退款。
+
+V17 根据当日订单回填独立的库存占用数。调整或取消每日限量不会清除已占用份数；重新启用限量会扣除当日占用。迁移只新增字段和回填数据，沿用正常发布前的数据库备份流程。
+
+
 ## 各服务
 
 | 服务 | 作用 | 数据 |
@@ -40,6 +47,10 @@ cd deploy && ./deploy.sh
 | certbot | 每 12 小时检查证书并自动续期 | 证书卷 `certbot-conf` |
 
 前端镜像的构建过程在 [nginx/Dockerfile](nginx/Dockerfile)：先在 Node 镜像里构建两个前端，再把产物放进 nginx 镜像。nginx 配置是 [nginx/templates/ordering.conf.template](nginx/templates/ordering.conf.template)，启动时把其中的 `${DOMAIN}` 替换成 `.env` 里的域名。
+
+nginx 必须保留官方镜像默认的 `nginx -g "daemon off;"` 命令，不能在 Compose 中改成 `/bin/sh`，否则入口脚本会跳过模板渲染。证书定时重载由 `nginx/40-reload-certificates.sh` 启动钩子负责，nginx 仍作为 PID 1 接收停止信号。
+
+CI 构建镜像后执行 `./scripts/test-nginx-startup.sh ordering-web:ci`，使用临时自签名证书验证域名替换、进程入口和两个静态站点，不连接生产数据库。
 
 ## 日常运维
 
