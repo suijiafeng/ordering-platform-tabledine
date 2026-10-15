@@ -65,3 +65,6 @@ cp .env.example .env && vi .env     # 填 4 项：域名、邮箱、店名、店
 - 金额全部以「分」为单位的整数；数据库变更只通过新增 Flyway 脚本。其余业务约定见 [项目架构](docs/项目架构.md)
 - 提交前跑一遍上面的检查；提交信息 `feat|fix|refactor|docs|test|chore: 描述`
 - 分支：`main`（可发布）← `develop` ← `feature/*`
+
+---
+> **声明**：本仓库为个人项目，仅供学习交流。
