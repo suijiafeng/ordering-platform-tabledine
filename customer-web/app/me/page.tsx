@@ -2,7 +2,7 @@
 
 import { Popup } from 'antd-mobile'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useState, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import { changePassword, fetchMe } from '@/lib/api'
 import { logout } from '@/lib/auth'
 import { ignoreShownError } from '@/lib/errors'
@@ -12,6 +12,7 @@ import { notify } from '@/store/feedback'
 import { confirmDialog, getAppShell } from '@/lib/ui'
 import { menuPath } from '@/lib/navigation'
 import { AppBar, EmptyState, PillButton, Skeleton } from '@/components/ui'
+import { useVisiblePolling } from '@/hooks/useVisiblePolling'
 
 /** 我的：余额、订单入口、余额明细入口、修改密码、退出登录 */
 /** 读取 ?token 需要 useSearchParams：静态导出时必须包在 Suspense 里 */
@@ -26,17 +27,15 @@ function MeView() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null)
   const [failed, setFailed] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useVisiblePolling(async ({ isCurrent }) => {
     try {
-      setProfile(await fetchMe())
-      setFailed(false)
+      const next = await fetchMe()
+      if (isCurrent()) { setProfile(next); setFailed(false) }
     } catch (e) {
       ignoreShownError(e)  // 未登录已由请求层跳转登录页；其他错误显示重试
-      setFailed(true)
+      if (isCurrent()) setFailed(true)
     }
-  }, [])
-
-  useEffect(() => { void load() }, [load])
+  })
 
   const doLogout = async () => {
     if (!(await confirmDialog('确定退出登录吗？', '退出后再次下单需要重新登录', '退出登录'))) return
@@ -59,6 +58,7 @@ function MeView() {
     <div className="screen">
       <AppBar title="我的" fallback={returnToMenu} />
       <div className="body-pad">
+        {failed && <div className="notice" role="status">账户信息暂未更新，正在自动重试…</div>}
         <div className="wallet-card">
           <div className="who">{profile.nickname || '会员'} · {profile.phone}</div>
           <div className="label">余额</div>

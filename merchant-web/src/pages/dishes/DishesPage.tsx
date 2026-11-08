@@ -11,6 +11,8 @@ import CategoryPanel from './CategoryPanel'
 import DishFormDrawer from './DishFormDrawer'
 import { ignoreShownError } from '../../utils/errors'
 import Panel, { PageToolbar } from '../../components/Panel'
+import SyncStatus from '../../components/SyncStatus'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 
 const PAGE_SIZE = 20
 
@@ -28,21 +30,35 @@ export default function DishesPage() {
   const [loading, setLoading] = useState(false)
   const [drawer, setDrawer] = useState<{ open: boolean; dishId: number | null }>({ open: false, dishId: null })
 
-  // 错误提示均由 request 统一弹出，这里吞掉 rejection 避免 Unhandled promise rejection
-  const loadCategories = useCallback(() => listCategories().then(setCategories).catch(() => {}), [])
+  const [syncFailed, setSyncFailed] = useState(false)
+  const beginCategories = useLatestRequest()
+  const loadCategories = useCallback(async (silent = false) => {
+    const isLatest = beginCategories()
+    try {
+      const next = await listCategories({ silent })
+      if (!isLatest()) return
+      setCategories(next)
+      setCategoryId((current) => current !== null && !next.some((c) => c.id === current) ? null : current)
+    } catch (e) {
+      if (isLatest()) setSyncFailed(true)
+      ignoreShownError(e)
+    }
+  }, [beginCategories])
 
   const beginLoad = useLatestRequest()
   // 限量输入框是非受控的：保存失败时递增该值强制重建，让显示值回到服务端的旧值
   const [stockReset, setStockReset] = useState(0)
+  const [stockDrafts, setStockDrafts] = useState<Record<number, number | null>>({})
   // 正在请求中的开关（`status-{id}` / `soldout-{id}`），显示 loading 并防止重复点击
   const [switching, setSwitching] = useState<string | null>(null)
 
-  const loadDishes = useCallback(async () => {
+  const loadDishes = useCallback(async (silent = false) => {
     const isLatest = beginLoad()
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
-      const res = await listDishes({ categoryId: categoryId ?? undefined, keyword: keyword || undefined, page, pageSize: PAGE_SIZE })
+      const res = await listDishes({ categoryId: categoryId ?? undefined, keyword: keyword || undefined, page, pageSize: PAGE_SIZE }, { silent })
       if (!isLatest()) return
+      setSyncFailed(false)
       setData({ list: res.list, total: res.total })
       // 删除当前页最后一条后页码越界：回退到最后一页
       const lastPage = Math.max(1, Math.ceil(res.total / PAGE_SIZE))
@@ -50,6 +66,7 @@ export default function DishesPage() {
         setPage(lastPage)
       }
     } catch (e) {
+      if (isLatest()) setSyncFailed(true)
       ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
@@ -64,10 +81,17 @@ export default function DishesPage() {
     void loadDishes()
   }, [loadDishes])
 
+  useVisiblePolling(async () => {
+    await loadDishes(true)
+    await loadCategories(true)
+  }, { enabled: switching === null })
+
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? '-'
 
-  const patchLocal = (id: number, patch: Partial<DishItem>) =>
+  const patchLocal = (id: number, patch: Partial<DishItem>) => {
+    beginLoad()
     setData((d) => ({ ...d, list: d.list.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+  }
 
   const columns: ColumnsType<DishItem> = [
     {
@@ -163,15 +187,17 @@ export default function DishesPage() {
         return (
           <Space direction="vertical" size={0}>
             <InputNumber
-              key={`${r.id}-${v ?? 'none'}-${stockReset}`}
+              key={`${r.id}-${stockReset}`}
               size="small"
               min={0}
               max={100000}
               precision={0}
               placeholder="不限"
-              defaultValue={v ?? undefined}
+              value={Object.prototype.hasOwnProperty.call(stockDrafts, r.id) ? stockDrafts[r.id] : v}
+              onChange={(value) => setStockDrafts((current) => ({ ...current, [r.id]: value }))}
               style={{ width: 100 }}
               onBlur={async (e) => {
+                const clearDraft = () => setStockDrafts((current) => { const next = { ...current }; delete next[r.id]; return next })
                 const raw = e.target.value.trim()
                 const next = raw === '' ? null : Number(raw)
                 if (next !== v && (next === null || Number.isInteger(next))) {
@@ -182,6 +208,7 @@ export default function DishesPage() {
                     okText: '确认修改',
                   })
                   if (!ok) {
+                    clearDraft()
                     setStockReset((t) => t + 1)
                     return
                   }
@@ -194,6 +221,7 @@ export default function DishesPage() {
                     ignoreShownError(e)  // 请求层已提示
                   }
                 }
+                clearDraft()
               }}
             />
             {remaining}
@@ -226,13 +254,14 @@ export default function DishesPage() {
 
   return (
     <Row gutter={[24, 16]}>
+      {syncFailed && <Col span={24}><SyncStatus failed /></Col>}
       <Col xs={24} lg={7} xl={6}>
         <CategoryPanel
           categories={categories}
           selectedId={categoryId}
           isOwner={isOwner}
           onSelect={(id) => { setCategoryId(id); setPage(1) }}
-          onChanged={loadCategories}
+          onChanged={() => void loadCategories()}
         />
       </Col>
       <Col xs={24} lg={17} xl={18}>

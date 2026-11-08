@@ -2,7 +2,7 @@
 
 import { InfiniteScroll, PullToRefresh } from 'antd-mobile'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { cancelOrder, fetchOrders } from '@/lib/api'
 import { ignoreShownError } from '@/lib/errors'
 import { countdownText, dateTime, orderStatusText, yuan } from '@/lib/format'
@@ -11,6 +11,7 @@ import { useCountdown } from '@/hooks/useCountdown'
 import { confirmDialog } from '@/lib/ui'
 import { notify } from '@/store/feedback'
 import { AppBar, EmptyState, PillButton, Skeleton, Spinner, Tag, type Tone } from '@/components/ui'
+import { usePagedPolling } from '@/hooks/usePagedPolling'
 
 const PAGE_SIZE = 20
 type Filter = 'all' | 'active' | 'finished'
@@ -45,46 +46,10 @@ function PendingPayHint({ payExpireAt }: { payExpireAt: string | null }) {
 export default function OrdersPage() {
   const router = useRouter()
   const [filter, setFilter] = useState<Filter>('all')
-  const [orders, setOrders] = useState<OrderSummary[]>([])
-  const [page, setPage] = useState(0)
-  const [total, setTotal] = useState(0)
-  const [loaded, setLoaded] = useState(false)
-  const [failed, setFailed] = useState(false)
-  // 加载更多失败：停止自动翻页，改为手动重试，避免 InfiniteScroll 立刻重发形成死循环
-  const [moreFailed, setMoreFailed] = useState(false)
-  // 翻到空页（翻页期间有新订单使 total 与去重后的条数对不上）：视为已到底
-  const [exhausted, setExhausted] = useState(false)
+  const { items: orders, loaded, failed, moreFailed, hasMore, refresh, loadMore } = usePagedPolling<OrderSummary>(
+    (page) => fetchOrders(page, PAGE_SIZE, true), (order) => order.orderNo,
+  )
   const [cancelling, setCancelling] = useState<string | null>(null)
-  // 下拉刷新与加载更多可能交错：只采纳最后一次发起的请求
-  const seq = useRef(0)
-
-  const load = useCallback(async (nextPage: number) => {
-    const mine = ++seq.current
-    try {
-      const result = await fetchOrders(nextPage, PAGE_SIZE)
-      if (mine !== seq.current) return
-      setOrders((old) => {
-        if (nextPage === 1) return result.list
-        const seen = new Set(old.map((o) => o.orderNo))
-        return [...old, ...result.list.filter((o) => !seen.has(o.orderNo))]
-      })
-      setPage(nextPage)
-      setTotal(result.total)
-      setFailed(false)
-      setMoreFailed(false)
-      setExhausted(nextPage > 1 && result.list.length === 0)
-    } catch (e) {
-      ignoreShownError(e)  // 请求层已提示；首屏失败显示重试，翻页失败显示「点击重试」
-      if (mine === seq.current) {
-        if (nextPage === 1) setFailed(true)
-        else setMoreFailed(true)
-      }
-    } finally {
-      if (mine === seq.current) setLoaded(true)
-    }
-  }, [])
-
-  useEffect(() => { void load(1) }, [load])
 
   const openOrder = (orderNo: string) => router.push(`/order?orderNo=${encodeURIComponent(orderNo)}`)
 
@@ -95,7 +60,7 @@ export default function OrdersPage() {
     try {
       await cancelOrder(orderNo)
       notify('订单已取消', 'success')
-      await load(1)
+      await refresh()
     } catch (e) {
       ignoreShownError(e)
     } finally {
@@ -103,14 +68,13 @@ export default function OrdersPage() {
     }
   }
 
-  const hasMore = loaded && !failed && !moreFailed && !exhausted && orders.length < total
   const visible = orders.filter((order) => matchesFilter(order, filter))
 
   let content: React.ReactNode
   if (!loaded) {
     content = <Skeleton rows={3} variant="card" label="订单加载中…" />
   } else if (failed && !orders.length) {
-    content = <EmptyState icon="!" title="订单加载失败" desc="请检查网络后重试" action={<PillButton onClick={() => void load(1)}>重新加载</PillButton>} />
+    content = <EmptyState icon="!" title="订单加载失败" desc="请检查网络后重试" action={<PillButton onClick={() => void refresh()}>重新加载</PillButton>} />
   } else if (!orders.length) {
     content = <EmptyState title="还没有订单" desc="下单后可在这里查看进度" action={<PillButton onClick={() => router.push('/')}>去点餐</PillButton>} />
   } else {
@@ -142,9 +106,9 @@ export default function OrdersPage() {
     ))}
     {moreFailed
       ? <div className="load-more-retry" role="status">
-          加载失败，<PillButton size="sm" variant="plain" onClick={() => void load(page + 1)}>点击重试</PillButton>
+          加载失败，<PillButton size="sm" variant="plain" onClick={() => void loadMore()}>点击重试</PillButton>
         </div>
-      : <InfiniteScroll loadMore={() => load(page + 1)} hasMore={hasMore}>
+      : <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
           {hasMore ? <Spinner /> : <span className="t-cap">没有更多了</span>}
         </InfiniteScroll>}
     </>
@@ -162,8 +126,8 @@ export default function OrdersPage() {
           >{item.label}</button>
         ))}
       </div>
-      <PullToRefresh onRefresh={() => load(1)}>
-        <div className="body-pad">{content}</div>
+      <PullToRefresh onRefresh={refresh}>
+        <div className="body-pad">{failed && orders.length > 0 && <div className="notice" role="status">订单暂未更新，正在自动重试…</div>}{content}</div>
       </PullToRefresh>
     </div>
   )

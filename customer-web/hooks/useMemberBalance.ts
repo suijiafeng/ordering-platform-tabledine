@@ -1,43 +1,31 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { fetchMe } from '@/lib/api'
 import { ignoreShownError } from '@/lib/errors'
+import { useVisiblePolling } from './useVisiblePolling'
 
-/** 余额仅用于结算提示，最终校验仍由支付接口完成；刷新失败时不沿用旧余额。 */
+/** 余额自动同步但不作为最终扣款依据；失败保留旧显示并显式标记。 */
 export function useMemberBalance(enabled: boolean) {
   const [balance, setBalance] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
-  const requestSeq = useRef(0)
-  const invalidate = useCallback(() => { requestSeq.current++ }, [])
-
-  const refresh = useCallback(async () => {
-    if (!enabled) return
-    const seq = ++requestSeq.current
-    setLoading(true)
-    setFailed(false)
+  const refresh = useVisiblePolling(async ({ background, isCurrent }) => {
+    if (!background) setLoading(true)
     try {
       const profile = await fetchMe()
-      if (seq === requestSeq.current) setBalance(profile.balance)
+      if (isCurrent()) { setBalance(profile.balance); setFailed(false) }
     } catch (e) {
-      if (seq === requestSeq.current) { setBalance(null); setFailed(true) }
+      if (isCurrent()) setFailed(true)
       ignoreShownError(e)
     } finally {
-      if (seq === requestSeq.current) setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
-  }, [enabled])
+  }, { enabled })
 
   useEffect(() => {
-    if (!enabled) { setBalance(null); setFailed(false); setLoading(false); return }
-    void refresh()
-    const onVisibility = () => { if (!document.hidden) void refresh() }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      invalidate()
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [enabled, refresh, invalidate])
+    if (!enabled) { setBalance(null); setFailed(false); setLoading(false) }
+  }, [enabled])
 
   return { balance, loading, failed, refresh }
 }

@@ -1,7 +1,7 @@
 import { request } from '../utils/request'
 import type { TableItem } from './types'
 
-export const listTables = () => request<TableItem[]>({ url: '/api/v1/m/tables' })
+export const listTables = (opts?: { silent?: boolean }) => request<TableItem[]>({ url: '/api/v1/m/tables', silent: opts?.silent })
 
 export const createTable = (code: string) =>
   request<TableItem>({ url: '/api/v1/m/tables', method: 'POST', data: { code } })

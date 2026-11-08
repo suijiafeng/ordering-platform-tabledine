@@ -21,31 +21,32 @@ export default function NotificationBell() {
   const clear = useNotificationStore((state) => state.clear)
   const unread = messages.some((item) => !item.read)
 
-  const content = <div style={{ width: 340, maxWidth: 'calc(100vw - 32px)' }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+  const content = <div className="notification-center">
+    <div className="notification-center-toolbar">
       <Typography.Text strong>消息中心</Typography.Text>
       {messages.length > 0 && <Space size={2}>
         {unread && <Button type="text" size="small" icon={<CheckOutlined />} onClick={markAllRead}>全部已读</Button>}
         <Button type="text" size="small" icon={<DeleteOutlined />} onClick={clear}>清空</Button>
       </Space>}
     </div>
-    <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+    <div className="notification-center-list">
       {messages.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无消息" /> : messages.map((item) => <button
         key={item.id}
+        className="notification-center-item"
         type="button"
         onClick={() => { markRead(item.id); if (item.link) { setOpen(false); navigate(item.link) } }}
         style={{ display: 'block', width: '100%', padding: '12px 10px', border: 0, borderBottom: `1px solid ${token.colorSplit}`, borderInlineStart: `3px solid ${item.read ? 'transparent' : token.colorPrimary}`, background: item.read ? 'transparent' : token.colorPrimaryBg, color: token.colorText, textAlign: 'left', cursor: 'pointer', opacity: item.read ? 0.76 : 1 }}
       >
-        <Space size={8} style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Space size={6}><Typography.Text strong={!item.read}>{item.title}</Typography.Text>{!item.read && <Badge status="processing" text="未读" />}</Space>
-          <Typography.Text type="secondary" style={{ flexShrink: 0, fontSize: 12 }}>{KIND_LABEL[item.kind]} · {formatTime(item.createdAt)}</Typography.Text>
-        </Space>
+        <div className="notification-center-item-header">
+          <div className="notification-center-item-title"><Typography.Text strong={!item.read}>{item.title}</Typography.Text>{!item.read && <Badge status="processing" text="未读" />}</div>
+          <Typography.Text type="secondary" className="notification-center-item-time">{KIND_LABEL[item.kind]} · {formatTime(item.createdAt)}</Typography.Text>
+        </div>
         <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 13 }}>{item.description}</Typography.Paragraph>
       </button>)}
     </div>
   </div>
 
-  return <Popover content={content} trigger="click" placement="bottomRight" open={open} onOpenChange={setOpen}>
+  return <Popover content={content} trigger="click" placement="bottomRight" align={{ overflow: { adjustX: true, adjustY: true, shiftX: true, shiftY: true } }} open={open} onOpenChange={setOpen}>
     <Badge dot={unread} offset={[-5, 5]}><Button type="text" icon={<BellOutlined />} aria-label="消息中心" /></Badge>
   </Popover>
 }

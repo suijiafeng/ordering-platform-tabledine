@@ -7,9 +7,11 @@ import { listAuditLogs } from '../../api/audit'
 import { listStaff } from '../../api/staff'
 import type { AuditLogItem, AuditOpType, StaffItem } from '../../api/types'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import { ROLE_META } from '../../utils/auth'
 import { ignoreShownError } from '../../utils/errors'
 import Panel, { PageToolbar } from '../../components/Panel'
+import SyncStatus from '../../components/SyncStatus'
 
 const PAGE_SIZE = 20
 
@@ -52,32 +54,36 @@ export default function AuditLogsPage() {
   const [page, setPage] = useState(1)
   const [data, setData] = useState<{ list: AuditLogItem[]; total: number }>({ list: [], total: 0 })
   const [loading, setLoading] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
   const [staff, setStaff] = useState<StaffItem[]>([])
   const beginLoad = useLatestRequest()
 
-  useEffect(() => {
-    listStaff().then(setStaff).catch(() => setStaff([]))
-  }, [])
-
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
     const isLatest = beginLoad()
-    setLoading(true)
+    if (!quiet) setLoading(true)
     try {
-      const res = await listAuditLogs({
-        from: range?.[0].format('YYYY-MM-DD'),
-        to: range?.[1].format('YYYY-MM-DD'),
-        opType,
-        category,
-        actorType: actor?.kind === 'type' ? actor.type : actor?.kind === 'staff' ? 'STAFF' : undefined,
-        actorId: actor?.kind === 'staff' ? actor.id : undefined,
-        success,
-        keyword: keyword || undefined,
-        page,
-        pageSize: PAGE_SIZE,
-      })
-      if (isLatest()) setData(res)
-    } catch (e) {
-      ignoreShownError(e)  // 请求层已提示
+      const [logsResult, staffResult] = await Promise.allSettled([
+        listAuditLogs({
+          from: range?.[0].format('YYYY-MM-DD'),
+          to: range?.[1].format('YYYY-MM-DD'),
+          opType,
+          category,
+          actorType: actor?.kind === 'type' ? actor.type : actor?.kind === 'staff' ? 'STAFF' : undefined,
+          actorId: actor?.kind === 'staff' ? actor.id : undefined,
+          success,
+          keyword: keyword || undefined,
+          page,
+          pageSize: PAGE_SIZE,
+        }, { silent: quiet }),
+        listStaff({ silent: quiet }),
+      ])
+      if (!isLatest()) return
+      setSyncFailed(logsResult.status === 'rejected' || staffResult.status === 'rejected')
+      if (logsResult.status === 'fulfilled') setData(logsResult.value)
+      else ignoreShownError(logsResult.reason)
+      // 操作人列表同样同步；失败时保留已有选项，正在编辑的筛选内容不变。
+      if (staffResult.status === 'fulfilled') setStaff(staffResult.value)
+      else ignoreShownError(staffResult.reason)
     } finally {
       if (isLatest()) setLoading(false)
     }
@@ -86,6 +92,9 @@ export default function AuditLogsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // 查看审计日志本身会新增日志，每 15 秒同步，避免频繁产生查看记录。
+  useVisiblePolling(() => load(true), { intervalMs: 15_000 })
 
   // 改任何筛选条件都回到第一页
   const filter = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1) }
@@ -161,6 +170,7 @@ export default function AuditLogsPage() {
 
   return (
     <div>
+      <SyncStatus failed={syncFailed} />
       <PageToolbar>
         <DatePicker.RangePicker
           size="large"

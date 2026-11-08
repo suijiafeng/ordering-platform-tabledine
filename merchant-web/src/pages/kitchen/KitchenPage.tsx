@@ -217,9 +217,9 @@ export default function KitchenPage() {
         }}
         hoverable
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <Typography.Title level={2} style={{ margin: 0, fontSize: done ? 26 : 34 }}>{o.tableCode ?? '-'}</Typography.Title>
-          <Typography.Text type={overdue ? 'danger' : 'secondary'} strong={overdue} style={{ fontSize: 14, textAlign: 'right' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Typography.Title level={2} style={{ margin: 0, fontSize: done ? 26 : 34, overflowWrap: 'anywhere' }}>{o.tableCode ?? '-'}</Typography.Title>
+          <Typography.Text type={overdue ? 'danger' : 'secondary'} strong={overdue} style={{ fontSize: 14 }}>
             {overdue && <Tag color="error" style={{ marginInlineEnd: 6 }}>超时</Tag>}
             {meta.sinceText} {elapsed(meta.since(o))}
           </Typography.Text>
@@ -232,11 +232,11 @@ export default function KitchenPage() {
         <div style={{ margin: done ? '8px 0 0' : '12px 0', fontSize: done ? 15 : 20, lineHeight: 1.7 }}>
           {o.items.map((i) => (
             <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <span>
+              <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
                 {i.dishName}
                 {!done && (i.specDesc || i.addonDesc) && <Typography.Text type="secondary" style={{ fontSize: 14, marginLeft: 6 }}>{[i.specDesc, i.addonDesc].filter(Boolean).join(' · ')}</Typography.Text>}
               </span>
-              <Typography.Text strong style={{ fontSize: done ? 15 : 20 }}>×{i.quantity}</Typography.Text>
+              <Typography.Text strong style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: done ? 15 : 20 }}>×{i.quantity}</Typography.Text>
             </div>
           ))}
         </div>
@@ -255,7 +255,7 @@ export default function KitchenPage() {
             loading={acting.has(o.orderNo)}
             disabled={cancelApplying}
             // 厨房油手 / 戴手套也能点准：按钮 ≥ 64px 高、大字号；点两次才执行，防止点错卡片
-            style={{ height: 64, fontSize: 20, borderRadius: 12, background: overdue || st === 'TODO' ? undefined : token.colorSuccess }}
+            style={{ minHeight: 64, height: 'auto', padding: '12px 16px', whiteSpace: 'normal', lineHeight: 1.4, fontSize: 20, borderRadius: 12, background: overdue || st === 'TODO' ? undefined : token.colorSuccess }}
             confirmText={st === 'TODO' ? `再点一次：开始制作 ${o.tableCode ?? ''}` : `再点一次：${o.tableCode ?? ''} 制作完成`}
             onConfirm={() => void act(o)}
           >

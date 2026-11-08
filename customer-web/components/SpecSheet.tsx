@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Popup } from 'antd-mobile'
 import { defaultSelection, selectionDescription, selectionError, unitPrice } from '@/lib/pricing'
 import { imageSrc, yuan } from '@/lib/format'
@@ -27,7 +27,7 @@ export function SpecSheet({ dish, maxQuantity, onClose, onConfirm }: Props) {
   const shown = dish ?? last.current
   return (
     <Popup visible={dish !== null} position="bottom" getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={onClose} destroyOnClose>
-      <div className="sheet">
+      <div className="sheet spec-sheet">
         <div className="sheet-head">
           <span className="t-title">选择规格</span>
           <button className="icon-button" aria-label="关闭规格选择" onClick={onClose}><CloseIcon /></button>
@@ -41,6 +41,10 @@ export function SpecSheet({ dish, maxQuantity, onClose, onConfirm }: Props) {
 function SpecForm({ dish, maxQuantity, onConfirm }: { dish: Dish; maxQuantity: number; onConfirm: Props['onConfirm'] }) {
   const [selection, setSelection] = useState<Selection>(() => defaultSelection(dish))
   const [quantity, setQuantity] = useState(1)
+  useEffect(() => {
+    setSelection((current) => selectionError(dish, current) ? defaultSelection(dish) : current)
+    setQuantity((current) => Math.max(1, Math.min(current, maxQuantity)))
+  }, [dish, maxQuantity])
   const exhausted = maxQuantity <= 0
   const desc = selectionDescription(dish, selection)
   const total = unitPrice(dish, selection) * quantity
@@ -65,7 +69,8 @@ function SpecForm({ dish, maxQuantity, onConfirm }: { dish: Dish; maxQuantity: n
   }
 
   return (
-    <div className="sheet-pad">
+    <div className="sheet-pad spec-form">
+      <div className="spec-body">
       <div className="spec-head">
         <Tile name={dish.name} image={dish.image ? imageSrc(dish.image) : null} />
         <div>
@@ -110,6 +115,7 @@ function SpecForm({ dish, maxQuantity, onConfirm }: { dish: Dish; maxQuantity: n
           {exhausted ? `今日仅剩 ${dish.remainingStock} 份，购物车里已经加满` : `今日仅剩 ${dish.remainingStock} 份，本次最多再加 ${maxQuantity} 份`}
         </div>
       )}
+      </div>
       <div className="sheet-foot">
         <Stepper value={quantity} min={1} max={Math.max(1, maxQuantity)} onChange={setQuantity} />
         <PillButton className="grow" size="lg" disabled={exhausted} onClick={confirm}>

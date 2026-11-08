@@ -1,8 +1,8 @@
 import { request } from '../utils/request'
 import type { PageResult, RefundView } from './types'
 
-export const listRefunds = (params: { status?: string; page: number; pageSize: number }) =>
-  request<PageResult<RefundView>>({ url: '/api/v1/m/refunds', params })
+export const listRefunds = (params: { status?: string; page: number; pageSize: number }, options?: { silent?: boolean }) =>
+  request<PageResult<RefundView>>({ url: '/api/v1/m/refunds', params, ...options })
 
 export const getRefund = (refundNo: string) => request<RefundView>({ url: `/api/v1/m/refunds/${refundNo}` })
 

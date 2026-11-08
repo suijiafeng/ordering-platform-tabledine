@@ -9,6 +9,9 @@ import { ROLE_META } from '../../utils/auth'
 import { useAuthStore } from '../../store/auth'
 import { ignoreShownError } from '../../utils/errors'
 import Panel, { PageToolbar } from '../../components/Panel'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import SyncStatus from '../../components/SyncStatus'
 
 type EditState = 'new' | StaffItem | null
 /** 可分配的岗位：店主由系统初始化，不能在这里设置 */
@@ -21,24 +24,35 @@ export default function StaffPage() {
   const me = useAuthStore((s) => s.staff)
   const [list, setList] = useState<StaffItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
   const [editing, setEditing] = useState<EditState>(null)
   const [saving, setSaving] = useState(false)
   const [form] = Form.useForm<{ username: string; name: string; password?: string; role: WorkRole }>()
+  const beginLoad = useLatestRequest()
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (quiet = false) => {
+    const isLatest = beginLoad()
+    if (!quiet) setLoading(true)
     try {
-      setList(await listStaff())
+      const next = await listStaff({ silent: quiet })
+      if (isLatest()) {
+        setList(next)
+        setSyncFailed(false)
+      }
     } catch (e) {
+      if (isLatest()) setSyncFailed(true)
       ignoreShownError(e)  // 请求层已提示
     } finally {
-      setLoading(false)
+      if (isLatest()) setLoading(false)
     }
-  }, [])
+  }, [beginLoad])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // 只同步列表，不重新填充编辑表单，避免覆盖尚未保存的输入。
+  useVisiblePolling(() => load(true))
 
   const openEdit = (s: EditState) => {
     form.resetFields()
@@ -133,6 +147,7 @@ export default function StaffPage() {
 
   return (
     <div>
+      <SyncStatus failed={syncFailed} />
       <PageToolbar>
         <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => openEdit('new')}>新建员工</Button>
       </PageToolbar>

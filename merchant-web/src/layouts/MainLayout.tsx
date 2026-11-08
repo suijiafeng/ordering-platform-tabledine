@@ -60,7 +60,7 @@ export default function MainLayout() {
   const isKitchen = staff?.role === 'KITCHEN'
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
-  // 侧栏在 lg 以下自动折叠为图标栏，折叠时只显示 Logo
+  // 平板和小屏桌面自动折叠为图标栏，为后厨三列和数据表保留内容宽度。
   const [collapsed, setCollapsed] = useState(false)
   const { token } = antdTheme.useToken()
   // 全局新订单轮询（提示音 + 菜单角标）
@@ -295,7 +295,7 @@ export default function MainLayout() {
       <Layout.Sider
         theme="dark"
         width={220}
-        breakpoint="lg"
+        breakpoint="xl"
         collapsedWidth={64}
         onCollapse={setCollapsed}
         style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto', zIndex: 11 }}

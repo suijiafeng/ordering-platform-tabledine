@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { App, Badge, Button, Card, Col, Empty, Input, Modal, Pagination, Row, Space, Spin, Tabs, Tag, Typography, theme as antdTheme } from 'antd'
+import { Alert, App, Badge, Button, Card, Col, Empty, Input, Modal, Pagination, Row, Space, Spin, Tabs, Tag, Typography, theme as antdTheme } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { approveRefund, listRefunds, offlineRefund, rejectRefund, retryRefund } from '../../api/refund'
@@ -14,6 +14,7 @@ import { RefundStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
 import { ignoreShownError } from '../../utils/errors'
 import Panel from '../../components/Panel'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 
 const PAGE_SIZE = 20
 const TABS = [
@@ -37,6 +38,7 @@ export default function RefundsPage() {
   const [page, setPage] = useState(1)
   const [data, setData] = useState<{ list: RefundView[]; total: number }>({ list: [], total: 0 })
   const [loading, setLoading] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
   const [acting, setActing] = useState<string | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const [reasonModal, setReasonModal] = useState<{ kind: 'reject' | 'offline'; refund: RefundView } | null>(null)
@@ -45,13 +47,17 @@ export default function RefundsPage() {
 
   const beginLoad = useLatestRequest()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
     const isLatest = beginLoad()
-    setLoading(true)
+    if (!background) setLoading(true)
     try {
-      const res = await listRefunds({ status: status || undefined, page, pageSize: PAGE_SIZE })
-      if (isLatest()) setData({ list: res.list, total: res.total })
+      const res = await listRefunds({ status: status || undefined, page, pageSize: PAGE_SIZE }, background ? { silent: true } : undefined)
+      if (isLatest()) {
+        setData({ list: res.list, total: res.total })
+        setSyncFailed(false)
+      }
     } catch (e) {
+      if (isLatest()) setSyncFailed(true)
       ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
@@ -61,14 +67,8 @@ export default function RefundsPage() {
   useEffect(() => {
     void load()
   }, [load])
-
-  // 轮询到的退款计数变化（新申请、退款失败）时刷新列表，角标和列表保持一致
-  const refundCountKey = counts ? `${counts.applyingRefundCount}-${counts.failedRefundCount}` : ''
-  useEffect(() => {
-    if (refundCountKey) void load()
-    // load 变化时上面的 effect 已经加载过，这里只跟随计数变化
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refundCountKey])
+  // 处理中变为成功时，待审核/失败计数可能都不变，仍需同步当前列表。
+  useVisiblePolling(() => load(true))
 
   // 处理完当前页最后一条后，回到上一页而不是停在空页
   useEffect(() => {
@@ -241,6 +241,7 @@ export default function RefundsPage() {
         onChange={(k) => { setPage(1); const next = new URLSearchParams(params); next.set('status', k); setParams(next, { replace: true }) }}
         items={TABS.map((t) => ({ key: t.key, label: tabLabel(t) }))}
       />
+      {syncFailed && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="退款同步暂时中断，当前显示上次结果，恢复后会自动更新。" action={<Button size="small" onClick={() => void load()}>重试</Button>} />}
       <Spin spinning={loading}>
         {data.list.length === 0 ? (
           <Panel padding="48px 0"><Empty description={loading ? '加载中…' : '暂无退款记录'} /></Panel>

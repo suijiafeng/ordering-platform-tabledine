@@ -8,6 +8,9 @@ import type { TableItem } from '../../api/types'
 import { downloadTableCard, qrDataUrl } from '../../utils/qrcode'
 import { useIsOwner } from '../../utils/auth'
 import { ignoreShownError } from '../../utils/errors'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import SyncStatus from '../../components/SyncStatus'
 
 function QrThumb({ url }: { url: string }) {
   const [src, setSrc] = useState<string>()
@@ -56,6 +59,8 @@ export default function TablesPage() {
   const [tables, setTables] = useState<TableItem[]>([])
   const [storeName, setStoreName] = useState('')
   const [loading, setLoading] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
+  const beginLoad = useLatestRequest()
   const [selected, setSelected] = useState<number[]>([])
   const [editing, setEditing] = useState<TableItem | 'new' | null>(null)
   const [batchOpen, setBatchOpen] = useState(false)
@@ -63,24 +68,30 @@ export default function TablesPage() {
   const [editForm] = Form.useForm<{ code: string; enabled: boolean }>()
   const [batchForm] = Form.useForm<{ prefix: string; from: number; to: number }>()
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    const isLatest = beginLoad()
+    if (!silent) setLoading(true)
     try {
-      const list = await listTables()
+      const [list, store] = await Promise.all([listTables({ silent }), fetchStore({ silent })])
+      if (!isLatest()) return
       setTables(list)
+      setStoreName(store.name)
+      setSyncFailed(false)
       // 删除 / 重置后清理已不存在的选中项，避免「打印选中（N）」计数虚高
       setSelected((prev) => prev.filter((id) => list.some((t) => t.id === id)))
     } catch (e) {
+      if (isLatest()) setSyncFailed(true)
       ignoreShownError(e)  // 请求层已提示
     } finally {
-      setLoading(false)
+      if (isLatest()) setLoading(false)
     }
-  }, [])
+  }, [beginLoad])
 
   useEffect(() => {
     void load()
-    fetchStore().then((s) => setStoreName(s.name)).catch(() => {})
   }, [load])
+
+  useVisiblePolling(() => load(true), { enabled: !saving })
 
   const openEdit = (t: TableItem | 'new') => setEditing(t)
 
@@ -331,6 +342,7 @@ export default function TablesPage() {
           <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setSelected([])}>清空</Button>
         )}
       </div>
+      <SyncStatus failed={syncFailed} />
       <Spin spinning={loading}>
         {tables.length === 0 ? (
           <div style={{ background: token.colorBgContainer, borderRadius: 12, padding: '48px 0' }}>

@@ -68,23 +68,31 @@ export default function TablePrintPage() {
       <style>{`
         .print-root { padding: 24px; background: #f5f5f5; min-height: 100vh; }
         .print-toolbar { margin-bottom: 16px; }
-        .print-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; max-width: 800px; margin: 0 auto; }
-        .print-card { background: #fff; border: 1px dashed #bbb; border-radius: 12px; padding: 20px; text-align: center; break-inside: avoid; }
-        .print-card h3 { margin: 0 0 8px; font-size: 20px; }
+        .print-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 800px; margin: 0 auto; }
+        .print-card { min-width: 0; background: #fff; border: 1px dashed #bbb; border-radius: 12px; padding: 20px; text-align: center; break-inside: avoid; }
+        .print-card h3 { margin: 0 0 8px; font-size: 20px; overflow-wrap: anywhere; }
         .print-card img { width: 70%; }
-        .print-card .code { font-size: 32px; font-weight: 700; margin-top: 4px; }
+        .print-card .code { font-size: 32px; font-weight: 700; margin-top: 4px; overflow-wrap: anywhere; }
         .print-card .tip { color: #666; font-size: 14px; }
+        @media screen and (max-width: 600px) {
+          .print-root { padding: 16px 12px; }
+          .print-grid { grid-template-columns: minmax(0, 1fr); }
+          .print-card { padding: 16px; }
+        }
         @media print {
           /* A4 高 297mm，上下边距各 10mm，可用 277mm：3 行 × 84mm + 2 × 8mm 间距 = 268mm */
           @page { size: A4; margin: 10mm; }
           .print-root { padding: 0; background: #fff; }
           .print-toolbar { display: none; }
-          .print-grid { gap: 8mm; max-width: none; }
+          .print-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8mm; max-width: none; }
           .print-card { box-sizing: border-box; height: 84mm; padding: 4mm; border-radius: 0; }
-          .print-card img { width: auto; height: 50mm; }
+          .print-card h3 { margin-bottom: 2mm; font-size: 12px; line-height: 1.15; }
+          .print-card img { display: block; width: auto; height: 50mm; margin: 0 auto; }
+          .print-card .code { font-size: 16px; line-height: 1.25; }
+          .print-card .tip { font-size: 10px; line-height: 1.2; }
         }
       `}</style>
-      <Space className="print-toolbar">
+      <Space className="print-toolbar" wrap>
         <Button onClick={() => navigate('/tables')}>返回</Button>
         <Button type="primary" disabled={!cards?.length} onClick={() => window.print()}>打印{cards?.length ? `（${cards.length} 张）` : ''}</Button>
       </Space>

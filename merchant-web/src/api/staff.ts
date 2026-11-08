@@ -1,7 +1,7 @@
 import { request } from '../utils/request'
 import type { StaffItem, StaffRole } from './types'
 
-export const listStaff = () => request<StaffItem[]>({ url: '/api/v1/m/staff' })
+export const listStaff = (opts?: { silent?: boolean }) => request<StaffItem[]>({ url: '/api/v1/m/staff', ...opts })
 
 /** role：STAFF 前厅（默认）/ KITCHEN 后厨 */
 export const createStaff = (data: { username: string; name: string; password: string; role: Exclude<StaffRole, 'OWNER'> }) =>

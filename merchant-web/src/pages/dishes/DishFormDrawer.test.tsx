@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDish } from '../../api/menu'
 import type { Category, DishDetail } from '../../api/types'
@@ -27,6 +27,32 @@ const isLoading = () => document.querySelector('.ant-spin-spinning') !== null
 beforeEach(() => { vi.mocked(getDish).mockReset() })
 
 describe('DishFormDrawer interrupted loading', () => {
+  it('keeps an edit draft when background categories and the default category change', async () => {
+    vi.mocked(getDish).mockResolvedValue(dish(1))
+    const { rerender } = render(drawer(1))
+    await waitFor(() => expect(nameInput().value).toBe('Dish 1'))
+    fireEvent.change(nameInput(), { target: { value: 'Unsaved edit' } })
+    const refreshed: Category[] = [{ ...categories[0], name: 'Updated Main' }, { id: 2, name: 'New category', sort: 1, status: 1 }]
+    rerender(<DishFormDrawer dishId={1} open categories={refreshed} defaultCategoryId={2} onClose={onClose} onSaved={onSaved} />)
+    expect(nameInput().value).toBe('Unsaved edit')
+    expect(screen.getByText('Updated Main')).toBeTruthy()
+    expect(getDish).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a new-dish draft on category refresh and uses current defaults on reopening', () => {
+    const { rerender } = render(drawer(null))
+    fireEvent.change(nameInput(), { target: { value: 'New draft' } })
+    const refreshed: Category[] = [...categories, { id: 2, name: 'Next category', sort: 1, status: 1 }]
+    const view = (open: boolean) => <DishFormDrawer dishId={null} open={open} categories={refreshed} defaultCategoryId={2} onClose={onClose} onSaved={onSaved} />
+    rerender(view(true))
+    expect(nameInput().value).toBe('New draft')
+    rerender(view(false))
+    rerender(view(true))
+    expect(nameInput().value).toBe('')
+    expect(screen.getByText('Next category')).toBeTruthy()
+    expect(getDish).not.toHaveBeenCalled()
+  })
+
   it.each(['resolve', 'reject'] as const)('clears edit loading on close → new, even if the old request %ss later', async (outcome) => {
     const pending = deferred<DishDetail>()
     vi.mocked(getDish).mockReturnValue(pending.promise)
