@@ -2,6 +2,14 @@
 html,
 body {
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-no {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
 }
 
 /* 消息内容和弹层均受可见视口约束，长标题、时间和未读标记可分行。 */

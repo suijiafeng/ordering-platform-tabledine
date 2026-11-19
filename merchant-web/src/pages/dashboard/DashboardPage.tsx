@@ -98,18 +98,46 @@ export default function DashboardPage() {
           <Alert type="error" showIcon message="今日概览加载失败" action={<Button size="small" onClick={() => void load()}>重试</Button>} />
         </Col>
       )}
-      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError} style={{ height: '100%' }}><Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" /></Card></Col>}
-      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError} style={{ height: '100%' }}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>}
-      <Col xs={12} lg={6}>
-        <Card hoverable style={{ height: '100%' }} onClick={() => navigate('/orders?status=PAID')}>
-          <Statistic title="待接单" value={pendingAccept} valueStyle={{ color: pendingAccept > 0 ? token.colorWarning : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 待制作·制作中 {making}</Typography.Text>} />
-        </Card>
+      <Col span={24}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 1,
+            background: token.colorBorderSecondary,
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          {isOwner && (
+            <div style={{ background: token.colorBgContainer, padding: '14px 16px' }}>
+              {(!stats && !statsError) ? <Skeleton active paragraph={false} /> : <Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" />}
+            </div>
+          )}
+          {isOwner && (
+            <div style={{ background: token.colorBgContainer, padding: '14px 16px' }}>
+              {(!stats && !statsError) ? <Skeleton active paragraph={false} /> : <Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" />}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate('/orders?status=PAID')}
+            style={{ background: token.colorBgContainer, padding: '14px 16px', border: 0, textAlign: 'left', cursor: 'pointer' }}
+          >
+            <Statistic title="待接单" value={pendingAccept} valueStyle={{ color: pendingAccept > 0 ? token.colorWarning : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 13 }}>/ 制作中 {making}</Typography.Text>} />
+          </button>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => navigate('/refunds?status=APPLYING')}
+              style={{ background: token.colorBgContainer, padding: '14px 16px', border: 0, textAlign: 'left', cursor: 'pointer' }}
+            >
+              <Statistic title="待处理退款" value={applying + failed} valueStyle={{ color: applying + failed > 0 ? token.colorError : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 13 }}>/ 今日退款 ¥{fenToYuan(stats?.refundedAmount).toFixed(2)}</Typography.Text>} />
+            </button>
+          )}
+        </div>
       </Col>
-      {isOwner && <Col xs={12} lg={6}>
-        <Card hoverable style={{ height: '100%' }} onClick={() => navigate('/refunds?status=APPLYING')}>
-          <Statistic title="待处理退款" value={applying + failed} valueStyle={{ color: applying + failed > 0 ? token.colorError : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 今日退款 ¥{fenToYuan(stats?.refundedAmount).toFixed(2)}</Typography.Text>} />
-        </Card>
-      </Col>}
       <Col span={24}>
         <Card title="门店信息" extra={isOwner && <Button type="link" size="small" onClick={() => navigate('/settings')}>店铺设置</Button>}>
           {store ? (

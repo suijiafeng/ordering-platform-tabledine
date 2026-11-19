@@ -165,10 +165,10 @@ export default function KitchenPage() {
 
   // 后厨队列只有前厅（或自动接单）确认过的订单，按阶段分三栏；每栏超时的置顶
   const byStage = (st: Stage) => overdueFirst(orders.filter((o) => stageOf(o) === st))
-  const columns: { stage: Stage; list: OrderSummary[]; color: string; empty: string }[] = [
-    { stage: 'TODO', list: byStage('TODO'), color: token.colorWarning, empty: '前厅确认订单后会出现在这里' },
-    { stage: 'COOKING', list: byStage('COOKING'), color: token.colorInfo, empty: '点「开始制作」后移到这里' },
-    { stage: 'DONE', list: byStage('DONE'), color: token.colorSuccess, empty: '做好的菜在这里等前厅取餐' },
+  const columns: { stage: Stage; list: OrderSummary[]; empty: string }[] = [
+    { stage: 'TODO', list: byStage('TODO'), empty: '前厅确认订单后会出现在这里' },
+    { stage: 'COOKING', list: byStage('COOKING'), empty: '点「开始制作」后移到这里' },
+    { stage: 'DONE', list: byStage('DONE'), empty: '做好的菜在这里等前厅取餐' },
   ]
   const offline = failures > 0 && (lastSync === null || failures >= 2)
 
@@ -190,16 +190,13 @@ export default function KitchenPage() {
     const done = st === 'DONE'
     // 顾客申请取消：前厅处理前不要开始做（后端也会拒绝）
     const cancelApplying = o.cancelRequestStatus === 'APPLYING'
-    const color = st === 'TODO' ? token.colorWarning : st === 'COOKING' ? token.colorInfo : token.colorSuccess
     return (
       <Card
         key={o.id}
         size="small"
         style={{
-          borderTop: `4px solid ${overdue ? token.colorError : color}`,
-          borderRadius: 16,
-          // 超时：整张卡片红框，比只改顶边更容易在远处看到
-          boxShadow: overdue ? `0 0 0 2px ${token.colorError}` : undefined,
+          border: `1px solid ${overdue ? token.colorError : token.colorBorderSecondary}`,
+          borderRadius: 12,
           opacity: done && !overdue ? 0.85 : 1,
         }}
         styles={{ body: { padding: done ? 16 : 20 } }}
@@ -310,11 +307,10 @@ export default function KitchenPage() {
         <Row gutter={[16, 16]} align="stretch">
           {columns.map((c) => (
             <Col key={c.stage} xs={24} lg={8}>
-              <div style={{ background: token.colorFillQuaternary, borderRadius: 16, padding: 12, height: '100%' }}>
+              <div style={{ background: token.colorFillQuaternary, borderRadius: 8, padding: 12, height: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px 12px' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 5, background: c.color }} />
-                  <Typography.Text strong style={{ fontSize: 18 }}>{STAGE_META[c.stage].label}</Typography.Text>
-                  <Typography.Text strong style={{ fontSize: 18, color: c.color }}>{c.list.length}</Typography.Text>
+                  <Typography.Text strong style={{ fontSize: 16 }}>{STAGE_META[c.stage].label}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>{c.list.length}</Typography.Text>
                 </div>
                 {c.list.length === 0 ? (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={offline ? '连接中断' : c.empty} style={{ margin: '24px 0' }} />

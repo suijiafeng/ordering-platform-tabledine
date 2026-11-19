@@ -18,6 +18,7 @@ import {
   WalletOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
+import { useThemeStore } from '../store/theme'
 import UserMenu from '../components/UserMenu'
 import BrandLogo from '../components/BrandLogo'
 import ThemeToggle from '../components/ThemeToggle'
@@ -63,6 +64,7 @@ export default function MainLayout() {
   // 平板和小屏桌面自动折叠为图标栏，为后厨三列和数据表保留内容宽度。
   const [collapsed, setCollapsed] = useState(false)
   const { token } = antdTheme.useToken()
+  const isDark = useThemeStore((s) => s.isDark)
   // 全局新订单轮询（提示音 + 菜单角标）
   const { counts, retry } = useOrderPoll()
   const addMessage = useNotificationStore((s) => s.add)
@@ -293,20 +295,20 @@ export default function MainLayout() {
     <Layout style={{ minHeight: '100vh' }}>
       {/* 侧栏固定在视口内（sticky），菜单过长时侧栏自身滚动；右侧内容随页面滚动 */}
       <Layout.Sider
-        theme="dark"
+        theme={isDark ? 'dark' : 'light'}
         width={220}
         breakpoint="xl"
         collapsedWidth={64}
         onCollapse={setCollapsed}
-        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto', zIndex: 11 }}
+        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto', zIndex: 11, borderInlineEnd: `1px solid ${token.colorSplit}` }}
       >
         <div
           style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', paddingInline: collapsed ? 0 : 20, cursor: 'pointer' }}
           onClick={() => navigate('/')}
         >
-          <BrandLogo size={30} showName={!collapsed} showSubtitle inverted />
+          <BrandLogo size={28} showName={!collapsed} showSubtitle inverted={isDark} />
         </div>
-        {menu(true)}
+        {menu(isDark)}
       </Layout.Sider>
       <Layout>
         <Layout.Header style={{ background: token.colorBgContainer, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingInline: 24, boxShadow: `0 1px 0 ${token.colorSplit}`, position: 'sticky', top: 0, zIndex: 10 }}>

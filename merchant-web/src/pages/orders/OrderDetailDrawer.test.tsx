@@ -45,8 +45,9 @@ const acceptButton = () => screen.getByText(/^接\s*单$/).closest('button') as 
 
 async function accept() {
   fireEvent.click(acceptButton())
-  fireEvent.click(screen.getByText('再点一次确认接单'))
-  await act(async () => { await Promise.resolve() })
+  const last = confirm.mock.calls[confirm.mock.calls.length - 1]
+  const config = last?.[0] as { onOk: () => Promise<void> | void }
+  await act(async () => { await config.onOk() })
 }
 
 function drawer(orderNo: string | null, open = true, onClose = vi.fn(), onChanged = vi.fn()) {

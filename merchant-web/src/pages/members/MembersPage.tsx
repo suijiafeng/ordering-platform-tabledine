@@ -312,6 +312,9 @@ export default function MembersPage() {
   ]
 
   const isNew = editing === 'new'
+  // 复核弹窗打开时先收起下层表单。两个 Modal 叠在一起时，开户框会留在确认框后面。
+  const editCovered = pendingVerify?.kind === 'create' || pendingVerify?.kind === 'resetPassword'
+  const rechargeCovered = pendingVerify?.kind === 'recharge'
 
   return (
     <div>
@@ -343,11 +346,12 @@ export default function MembersPage() {
 
       <Modal
         title={isNew ? '会员开户' : '编辑会员'}
-        open={editing !== null}
+        open={editing !== null && !editCovered}
         onOk={save}
         onCancel={() => setEditing(null)}
         confirmLoading={saving}
-        destroyOnHidden
+        // 点「下一步」会先关掉本框。销毁后返回修改会丢掉手机号、密码和金额，所以保持挂载
+        destroyOnHidden={false}
       >
         <Form form={form} layout="vertical" autoComplete="off">
           <Form.Item
@@ -378,12 +382,12 @@ export default function MembersPage() {
 
       <Modal
         title={recharging ? `为 ${recharging.name}（${recharging.phone}）充值` : '充值'}
-        open={recharging !== null}
+        open={recharging !== null && !rechargeCovered}
         onOk={doRecharge}
         okText="下一步：确认充值"
         onCancel={() => setRecharging(null)}
         confirmLoading={saving}
-        destroyOnHidden
+        destroyOnHidden={false}
       >
         {recharging && (
           <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan(recharging.balance)}</Typography.Text></Typography.Paragraph>
