@@ -64,6 +64,8 @@ export default function OperatorVerifyModal({ open, title, summary, okText, warn
       cancelText="返回修改"
       confirmLoading={submitting}
       maskClosable={false}
+      // 高于开户 / 充值弹窗，避免后打开的确认框被下层对话框盖住
+      zIndex={2000}
       destroyOnHidden
     >
       <div style={{ marginBottom: 16 }}>{summary}</div>
