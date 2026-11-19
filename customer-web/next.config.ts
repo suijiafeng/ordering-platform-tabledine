@@ -15,11 +15,18 @@ const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
   images: { unoptimized: true },
   ...(isStaticExport ? {} : {
-    // 仅开发服务器：API 与图片在根路径（生产由 Nginx 同域转发），不加 basePath
+    // 仅开发服务器：API 与图片在根路径（生产由 Nginx 同域转发），不加 basePath。
     async rewrites() {
       return [
         { source: '/api/:path*', destination: `${apiTarget}/api/:path*`, basePath: false },
         { source: '/uploads/:path*', destination: `${apiTarget}/uploads/:path*`, basePath: false },
+      ]
+    },
+    // 浏览器会向站点根请求 /favicon.ico。basePath 下图标在 /h5/favicon.ico，
+    // basePath: false 的 rewrite 又必须是绝对地址，改用跳转，避免开发日志里的 404。
+    async redirects() {
+      return [
+        { source: '/favicon.ico', destination: '/h5/favicon.ico', permanent: false, basePath: false },
       ]
     },
   }),
