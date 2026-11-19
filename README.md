@@ -21,23 +21,32 @@
 
 需要 JDK 17+、Maven 3.9+、Node.js 20+、Docker。
 
+默认端口：后端 `server.port` 为 **8080**，商家后台 **5173**，顾客端 **3000**。两个前端把浏览器里的 `/api`、`/uploads` 代理到 `API_PROXY_TARGET`（商家端默认 `http://localhost:8080`，顾客端默认 `http://127.0.0.1:8080`）。后端改了端口，两个前端都要带上同一个 `API_PROXY_TARGET`。
+
 ```bash
 # 1. 数据库
 docker compose -f deploy/docker-compose.dev.yml up -d
 
-# 2. 后端（dev profile：自动建表 + 种子数据），接口文档 http://localhost:8080/swagger-ui.html
+# 2. 后端（dev profile：自动建表 + 种子数据）
+#    端口即 application.yml 的 server.port，默认 8080
+#    换端口：SERVER_PORT=8081 mvn spring-boot:run
 cd server && mvn spring-boot:run
+# 接口文档 http://localhost:8080/swagger-ui.html
 
-# 3. 商家后台 http://localhost:5173
+# 3. 商家后台，默认 http://localhost:5173
+#    换端口：PORT=5174 npm run dev
+#    换后端：API_PROXY_TARGET=http://127.0.0.1:8081 npm run dev
 cd merchant-web && npm install && npm run dev
 
-# 4. 顾客端 http://127.0.0.1:3000/h5/?token=dev-table-a1
+# 4. 顾客端，默认 http://127.0.0.1:3000/h5/?token=dev-table-a1
+#    换端口：PORT=3001 npm run dev   （next dev / next start 都读 PORT，默认 3000）
+#    换后端：API_PROXY_TARGET=http://127.0.0.1:8081 npm run dev
 cd customer-web && npm install && npm run dev
 ```
 
-种子数据：店主 `admin / admin123`，店员 `staff / staff123`，会员 `13800000001 / staff123`，桌码 `dev-table-a1` ~ `a3`。两个前端的 `/api` 都代理到 8080。
+种子数据：店主 `admin / admin123`，店员 `staff / staff123`，会员 `13800000001 / staff123`，桌码 `dev-table-a1` ~ `a3`。会员可直接登录 H5 结算；余额 100 元，足够支付种子菜品。
 
-手机真机扫本地桌码：启动后端时设置 `QR_BASE_URL=http://<电脑局域网IP>:3000/h5/?token=`。
+手机真机扫本地桌码：启动后端时设置 `QR_BASE_URL=http://<电脑局域网IP>:3000/h5/?token=`。顾客端改了 `PORT` 时，这里的端口一并改掉。
 
 ## 测试与检查
 
