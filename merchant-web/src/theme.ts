@@ -1,19 +1,19 @@
 import { theme as antdTheme, type ThemeConfig } from 'antd'
 
 /**
- * 商家端令牌：单一强调色（国际橙），中性灰白底，8 / 12 / 6 圆角阶梯。
- * 只改 token，不改组件结构。状态色只用于成功 / 警告 / 错误，不拿来做装饰。
+ * 商家端令牌：火焰橙主色、暖灰表面，沿用界面收紧后的圆角和轻阴影。
+ * 只改颜色，不改组件结构。
  */
 export const BRAND_PRIMARY = '#E8590C'
-/** 浅色侧栏与页面同属一个中性面，靠 1px 分割线区分 */
-export const SIDER_BG = '#FFFFFF'
+/** 侧栏深色底（深浅主题共用） */
+export const SIDER_BG = '#211913'
 
 const shared: ThemeConfig['token'] = {
   colorPrimary: BRAND_PRIMARY,
-  colorInfo: '#52525B',
-  colorSuccess: '#3F6212',
-  colorWarning: '#B45309',
-  colorError: '#B91C1C',
+  colorInfo: '#2563EB',
+  colorSuccess: '#16A34A',
+  colorWarning: '#D97706',
+  colorError: '#DC2626',
   colorLink: BRAND_PRIMARY,
   borderRadius: 8,
   borderRadiusLG: 12,
@@ -27,15 +27,16 @@ const shared: ThemeConfig['token'] = {
 
 const lightToken: ThemeConfig['token'] = {
   ...shared,
-  colorText: '#18181B',
-  colorTextSecondary: '#52525B',
-  colorTextTertiary: '#71717A',
-  colorTextQuaternary: '#A1A1AA',
-  colorBorder: '#E4E4E7',
-  colorBorderSecondary: '#E4E4E7',
-  colorSplit: '#F4F4F5',
-  colorBgLayout: '#FAFAFA',
-  colorFillAlter: '#FAFAFA',
+  colorText: '#292524',
+  colorTextSecondary: '#78716C',
+  colorTextTertiary: '#A8A29E',
+  // 占位符 / 禁用文字：比设计稿的 #D6CFC7 深一档，保证白底上可读
+  colorTextQuaternary: '#BDB5AC',
+  colorBorder: '#E7E2DC',
+  colorBorderSecondary: '#EFE9E1',
+  colorSplit: '#EFE9E1',
+  colorBgLayout: '#F6F4F1',
+  colorFillAlter: '#F6F4F1',
 }
 
 const buttonComponent: NonNullable<ThemeConfig['components']>['Button'] = {
@@ -44,15 +45,16 @@ const buttonComponent: NonNullable<ThemeConfig['components']>['Button'] = {
 const cardComponent: NonNullable<ThemeConfig['components']>['Card'] = { borderRadiusLG: 12 }
 const modalComponent: NonNullable<ThemeConfig['components']>['Modal'] = { borderRadiusLG: 12 }
 
-/** 侧栏：白底、1px 选中，不铺满橙色块 */
+/** 侧栏：深色底 + 橙色选中。圆角仍用收紧后的 6px，不恢复胶囊。 */
 const siderComponents: ThemeConfig['components'] = {
-  Layout: { siderBg: SIDER_BG, triggerBg: SIDER_BG, headerBg: '#FFFFFF', bodyBg: '#FAFAFA' },
+  Layout: { siderBg: SIDER_BG, triggerBg: SIDER_BG, headerBg: '#FFFFFF', bodyBg: '#F6F4F1' },
   Menu: {
-    itemBg: SIDER_BG,
-    itemSelectedBg: '#FFF4EC',
-    itemSelectedColor: BRAND_PRIMARY,
-    itemColor: '#3F3F46',
-    itemHoverColor: '#18181B',
+    darkItemBg: SIDER_BG,
+    darkSubMenuItemBg: SIDER_BG,
+    darkItemSelectedBg: BRAND_PRIMARY,
+    darkItemSelectedColor: '#FFFFFF',
+    darkItemColor: 'rgba(255,255,255,0.68)',
+    darkItemHoverColor: '#FFFFFF',
     itemBorderRadius: 6,
     itemMarginInline: 8,
     itemHeight: 36,
@@ -60,36 +62,17 @@ const siderComponents: ThemeConfig['components'] = {
   Card: cardComponent,
   Modal: modalComponent,
   Button: buttonComponent,
-  Table: { headerBg: '#FAFAFA', headerColor: '#71717A', headerSplitColor: 'transparent', rowHoverBg: '#FAFAFA' },
-  Segmented: { itemSelectedBg: '#18181B', itemSelectedColor: '#FFFFFF', borderRadius: 6, borderRadiusSM: 6, trackPadding: 2 },
-}
-
-const darkSider: ThemeConfig['components'] = {
-  Layout: { siderBg: '#09090B', triggerBg: '#09090B' },
-  Menu: {
-    darkItemBg: '#09090B',
-    darkSubMenuItemBg: '#09090B',
-    darkItemSelectedBg: 'rgba(232,89,12,0.18)',
-    darkItemSelectedColor: '#FDBA74',
-    darkItemColor: 'rgba(255,255,255,0.72)',
-    darkItemHoverColor: '#FFFFFF',
-    itemBorderRadius: 6,
-    itemMarginInline: 8,
-    itemHeight: 36,
-  },
+  Table: { headerBg: '#FFFFFF', headerColor: '#A8A29E', headerSplitColor: 'transparent', rowHoverBg: '#FDF6F0' },
+  Segmented: { itemSelectedBg: '#292524', itemSelectedColor: '#FFFFFF', borderRadius: 6, borderRadiusSM: 6, trackPadding: 2 },
 }
 
 export function buildTheme(isDark: boolean): ThemeConfig {
   if (isDark) {
     return {
       algorithm: antdTheme.darkAlgorithm,
-      token: { ...shared, colorBgBase: '#09090B' },
+      token: shared,
       components: {
         ...siderComponents,
-        ...darkSider,
-        Button: buttonComponent,
-        Card: cardComponent,
-        Modal: modalComponent,
         Table: { headerSplitColor: 'transparent' },
         Segmented: { itemSelectedBg: BRAND_PRIMARY, itemSelectedColor: '#FFFFFF', borderRadius: 6, borderRadiusSM: 6, trackPadding: 2 },
       },

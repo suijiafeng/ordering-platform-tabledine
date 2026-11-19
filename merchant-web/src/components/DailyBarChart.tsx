@@ -38,7 +38,7 @@ export default function DailyBarChart({ data, height = 180, width = 640, label =
       <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label={label}>
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke="#E4E4E7" strokeDasharray="3 3" />
+            <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke={token.colorSplit} strokeDasharray="3 3" />
             <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill={token.colorTextTertiary} style={{ fontVariantNumeric: 'tabular-nums' }}>¥{(t / 100).toFixed(0)}</text>
           </g>
         ))}
@@ -55,7 +55,7 @@ export default function DailyBarChart({ data, height = 180, width = 640, label =
               {h > 0 && (
                 <path
                   d={`M${cx - barW / 2},${padT + plotH} V${top + r} Q${cx - barW / 2},${top} ${cx - barW / 2 + r},${top} H${cx + barW / 2 - r} Q${cx + barW / 2},${top} ${cx + barW / 2},${top + r} V${padT + plotH} Z`}
-                  fill={active ? token.colorPrimary : '#FDBA74'}
+                  fill={active ? token.colorPrimaryActive : token.colorPrimary}
                 />
               )}
               {(i === maxIdx && d.netIncome > 0) && !active && (
