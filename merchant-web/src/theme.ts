@@ -73,6 +73,8 @@ export function buildTheme(isDark: boolean): ThemeConfig {
       token: shared,
       components: {
         ...siderComponents,
+        // 侧栏颜色深浅共用；内容区不要沿用浅色 bodyBg，否则深色文字算法会把字画成浅色
+        Layout: { siderBg: SIDER_BG, triggerBg: SIDER_BG },
         Table: { headerSplitColor: 'transparent' },
         Segmented: { itemSelectedBg: BRAND_PRIMARY, itemSelectedColor: '#FFFFFF', borderRadius: 6, borderRadiusSM: 6, trackPadding: 2 },
       },
