@@ -40,10 +40,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card style={{ width: '100%', maxWidth: 360, margin: '0 16px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 28 }}>
-          <BrandLogo size={48} showSubtitle />
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <Card style={{ width: '100%', maxWidth: 400, margin: '0 16px' }} styles={{ body: { padding: 28 } }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginBottom: 24 }}>
+          <BrandLogo size={32} showSubtitle />
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>{BRAND.slogan}</Typography.Text>
         </div>
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}

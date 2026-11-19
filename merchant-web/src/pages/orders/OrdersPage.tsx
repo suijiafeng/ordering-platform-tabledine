@@ -123,7 +123,7 @@ export default function OrdersPage() {
       width: 180,
       render: (_, r) => (
         <Space direction="vertical" size={0}>
-          <Typography.Text style={{ fontSize: 12 }}>{r.orderNo}</Typography.Text>
+          <Typography.Text className="order-no">{r.orderNo}</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {dayjs(r.createdAt).format('MM-DD HH:mm')} · {r.payMode === 'PAY_LATER' ? (r.paidAt ? '先吃后付·已结账' : '先吃后付') : PLATFORM[r.platform]} · {r.peopleCount} 人
           </Typography.Text>

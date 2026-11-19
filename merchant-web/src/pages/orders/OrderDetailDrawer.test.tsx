@@ -45,7 +45,8 @@ const acceptButton = () => screen.getByText(/^接\s*单$/).closest('button') as 
 
 async function accept() {
   fireEvent.click(acceptButton())
-  const config = confirm.mock.calls.at(-1)?.[0] as { onOk: () => Promise<void> | void }
+  const last = confirm.mock.calls[confirm.mock.calls.length - 1]
+  const config = last?.[0] as { onOk: () => Promise<void> | void }
   await act(async () => { await config.onOk() })
 }
 

@@ -9,7 +9,7 @@ import { theme as antdTheme } from 'antd'
 export default function Panel({ children, padding = '4px 16px', style }: { children: ReactNode; padding?: CSSProperties['padding']; style?: CSSProperties }) {
   const { token } = antdTheme.useToken()
   return (
-    <div style={{ background: token.colorBgContainer, borderRadius: token.borderRadiusLG, padding, ...style }}>
+    <div style={{ background: token.colorBgContainer, borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}`, padding, ...style }}>
       {children}
     </div>
   )
