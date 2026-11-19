@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ApiError, fetchMenu, resolveTable } from '@/lib/api'
 import { defaultSelection, hasOptions } from '@/lib/pricing'
@@ -13,11 +13,9 @@ import { CloseIcon, EmptyState, PersonIcon, Price, PillButton, SearchIcon, Skele
 import { CartBar } from './CartBar'
 import { DishDetail } from './DishDetail'
 import { SpecSheet } from './SpecSheet'
+import { useVisiblePolling } from '@/hooks/useVisiblePolling'
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
-/** 回到前台时，距上次加载超过这个时间就静默刷新营业状态与菜单（售罄、下架、打烊） */
-const STALE_AFTER_MS = 60_000
-
 /** 桌码来源：?token=xxx。桌码链接 /q/<token> 由 Nginx 302 跳转到 /h5/?token=<token> */
 const tokenFromQuery = (value: string | null) => (value && TOKEN_PATTERN.test(value) ? value : null)
 const errorText = (e: unknown) => (e instanceof ApiError ? e.message : '加载失败，请稍后重试')
@@ -34,14 +32,14 @@ export function MenuClient() {
   const [detailDish, setDetailDish] = useState<Dish | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [syncFailed, setSyncFailed] = useState(false)
   const dishesRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const scrollingTo = useRef<number | null>(null)
   const scrollStopTimer = useRef<number | undefined>(undefined)
-  const loadedAt = useRef(0)
 
   /** quiet：后台刷新，不显示加载页；失败时保留当前菜单 */
-  const load = useCallback(async (quiet: boolean) => {
+  const load = useVisiblePolling(async ({ background: quiet, isCurrent }) => {
     if (!quiet) { setLoading(true); setError('') }
     try {
       const queryToken = searchParams.get('token')
@@ -65,33 +63,39 @@ export function MenuClient() {
         setActiveCategory(null)
         return
       }
-      setTable(resolved)
+      if (!isCurrent()) return
       const nextMenu = await fetchMenu(resolved.storeId)
+      if (!isCurrent()) return
+      setTable(resolved)
       const { removed, capped } = reconcile(nextMenu)
       setMenu(nextMenu)
-      setActiveCategory((value) => value ?? nextMenu.categories[0]?.id ?? null)
-      loadedAt.current = Date.now()
+      setError('')
+      setSyncFailed(false)
+      setActiveCategory((value) => nextMenu.categories.some((category) => category.id === value) ? value : nextMenu.categories[0]?.id ?? null)
+      const latestDishes = new Map(nextMenu.categories.flatMap((category) => category.dishes).map((dish) => [dish.id, dish]))
+      setSpecDish((current) => {
+        const latest = current ? latestDishes.get(current.id) : null
+        return latest && !latest.soldOut ? latest : null
+      })
+      setDetailDish((current) => current ? latestDishes.get(current.id) ?? null : null)
       if (removed.length) notify(`${[...new Set(removed)].join('、')} 已售罄或选项有变，已移出购物车`)
       else if (capped.length) notify(`${[...new Set(capped)].join('、')} 剩余不多，购物车数量已调整`)
     } catch (e) {
       if (!(e instanceof ApiError)) throw e
-      if (e.code === 40401 || e.status === 404) clearTable()
-      if (quiet) return  // 后台刷新失败不打扰，下次回到前台再试
+      if (!isCurrent()) return
+      setSyncFailed(true)
+      if (e.code === 40401 || e.status === 404) {
+        clearTable()
+        setSpecDish(null)
+        setDetailDish(null)
+        setError('桌码无效，请重新扫描桌上的二维码')
+      }
+      if (quiet) return
       setError(e.code === 40401 || e.status === 404 ? '桌码无效，请重新扫描桌上的二维码' : errorText(e))
     } finally {
-      if (!quiet) setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
-  }, [searchParams, setTable, clearTable, reconcile])
-
-  useEffect(() => { void load(false) }, [load])
-
-  useEffect(() => {
-    const onVisibility = () => {
-      if (!document.hidden && loadedAt.current && Date.now() - loadedAt.current > STALE_AFTER_MS) void load(true)
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [load])
+  }, { resetKey: searchParams.toString() })
 
   useEffect(() => () => { if (scrollStopTimer.current) window.clearTimeout(scrollStopTimer.current) }, [])
 
@@ -206,7 +210,7 @@ export function MenuClient() {
     return (
       <div className="screen on-white">
         <EmptyState icon="!" title="菜单加载失败" desc={error} action={<>
-          <PillButton onClick={() => void load(false)}>重新加载</PillButton>
+          <PillButton onClick={() => void load()}>重新加载</PillButton>
         </>} />
         <div className="center">{accountButton(true)}</div>
       </div>
@@ -247,6 +251,7 @@ export function MenuClient() {
         <span className="menu-note-link">须知 ›</span>
       </button>
       {!table.storeOpen && <div className="menu-closed">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
+      {syncFailed && <div className="notice" role="status">菜单暂未更新，正在自动重试…</div>}
 
       {matched ? (
         <div className="dishes search-results">

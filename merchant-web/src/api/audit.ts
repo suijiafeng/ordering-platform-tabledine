@@ -15,4 +15,4 @@ export interface AuditQuery {
 }
 
 /** 审计日志查询（仅店主）；查询本身也会被记录 */
-export const listAuditLogs = (params: AuditQuery) => request<PageResult<AuditLogItem>>({ url: '/api/v1/m/audit-logs', params })
+export const listAuditLogs = (params: AuditQuery, opts?: { silent?: boolean }) => request<PageResult<AuditLogItem>>({ url: '/api/v1/m/audit-logs', params, ...opts })

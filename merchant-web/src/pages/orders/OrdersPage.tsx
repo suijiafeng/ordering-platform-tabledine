@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, Button, DatePicker, Input, Space, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, Badge, Button, DatePicker, Input, Space, Table, Tabs, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -15,6 +15,7 @@ import OrderDetailDrawer from './OrderDetailDrawer'
 import Panel, { PageToolbar } from '../../components/Panel'
 import { ignoreShownError } from '../../utils/errors'
 import { useIsKitchen } from '../../utils/auth'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 
 const PAGE_SIZE = 20
 
@@ -48,6 +49,7 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [data, setData] = useState<{ list: OrderSummary[]; total: number }>({ list: [], total: 0 })
   const [loading, setLoading] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
   const [detail, setDetail] = useState<string | null>(params.get('orderNo'))
   // 页面已打开时地址栏 orderNo 变化（如点击新订单弹窗跳转）也要打开对应详情
   const paramOrderNo = params.get('orderNo')
@@ -60,9 +62,9 @@ export default function OrdersPage() {
 
   const beginLoad = useLatestRequest()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
     const isLatest = beginLoad()
-    setLoading(true)
+    if (!background) setLoading(true)
     try {
       const res = await listOrders({
         status: status && status !== CANCEL_TAB && status !== UNSETTLED_TAB ? status : undefined,
@@ -72,9 +74,13 @@ export default function OrdersPage() {
         date: date ? date.format('YYYY-MM-DD') : undefined,
         page,
         pageSize: PAGE_SIZE,
-      })
-      if (isLatest()) setData({ list: res.list, total: res.total })
+      }, background ? { silent: true } : undefined)
+      if (isLatest()) {
+        setData({ list: res.list, total: res.total })
+        setSyncFailed(false)
+      }
     } catch (e) {
+      if (isLatest()) setSyncFailed(true)
       ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
@@ -84,22 +90,15 @@ export default function OrdersPage() {
   useEffect(() => {
     void load()
   }, [load])
+  useVisiblePolling(() => load(true))
 
   // 轮询到新订单时自动刷新列表
   useEffect(() => {
     if (newArrived > 0) {
       consumeNew()
-      void load()
+      void load(true)
     }
   }, [newArrived, consumeNew, load])
-
-  // 顾客申请取消 / 后厨出餐等由别人引起的变化：计数变了就刷新，列表里的「顾客申请取消」「待送餐」保持最新
-  const countKey = counts ? `${counts.cancelRequestCount ?? 0}-${counts.readyCount ?? 0}-${counts.makingCount}-${counts.unsettledCount ?? 0}` : ''
-  useEffect(() => {
-    if (countKey) void load()
-    // load 变化时上面的 effect 已加载过，这里只跟随计数变化
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countKey])
 
   const openDetail = (orderNo: string | null) => {
     setDetail(orderNo)
@@ -186,6 +185,7 @@ export default function OrdersPage() {
         {isKitchen && <Tag style={{ marginInlineEnd: 0 }}>后厨账号仅可查看</Tag>}
         {!isKitchen && <Button size="large" type="primary" icon={<PlusOutlined />} onClick={() => navigate('/orders/new')}>代客下单</Button>}
       </PageToolbar>
+      {syncFailed && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="订单同步暂时中断，当前显示上次结果，恢复后会自动更新。" action={<Button size="small" onClick={() => void load()}>重试</Button>} />}
       <Panel>
         <Table<OrderSummary>
           rowKey="id"

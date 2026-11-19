@@ -44,10 +44,11 @@ export function RefundSheet({ visible, items, refundableAmount, busy, onClose, o
 
   return (
     <Popup visible={visible} getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={busy ? undefined : onClose}>
-      <div className="sheet">
+      <div className="sheet refund-sheet">
         <div className="sheet-grip" />
         <div className="sheet-pad">
           {step === 'notice' ? <>
+            <div className="refund-notice-content">
             <h2 className="refund-title">申请售后</h2>
             <div className="refund-notice">
               <div className="refund-notice-head">提交退款前，请先确认</div>
@@ -56,6 +57,7 @@ export function RefundSheet({ visible, items, refundableAmount, busy, onClose, o
                 <li>只选择确实需要退款的菜品和数量。</li>
                 <li>退款申请将由商家审核，提交后不会立即到账。</li>
               </ul>
+            </div>
             </div>
             <div className="sheet-foot">
               <PillButton className="grow" variant="plain" disabled={busy} onClick={onClose}>暂不退款</PillButton>

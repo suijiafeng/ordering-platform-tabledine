@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { App } from 'antd'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { acceptOrder, approveCancelRequest, getOrder } from '../../api/order'
-import type { OrderDetail } from '../../api/types'
+import type { OrderDetail, RefundView } from '../../api/types'
 import { deferred } from '../../test/deferred'
 import { ApiError } from '../../utils/request'
 import OrderDetailDrawer from './OrderDetailDrawer'
@@ -187,5 +187,85 @@ describe('OrderDetailDrawer request ownership', () => {
     await act(async () => { await oldConfirmation.onOk() })
     expect(approveCancelRequest).not.toHaveBeenCalled()
     expect(success).not.toHaveBeenCalled()
+  })
+})
+
+describe('OrderDetailDrawer live synchronization', () => {
+  it('does not replace an unresolved first load with a background request', async () => {
+    const firstLoad = deferred<OrderDetail>()
+    vi.mocked(getOrder).mockReturnValueOnce(firstLoad.promise)
+    render(drawer('A'))
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(getOrder).toHaveBeenCalledOnce()
+    await act(async () => { firstLoad.resolve(order('A')) })
+    expect(screen.getByText('订单 A')).toBeTruthy()
+  })
+
+  it('updates an asynchronous refund to its terminal state and unlocks the refund button without reopening', async () => {
+    const refund: RefundView = {
+      id: 1, refundNo: 'R1', orderNo: 'A', tableCode: 'A', type: 'CUSTOM', initiator: 'MERCHANT',
+      amount: 250, reason: 'Compensation', rejectReason: null, status: 'PROCESSING', failReason: null,
+      channelRefundNo: null, operatorId: 1, operatorName: 'Owner', createdAt: '2026-10-12T09:00:00',
+      successAt: null, items: [],
+    }
+    vi.mocked(getOrder).mockResolvedValueOnce(order('A', { status: 'DONE', refunds: [refund] }))
+      .mockResolvedValueOnce(order('A', {
+        status: 'DONE', refundStatus: 'PARTIAL', refundedAmount: 250, refundableAmount: 750,
+        refunds: [{ ...refund, status: 'SUCCESS' }],
+      }))
+    render(drawer('A'))
+    await screen.findByText('处理中')
+    const refundButton = () => screen.getByText(/^退\s*款$/).closest('button') as HTMLButtonElement
+    expect(refundButton().disabled).toBe(true)
+
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(screen.queryByText('处理中')).toBeNull()
+    expect(screen.getByText('部分退款')).toBeTruthy()
+    expect(refundButton().disabled).toBe(false)
+    expect(getOrder).toHaveBeenLastCalledWith('A', { silent: true })
+  })
+
+  it('updates a same-count kitchen change while preserving an open reason draft', async () => {
+    vi.mocked(getOrder).mockResolvedValueOnce(order('A', { status: 'MAKING', cookingStartedAt: null }))
+      .mockResolvedValueOnce(order('A', { status: 'MAKING', cookingStartedAt: '2026-10-12T09:01:00' }))
+    render(drawer('A'))
+    await screen.findByRole('button', { name: '开始制作' })
+    fireEvent.click(screen.getByText('整单取消'))
+    const input = await screen.findByPlaceholderText('原因（必填）')
+    fireEvent.change(input, { target: { value: 'Keep this draft' } })
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(screen.getByRole('button', { name: '制作完成' })).toBeTruthy()
+    expect((screen.getByPlaceholderText('原因（必填）') as HTMLTextAreaElement).value).toBe('Keep this draft')
+  })
+
+  it('retains the current detail and retries after a silent background failure', async () => {
+    const onClose = vi.fn()
+    vi.mocked(getOrder).mockResolvedValueOnce(order('A'))
+      .mockRejectedValueOnce(new ApiError(-1, 'Offline'))
+      .mockResolvedValueOnce(order('A', { status: 'READY' }))
+    render(drawer('A', true, onClose))
+    await screen.findByText('订单 A')
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(screen.getByText('订单 A')).toBeTruthy()
+    expect(screen.getByText(/订单同步暂时中断/)).toBeTruthy()
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    expect(screen.queryByText(/订单同步暂时中断/)).toBeNull()
+    expect(screen.getByRole('button', { name: '送达完成' })).toBeTruthy()
+  })
+
+  it('does not let a stale background read roll back a completed action', async () => {
+    const staleRead = deferred<OrderDetail>()
+    const accepting = deferred<OrderDetail>()
+    vi.mocked(getOrder).mockResolvedValueOnce(order('A')).mockReturnValueOnce(staleRead.promise)
+    vi.mocked(acceptOrder).mockReturnValue(accepting.promise)
+    render(drawer('A'))
+    await screen.findByText('订单 A')
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    await accept()
+    await act(async () => { accepting.resolve(order('A', { status: 'MAKING', cookingStartedAt: null })) })
+    await act(async () => { staleRead.resolve(order('A')) })
+    expect(screen.queryByText(/^接\s*单$/)).toBeNull()
+    expect(screen.getByRole('button', { name: '开始制作' })).toBeTruthy()
   })
 })

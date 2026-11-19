@@ -12,6 +12,8 @@ import { ApiError } from '../../utils/request'
 import { fenToYuan, formatYuan, yuanToFen } from '../../utils/money'
 import Panel, { PageToolbar } from '../../components/Panel'
 import OperatorVerifyModal, { type VerifyResult } from '../../components/OperatorVerifyModal'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import SyncStatus from '../../components/SyncStatus'
 
 const PAGE_SIZE = 20
 
@@ -63,6 +65,7 @@ export default function MembersPage() {
   const [page, setPage] = useState(1)
   const [data, setData] = useState<{ list: MemberItem[]; total: number }>({ list: [], total: 0 })
   const [loading, setLoading] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
   const beginLoad = useLatestRequest()
 
   const [editing, setEditing] = useState<EditState>(null)
@@ -83,13 +86,14 @@ export default function MembersPage() {
     | null
   >(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     const isLatest = beginLoad()
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
-      const res = await listMembers({ keyword: keyword || undefined, page, pageSize: PAGE_SIZE })
-      if (isLatest()) setData(res)
+      const res = await listMembers({ keyword: keyword || undefined, page, pageSize: PAGE_SIZE }, { silent })
+      if (isLatest()) { setData(res); setSyncFailed(false) }
     } catch (e) {
+      if (isLatest()) setSyncFailed(true)
       ignoreShownError(e)  // 请求层已提示
     } finally {
       if (isLatest()) setLoading(false)
@@ -99,6 +103,19 @@ export default function MembersPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useVisiblePolling(async () => {
+    await load(true)
+    if (!recharging) return
+    try {
+      const fresh = await getMember(recharging.id, { silent: true })
+      setRecharging((current) => current?.id === fresh.id ? fresh : current)
+      setPendingVerify((current) => current && current.kind !== 'create' && current.member.id === fresh.id ? { ...current, member: fresh } : current)
+    } catch (e) {
+      setSyncFailed(true)
+      ignoreShownError(e)
+    }
+  }, { enabled: !saving })
 
   const openEdit = (m: EditState) => {
     form.resetFields()
@@ -298,6 +315,7 @@ export default function MembersPage() {
 
   return (
     <div>
+      <SyncStatus failed={syncFailed} />
       <PageToolbar extra={<Button size="large" icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>}>
         {canManage && <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => openEdit('new')}>会员开户</Button>}
         <Input.Search
@@ -444,22 +462,39 @@ function TransactionsDrawer({ member, onClose }: { member: MemberItem | null; on
   const [page, setPage] = useState(1)
   const [data, setData] = useState<{ list: WalletTransaction[]; total: number }>({ list: [], total: 0 })
   const [loading, setLoading] = useState(false)
+  const [freshMember, setFreshMember] = useState<MemberItem | null>(member)
+  const [syncFailed, setSyncFailed] = useState(false)
+  const beginLoad = useLatestRequest()
+  const memberId = member?.id
 
   useEffect(() => {
     setPage(1)
     setData({ list: [], total: 0 })  // 换会员时先清空，避免短暂显示上一位会员的流水
+    setFreshMember(null)
+    setSyncFailed(false)
   }, [member?.id])
 
-  useEffect(() => {
-    if (!member) return
-    let cancelled = false
-    setLoading(true)
-    listMemberTransactions(member.id, { page, pageSize: PAGE_SIZE })
-      .then((res) => { if (!cancelled) setData(res) })
-      .catch(ignoreShownError)
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [member, page])
+  const load = useCallback(async (silent = false) => {
+    const isLatest = beginLoad()
+    if (!memberId) return
+    if (!silent) setLoading(true)
+    try {
+      const [res, profile] = await Promise.all([listMemberTransactions(memberId, { page, pageSize: PAGE_SIZE }, { silent }), getMember(memberId, { silent })])
+      if (!isLatest()) return
+      setData(res)
+      setFreshMember(profile)
+      setSyncFailed(false)
+      const lastPage = Math.max(1, Math.ceil(res.total / PAGE_SIZE))
+      if (page > lastPage) setPage(lastPage)
+    } catch (e) {
+      if (isLatest()) setSyncFailed(true)
+      ignoreShownError(e)
+    } finally {
+      if (isLatest()) setLoading(false)
+    }
+  }, [memberId, page, beginLoad])
+  useEffect(() => { void load() }, [load])
+  useVisiblePolling(() => load(true), { enabled: !!memberId })
 
   const columns: ColumnsType<WalletTransaction> = [
     { title: '时间', dataIndex: 'createdAt', width: 150, render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss') },
@@ -480,7 +515,8 @@ function TransactionsDrawer({ member, onClose }: { member: MemberItem | null; on
 
   return (
     <Drawer title={member ? `${member.name} 的余额流水` : '余额流水'} open={member !== null} onClose={onClose} width={640}>
-      {member && <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan(member.balance)}</Typography.Text></Typography.Paragraph>}
+      <SyncStatus failed={syncFailed} />
+      {member && <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan((freshMember?.id === member.id ? freshMember : member).balance)}</Typography.Text></Typography.Paragraph>}
       <Table
         rowKey="id"
         size="small"

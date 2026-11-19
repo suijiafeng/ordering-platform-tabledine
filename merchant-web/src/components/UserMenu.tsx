@@ -24,9 +24,9 @@ export default function UserMenu({ compact }: { compact?: boolean }) {
       disabled: true,
       style: { cursor: 'default' },
       label: (
-        <div style={{ padding: '4px 0', minWidth: 160 }}>
-          <Space size={6}>
-            <Typography.Text strong>{name}</Typography.Text>
+        <div style={{ padding: '4px 0', minWidth: 160, maxWidth: 'min(300px, calc(100vw - 64px))', overflowWrap: 'anywhere' }}>
+          <Space size={6} wrap>
+            <Typography.Text strong style={{ overflowWrap: 'anywhere' }}>{name}</Typography.Text>
             {staff && <Tag color={ROLE_META[staff.role].color} style={{ marginInlineEnd: 0 }}>{ROLE_META[staff.role].label}</Tag>}
           </Space>
           <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>账号：{staff?.username}</Typography.Text></div>
@@ -74,7 +74,7 @@ export default function UserMenu({ compact }: { compact?: boolean }) {
           <Avatar size={compact ? 26 : 28} style={{ background: isOwner ? token.colorWarning : token.colorPrimary, flexShrink: 0 }}>
             {name.slice(0, 1)}
           </Avatar>
-          {!compact && <Typography.Text>{name}</Typography.Text>}
+          {!compact && <Typography.Text ellipsis title={name} style={{ maxWidth: 160 }}>{name}</Typography.Text>}
           <DownOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
         </Space>
       </Dropdown>

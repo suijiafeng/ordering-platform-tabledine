@@ -1,7 +1,7 @@
 import { request } from '../utils/request'
 import type { StoreDetail, StoreUpdateRequest, UploadResult } from './types'
 
-export const fetchStore = () => request<StoreDetail>({ url: '/api/v1/m/store' })
+export const fetchStore = (opts?: { silent?: boolean }) => request<StoreDetail>({ url: '/api/v1/m/store', silent: opts?.silent })
 
 export const updateStore = (data: StoreUpdateRequest) =>
   request<StoreDetail>({ url: '/api/v1/m/store', method: 'PUT', data })

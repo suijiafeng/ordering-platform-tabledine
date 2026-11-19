@@ -14,6 +14,7 @@ import SettleModal from './SettleModal'
 import ConfirmButton from '../../components/ConfirmButton'
 import { ignoreShownError } from '../../utils/errors'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 
 interface Props {
   orderNo: string | null
@@ -65,6 +66,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
   const isMobile = useIsMobile()
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
   const [acting, setActing] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
   const [settleOpen, setSettleOpen] = useState(false)
@@ -81,6 +83,8 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
   // layout cleanup 在切换提交时立即失效旧会话，避免旧操作的 catch 再启动一次旧订单加载。
   const session = useMemo(() => ({ open, orderNo }), [open, orderNo])
   const currentSession = useRef<typeof session | null>(null)
+  const actingSession = useRef<typeof session | null>(null)
+  const loadedSession = useRef<typeof session | null>(null)
   useLayoutEffect(() => {
     currentSession.current = session
     return () => { currentSession.current = null }
@@ -92,19 +96,27 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
 
   // 只采纳最后一次发起的加载：加载 A 时切到订单 B（如点了新订单通知），A 晚到的结果不能覆盖 B
   const loadSeq = useRef(0)
-  const load = useCallback(async () => {
-    if (!isCurrentSession() || !session.orderNo) {
+  const load = useCallback(async (background = false) => {
+    if (!isCurrentSession() || !session.orderNo
+      || (background && (actingSession.current === session || loadedSession.current !== session))) {
       return
     }
     const seq = ++loadSeq.current
     const isLatest = () => isCurrentSession() && seq === loadSeq.current
-    setLoading(true)
+    if (!background) setLoading(true)
     try {
-      const detail = await getOrder(session.orderNo)
-      if (isLatest()) setOrder(detail)
+      const detail = await getOrder(session.orderNo, background ? { silent: true } : undefined)
+      if (isLatest()) {
+        loadedSession.current = session
+        setOrder(detail)
+        setSyncFailed(false)
+      }
     } catch (e) {
-      // 打开详情失败（订单不存在 / 无权限）：请求层已提示，关闭抽屉回到列表
-      if (isLatest()) onCloseRef.current()
+      // 后台暂时失败时保留详情和输入；首次打开失败才关闭抽屉。
+      if (isLatest()) {
+        if (background) setSyncFailed(true)
+        else onCloseRef.current()
+      }
       ignoreShownError(e)
     } finally {
       if (isLatest()) setLoading(false)
@@ -114,6 +126,9 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
   useEffect(() => {
     setOrder(null)
     setLoading(false)
+    setSyncFailed(false)
+    actingSession.current = null
+    loadedSession.current = null
     setActing(false)
     setRefundOpen(false)
     setSettleOpen(false)
@@ -127,6 +142,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
       cancelConfirmation.current = null
     }
   }, [session, load])
+  useVisiblePolling(() => load(true), { enabled: open && !!orderNo })
 
   const actionSeq = useRef(0)
   /** 返回是否成功 */
@@ -136,12 +152,15 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
     const action = ++actionSeq.current
     const isCurrentAction = () => isCurrentSession() && action === actionSeq.current
     setActing(true)
-    // 操作期间切到了别的订单（如点了新订单通知）：结果不能覆盖抽屉里已经换成的那一单
-    const seq = loadSeq.current
+    actingSession.current = session
+    // 操作前发出的轮询不能在操作后把状态倒退；操作期间暂停新的后台读取。
+    ++loadSeq.current
     try {
       const updated = await fn()
       if (!isCurrentAction()) return false
-      if (seq === loadSeq.current) setOrder(updated)
+      ++loadSeq.current
+      setOrder(updated)
+      setSyncFailed(false)
       message.success(ok)
       onChanged?.()
       return true
@@ -151,7 +170,10 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
       ignoreShownError(e)
       return false
     } finally {
-      if (isCurrentAction()) setActing(false)
+      if (isCurrentAction()) {
+        actingSession.current = null
+        setActing(false)
+      }
     }
   }
 
@@ -293,6 +315,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
         <div style={{ textAlign: 'center', padding: 48 }}><Spin spinning={loading} /></div>
       ) : (
         <>
+          {syncFailed && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="订单同步暂时中断，当前显示上次结果，恢复后会自动更新。" action={<Button size="small" onClick={() => void load(true)}>重试</Button>} />}
           {isUnsettled(order) && (
             <Alert
               style={{ marginBottom: 16 }}

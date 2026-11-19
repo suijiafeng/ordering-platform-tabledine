@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, createOrder, fetchMe, payOrder, resolveTable } from '@/lib/api'
+import { ApiError, createOrder, fetchMe, fetchMenu, payOrder, resolveTable } from '@/lib/api'
 import type { CartItem, OrderDetail } from '@/lib/types'
 import { getToken } from '@/lib/auth'
 import { beginCheckout, checkoutMatchesCart, checkoutPayload, CheckoutStorageError, finishCheckout, readPendingCheckout, type PendingCheckout } from '@/lib/checkout-request'
@@ -14,6 +14,7 @@ import { menuPath } from '@/lib/navigation'
 import { notify } from '@/store/feedback'
 import { confirmDialog } from '@/lib/ui'
 import { useMemberBalance } from '@/hooks/useMemberBalance'
+import { useVisiblePolling } from '@/hooks/useVisiblePolling'
 import { AppBar, BottomBar, Card, EmptyState, PillButton, Price, Skeleton, Stepper } from '@/components/ui'
 
 // 未登录时先保存人数和备注，登录回来后恢复
@@ -41,7 +42,7 @@ function orderMatchesCart(order: OrderDetail, items: CartItem[]) {
  */
 export default function CheckoutPage() {
   const router = useRouter()
-  const { table, items, setTable, clear } = useOrdering()
+  const { table, items, setTable, reconcile, clear } = useOrdering()
   const [peopleCount, setPeopleCount] = useState(1)
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -49,6 +50,8 @@ export default function CheckoutPage() {
   const [pending, setPending] = useState<PendingCheckout | null>(null)
   const [storageFailed, setStorageFailed] = useState(false)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)  // null：尚未在浏览器端读取登录态
+  const [tableSyncFailed, setTableSyncFailed] = useState(false)
+  const [tableInvalid, setTableInvalid] = useState(false)
   const { balance, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(loggedIn === true)
   const total = cartTotal(items)
   const returnToMenu = menuPath(table?.qrToken)
@@ -71,17 +74,31 @@ export default function CheckoutPage() {
     }
   }, [])
 
-  // 进入确认页时刷新营业状态：在菜单页停留期间可能已经打烊
-  useEffect(() => {
+  // 结算停留期间也同步打烊和桌码失效；不改动未知结果的原下单请求。
+  useVisiblePolling(async ({ isCurrent }) => {
     const current = useOrdering.getState().table
     if (!current) return
-    resolveTable(current.qrToken).then(setTable).catch((e: unknown) => {
-      ignoreShownError(e)  // 桌码失效等：下单时服务端会给出明确提示
-    })
-  }, [setTable])
+    try {
+      const resolved = await resolveTable(current.qrToken)
+      if (!isCurrent()) return
+      const menu = await fetchMenu(resolved.storeId)
+      if (!isCurrent()) return
+      setTable(resolved)
+      const { removed, capped } = reconcile(menu)
+      if (removed.length || capped.length) notify('菜品或库存已更新，请重新核对购物车')
+      setTableSyncFailed(false)
+      setTableInvalid(false)
+    } catch (e) {
+      ignoreShownError(e)
+      if (isCurrent()) {
+        setTableSyncFailed(true)
+        setTableInvalid(e instanceof ApiError && e.status === 404)
+      }
+    }
+  }, { enabled: !!table?.qrToken && !submitting, resetKey: table?.qrToken })
 
   const submit = async () => {
-    if (!table || !table.storeOpen || !items.length || submitLock.current) return
+    if (!table || !table.storeOpen || tableInvalid || !items.length || submitLock.current) return
     if (!getToken()) {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ peopleCount, remark }))
       router.push(`/login?redirect=${encodeURIComponent('/checkout')}`)
@@ -155,11 +172,12 @@ export default function CheckoutPage() {
     )
   }
 
-  const actionText = !table.storeOpen ? '已打烊' : !loggedIn ? '登录后确认' : insufficient ? '刷新余额' : '确认并支付'
+  const actionText = tableInvalid ? '桌码已失效' : !table.storeOpen ? '已打烊' : !loggedIn ? '登录后确认' : insufficient ? '刷新余额' : '确认并支付'
   return (
     <div className="screen has-bar">
       <AppBar title="确认订单" fallback={returnToMenu} />
       <div className="body-pad">
+        {tableSyncFailed && <div className="notice" role="status">{tableInvalid ? '桌码已失效，请重新扫描桌上的二维码；已选菜品仍保留。' : '营业信息暂未更新，正在自动重试…'}</div>}
         <Card className="table-card">
           <div>
             <div className="label">用餐桌号</div>
@@ -236,7 +254,7 @@ export default function CheckoutPage() {
           <span className="label">应付</span>
           <span className="value"><Price value={yuan(total)} /></span>
         </div>
-        <PillButton loading={submitting || (insufficient && balanceLoading)} loadingLabel={submitting ? '正在提交…' : '刷新中…'} disabled={!table.storeOpen} onClick={insufficient && loggedIn ? refreshBalance : submit}>{actionText}</PillButton>
+        <PillButton loading={submitting || (insufficient && balanceLoading)} loadingLabel={submitting ? '正在提交…' : '刷新中…'} disabled={!table.storeOpen || tableInvalid} onClick={insufficient && loggedIn ? refreshBalance : submit}>{actionText}</PillButton>
       </BottomBar>
     </div>
   )

@@ -1,11 +1,11 @@
 import { request } from '../utils/request'
 import type { DashboardToday, ReportSummary } from './types'
 
-export const fetchDashboard = () => request<DashboardToday>({ url: '/api/v1/m/dashboard/today' })
+export const fetchDashboard = (opts?: { silent?: boolean }) => request<DashboardToday>({ url: '/api/v1/m/dashboard/today', ...opts })
 
 /** 区间统计：from / to 为 yyyy-MM-dd，最多 92 天 */
-export const fetchReportSummary = (from: string, to: string) =>
-  request<ReportSummary>({ url: '/api/v1/m/reports/summary', params: { from, to } })
+export const fetchReportSummary = (from: string, to: string, opts?: { silent?: boolean }) =>
+  request<ReportSummary>({ url: '/api/v1/m/reports/summary', params: { from, to }, ...opts })
 
 
 /** 导出 CSV：以 Blob 下载（需要携带 token，不能用 <a href> 直接下） */

@@ -13,8 +13,8 @@ export interface OrderListParams {
   pageSize: number
 }
 
-export const listOrders = (params: OrderListParams) =>
-  request<PageResult<OrderSummary>>({ url: '/api/v1/m/orders', params })
+export const listOrders = (params: OrderListParams, options?: { silent?: boolean }) =>
+  request<PageResult<OrderSummary>>({ url: '/api/v1/m/orders', params, ...options })
 
 /** 同意顾客的取消申请：订单取消并全额退回余额 */
 export const approveCancelRequest = (orderNo: string) =>
@@ -29,7 +29,8 @@ export const kitchenQueue = () => request<OrderSummary[]>({ url: '/api/v1/m/orde
 export const newOrderCount = (since: string | null) =>
   request<NewOrderCount>({ url: '/api/v1/m/orders/new-count', params: since ? { since } : undefined, silent: true })
 
-export const getOrder = (orderNo: string) => request<OrderDetail>({ url: `/api/v1/m/orders/${orderNo}` })
+export const getOrder = (orderNo: string, options?: { silent?: boolean }) =>
+  request<OrderDetail>({ url: `/api/v1/m/orders/${orderNo}`, ...options })
 
 export const acceptOrder = (orderNo: string) =>
   request<OrderDetail>({ url: `/api/v1/m/orders/${orderNo}/accept`, method: 'POST' })

@@ -1,7 +1,7 @@
 import { request } from '../utils/request'
 import type { Category, DishDetail, DishItem, DishSaveRequest, PageResult, OrderingMenu } from './types'
 
-export const listCategories = () => request<Category[]>({ url: '/api/v1/m/categories' })
+export const listCategories = (opts?: { silent?: boolean }) => request<Category[]>({ url: '/api/v1/m/categories', silent: opts?.silent })
 
 export const createCategory = (name: string) =>
   request<Category>({ url: '/api/v1/m/categories', method: 'POST', data: { name } })
@@ -15,8 +15,8 @@ export const deleteCategory = (id: number) =>
 export const sortCategories = (ids: number[]) =>
   request<void>({ url: '/api/v1/m/categories/sort', method: 'PUT', data: { ids } })
 
-export const listDishes = (params: { categoryId?: number; keyword?: string; page: number; pageSize: number }) =>
-  request<PageResult<DishItem>>({ url: '/api/v1/m/dishes', params })
+export const listDishes = (params: { categoryId?: number; keyword?: string; page: number; pageSize: number }, opts?: { silent?: boolean }) =>
+  request<PageResult<DishItem>>({ url: '/api/v1/m/dishes', params, silent: opts?.silent })
 
 export const getDish = (id: number) => request<DishDetail>({ url: `/api/v1/m/dishes/${id}` })
 
@@ -38,4 +38,4 @@ export const setDishStock = (id: number, stockQuantity: number | null) =>
   request<void>({ url: `/api/v1/m/dishes/${id}/stock`, method: 'PUT', data: { stockQuantity } })
 
 /** 点单菜单（分类 + 菜品 + 规格 + 加料 + 售罄 / 剩余），前厅代客下单用 */
-export const getOrderingMenu = () => request<OrderingMenu>({ url: '/api/v1/m/menu' })
+export const getOrderingMenu = (opts?: { silent?: boolean }) => request<OrderingMenu>({ url: '/api/v1/m/menu', silent: opts?.silent })

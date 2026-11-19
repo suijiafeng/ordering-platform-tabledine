@@ -8,6 +8,10 @@ import type { DashboardToday, StoreDetail } from '../../api/types'
 import { fenToYuan } from '../../utils/money'
 import { useIsOwner } from '../../utils/auth'
 import { usePollStore } from '../../hooks/useOrderPoll'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import { ignoreShownError } from '../../utils/errors'
+import SyncStatus from '../../components/SyncStatus'
 
 /** 工作台：今日概览 + 待处理提醒 + 门店信息 */
 export default function DashboardPage() {
@@ -19,29 +23,40 @@ export default function DashboardPage() {
   const counts = usePollStore((s) => s.counts)
 
   const [statsError, setStatsError] = useState(false)
+  const [storeError, setStoreError] = useState(false)
+  const beginLoad = useLatestRequest()
 
-  const load = useCallback(() => {
-    fetchStore().then(setStore).catch(() => setStore(null))
-    // 营收数据仅店主可见（店员只看待接单 / 制作中，来自全局轮询）
-    if (!isOwner) return
-    fetchDashboard()
-      .then((s) => {
-        setStats(s)
-        setStatsError(false)
-      })
-      .catch(() => setStatsError(true))  // 保留上次数据；首次失败时显示重试，不要一直骨架屏
-  }, [isOwner])
+  const load = useCallback(async (quiet = false) => {
+    const isLatest = beginLoad()
+    // 分别保留成功的门店信息与营收，单个接口失败不清掉另一块已显示的数据。
+    const [storeResult, statsResult] = await Promise.allSettled([
+      fetchStore({ silent: quiet }),
+      isOwner ? fetchDashboard({ silent: quiet }) : Promise.resolve(null),
+    ])
+    if (!isLatest()) return
+    if (storeResult.status === 'fulfilled') {
+      setStore(storeResult.value)
+      setStoreError(false)
+    } else {
+      setStoreError(true)
+      ignoreShownError(storeResult.reason)
+    }
+    // 营收数据仅店主可见（店员只看待接单 / 制作中，来自全局轮询）。
+    if (statsResult.status === 'fulfilled') {
+      if (statsResult.value) setStats(statsResult.value)
+      setStatsError(false)
+    } else {
+      setStatsError(true)
+      ignoreShownError(statsResult.reason)
+    }
+  }, [isOwner, beginLoad])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
-  // 轮询计数变化时刷新概览（新订单 / 退款）
-  useEffect(() => {
-    if (counts && isOwner) {
-      fetchDashboard().then(setStats).catch(() => {})
-    }
-  }, [counts?.pendingAcceptCount, counts?.applyingRefundCount]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 收款、退款金额与营业状态可能变化而待处理计数不变，直接同步当前数据。
+  useVisiblePolling(() => load(true))
 
   const pendingAccept = counts?.pendingAcceptCount ?? stats?.pendingAcceptCount ?? 0
   const making = counts?.makingCount ?? stats?.makingCount ?? 0
@@ -53,6 +68,9 @@ export default function DashboardPage() {
 
   return (
     <Row gutter={[16, 16]}>
+      {((storeError && store) || (statsError && stats)) && (
+        <Col span={24}><SyncStatus failed /></Col>
+      )}
       {(pendingAccept > 0 || cancelRequests > 0 || unsettled > 0 || applying > 0 || failed > 0) && (
         <Col span={24}>
           <Alert
@@ -77,18 +95,18 @@ export default function DashboardPage() {
       )}
       {statsError && !stats && (
         <Col span={24}>
-          <Alert type="error" showIcon message="今日概览加载失败" action={<Button size="small" onClick={load}>重试</Button>} />
+          <Alert type="error" showIcon message="今日概览加载失败" action={<Button size="small" onClick={() => void load()}>重试</Button>} />
         </Col>
       )}
-      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" /></Card></Col>}
-      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>}
+      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError} style={{ height: '100%' }}><Statistic title="今日实收" value={fenToYuan(stats?.netIncome)} precision={2} prefix="¥" /></Card></Col>}
+      {isOwner && <Col xs={12} lg={6}><Card loading={!stats && !statsError} style={{ height: '100%' }}><Statistic title="今日订单" value={stats?.orderCount ?? 0} suffix="单" /></Card></Col>}
       <Col xs={12} lg={6}>
-        <Card hoverable onClick={() => navigate('/orders?status=PAID')}>
+        <Card hoverable style={{ height: '100%' }} onClick={() => navigate('/orders?status=PAID')}>
           <Statistic title="待接单" value={pendingAccept} valueStyle={{ color: pendingAccept > 0 ? token.colorWarning : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 待制作·制作中 {making}</Typography.Text>} />
         </Card>
       </Col>
       {isOwner && <Col xs={12} lg={6}>
-        <Card hoverable onClick={() => navigate('/refunds?status=APPLYING')}>
+        <Card hoverable style={{ height: '100%' }} onClick={() => navigate('/refunds?status=APPLYING')}>
           <Statistic title="待处理退款" value={applying + failed} valueStyle={{ color: applying + failed > 0 ? token.colorError : undefined }} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ 今日退款 ¥{fenToYuan(stats?.refundedAmount).toFixed(2)}</Typography.Text>} />
         </Card>
       </Col>}
@@ -105,6 +123,8 @@ export default function DashboardPage() {
               <Descriptions.Item label="未支付关单">{store.payTimeoutMin} 分钟</Descriptions.Item>
               <Descriptions.Item label="未接单自动退款">{store.acceptTimeoutMin} 分钟</Descriptions.Item>
             </Descriptions>
+          ) : storeError ? (
+            <Alert type="error" showIcon message="门店信息加载失败" action={<Button size="small" onClick={() => void load()}>重试</Button>} />
           ) : (
             <Skeleton active paragraph={{ rows: 2 }} />
           )}

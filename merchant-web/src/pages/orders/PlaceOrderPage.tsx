@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   App, Button, Card, Checkbox, Col, Divider, Empty, Input, InputNumber, Modal, Radio, Row, Segmented, Select, Space, Spin, Tag, Typography,
@@ -13,6 +13,9 @@ import { formatYuan } from '../../utils/money'
 import { PAY_METHOD } from '../../utils/orderStatus'
 import { ignoreShownError } from '../../utils/errors'
 import Panel from '../../components/Panel'
+import SyncStatus from '../../components/SyncStatus'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 
 /** 购物车一行：同一道菜不同规格 / 加料是不同的行 */
 interface CartLine {
@@ -51,6 +54,17 @@ function optionText(dish: MenuDish, specIds: number[], addonIds: number[]): stri
   return names.join(' · ')
 }
 
+function optionsAvailable(dish: MenuDish, specIds: number[], addonIds: number[]): boolean {
+  const specs = new Set(dish.specGroups.flatMap((g) => g.items.map((i) => i.id)))
+  const addons = new Set(dish.addonGroups.flatMap((g) => g.items.map((i) => i.id)))
+  return specIds.every((id) => specs.has(id)) && addonIds.every((id) => addons.has(id))
+    && dish.specGroups.every((g) => {
+      const count = g.items.filter((i) => specIds.includes(i.id)).length
+      return count <= 1 && (!g.required || count === 1)
+    })
+    && dish.addonGroups.every((g) => g.items.filter((i) => addonIds.includes(i.id)).length <= g.maxCount)
+}
+
 /**
  * 前厅代客下单：顾客不扫码（老人、没带手机、电话点单），前厅选桌、选菜、当面收款并登记收款方式。
  * 前厅下的单视为已确认，直接进入后厨「待制作」；钱是线下收的，退款同样线下退还。
@@ -62,6 +76,8 @@ export default function PlaceOrderPage() {
   const [menu, setMenu] = useState<OrderingMenu | null>(null)
   const [tables, setTables] = useState<TableItem[]>([])
   const [loadError, setLoadError] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
+  const beginLoad = useLatestRequest()
   const [categoryId, setCategoryId] = useState<number | 'ALL'>('ALL')
   const [keyword, setKeyword] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
@@ -78,19 +94,48 @@ export default function PlaceOrderPage() {
   // 同一份购物车重复提交（网络重试、连点）沿用同一个请求号，服务端只建一笔；购物车变了就换新号
   const requestId = useRef<{ cartKey: string; id: string } | null>(null)
 
-  const load = () => {
-    setLoadError(false)
-    Promise.all([getOrderingMenu(), listTables()])
-      .then(([m, t]) => {
+  const load = useCallback(async (silent = false) => {
+    const isLatest = beginLoad()
+    if (!silent) setLoadError(false)
+    try {
+        const [m, t] = await Promise.all([getOrderingMenu({ silent }), listTables({ silent })])
+        if (!isLatest()) return
         setMenu(m)
-        setTables(t.filter((x) => x.status === 1))
-      })
-      .catch((e) => {
-        ignoreShownError(e)
-        setLoadError(true)
-      })
-  }
-  useEffect(load, [])
+        const availableTables = t.filter((x) => x.status === 1)
+        setTables(availableTables)
+        // 有结果待确认的下单意图时，桌号/购物车属于原请求；不能因同步售罄而自动变成另一笔。
+        if (!requestId.current) setTableId((current) => availableTables.some((x) => x.id === current) ? current : undefined)
+        const latest = new Map(m.categories.flatMap((c) => c.dishes).map((d) => [d.id, d]))
+        setCart((current) => {
+          if (requestId.current) return current
+          const remaining = new Map<number, number>()
+          return current.flatMap((line) => {
+            const dish = latest.get(line.dish.id)
+            if (!dish || dish.soldOut || !optionsAvailable(dish, line.specItemIds, line.addonItemIds)) return []
+            const available = remaining.get(dish.id) ?? dish.remainingStock ?? Infinity
+            const quantity = Math.min(line.quantity, available)
+            if (quantity <= 0) return []
+            remaining.set(dish.id, available - quantity)
+            return [{ ...line, dish, unitPrice: priceOf(dish, line.specItemIds, line.addonItemIds), options: optionText(dish, line.specItemIds, line.addonItemIds), quantity }]
+          })
+        })
+        setPicking((current) => {
+          if (!current) return null
+          const dish = latest.get(current.dish.id)
+          return dish && !dish.soldOut && dish.remainingStock !== 0 && optionsAvailable(dish, current.specIds, current.addonIds) ? { ...current, dish, quantity: Math.min(current.quantity, dish.remainingStock ?? current.quantity) } : null
+        })
+        setCategoryId((current) => current === 'ALL' || m.categories.some((c) => c.id === current) ? current : 'ALL')
+        setLoadError(false)
+        setSyncFailed(false)
+    } catch (e) {
+      if (!isLatest()) return
+      ignoreShownError(e)
+      setSyncFailed(true)
+      if (!silent) setLoadError(true)
+    }
+  }, [beginLoad])
+  useEffect(() => { void load() }, [load])
+  useVisiblePolling(() => load(true), { enabled: !submitting })
 
   const dishes = useMemo(() => {
     if (!menu) return []
@@ -198,14 +243,14 @@ export default function PlaceOrderPage() {
       navigate(`/orders?status=MAKING&orderNo=${order.orderNo}`)
     } catch (e) {
       ignoreShownError(e)  // 请求层已提示（售罄、打烊、库存不足等）；购物车保留，改完可直接重试
-      getOrderingMenu().then(setMenu).catch(() => {})
+      void load(true)
     } finally {
       setSubmitting(false)
     }
   }
 
   if (loadError) {
-    return <Panel padding="48px 0"><Empty description="菜单加载失败"><Button type="primary" onClick={load}>重试</Button></Empty></Panel>
+    return <Panel padding="48px 0"><Empty description="菜单加载失败"><Button type="primary" onClick={() => void load()}>重试</Button></Empty></Panel>
   }
   if (!menu) {
     return <div style={{ textAlign: 'center', padding: 64 }}><Spin /></div>
@@ -213,16 +258,19 @@ export default function PlaceOrderPage() {
 
   return (
     <Row gutter={[16, 16]} align="top">
-      <Col xs={24} xl={15}>
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Space wrap>
-            <Segmented<number | 'ALL'>
+      {syncFailed && <Col span={24}><SyncStatus failed /></Col>}
+      <Col xs={24} xl={15} style={{ minWidth: 0 }}>
+        <Space direction="vertical" size={12} style={{ width: '100%', minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, width: '100%' }}>
+            <div style={{ maxWidth: '100%', minWidth: 0, overflowX: 'auto', paddingBottom: 4 }}>
+              <Segmented<number | 'ALL'>
               value={categoryId}
               onChange={(v) => setCategoryId(v as number | 'ALL')}
               options={[{ label: '全部', value: 'ALL' }, ...menu.categories.map((c) => ({ label: c.name, value: c.id }))]}
-            />
-            <Input.Search allowClear placeholder="搜索菜品" style={{ width: 200 }} onChange={(e) => setKeyword(e.target.value)} />
-          </Space>
+              />
+            </div>
+            <Input.Search allowClear placeholder="搜索菜品" style={{ width: '100%', maxWidth: 360 }} onChange={(e) => setKeyword(e.target.value)} />
+          </div>
           {dishes.length === 0 ? (
             <Panel padding="48px 0"><Empty description="没有可点的菜品" /></Panel>
           ) : (

@@ -9,6 +9,7 @@ import { formatYuan } from '../../utils/money'
 import DailyBarChart from '../../components/DailyBarChart'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import { ignoreShownError } from '../../utils/errors'
 
 /** 区间统计与导出共用的最大天数（与后端一致） */
@@ -55,13 +56,15 @@ export default function ReportsPage() {
   // 快速切换区间时只采纳最后一次请求的结果
   const beginLoad = useLatestRequest()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
     const isLatest = beginLoad()
-    setLoading(true)
-    setError(false)
+    if (!quiet) setLoading(true)
     try {
-      const s = await fetchReportSummary(range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'))
-      if (isLatest()) setSummary(s)
+      const s = await fetchReportSummary(range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'), { silent: quiet })
+      if (isLatest()) {
+        setSummary(s)
+        setError(false)
+      }
     } catch (e) {
       if (isLatest()) setError(true)
       ignoreShownError(e)  // 请求层已提示；页面提供重试
@@ -73,6 +76,9 @@ export default function ReportsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // 区间查询会记录审计，保持所选区间每 15 秒同步，避免频繁产生查看记录。
+  useVisiblePolling(() => load(true), { intervalMs: 15_000 })
 
   const doExport = async () => {
     setExporting(true)

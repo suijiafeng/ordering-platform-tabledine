@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { App, Button, Card, Checkbox, Col, Drawer, Form, Input, InputNumber, Row, Select, Space, Spin, Switch, Typography } from 'antd'
+import { App, Button, Card, Checkbox, Col, Drawer, Form, Grid, Input, InputNumber, Row, Select, Space, Spin, Switch, Typography } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { createDish, getDish, updateDish } from '../../api/menu'
 import type { Category, DishSaveRequest } from '../../api/types'
@@ -43,6 +43,10 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
   const [form] = Form.useForm<FormValues>()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const compact = !Grid.useBreakpoint().sm
+  // 分类可在后台同步；表单只在打开 / 切换菜品时初始化，不能因为选项数组更新清掉草稿。
+  const openingDefaults = useRef({ categories, defaultCategoryId })
+  openingDefaults.current = { categories, defaultCategoryId }
 
   // onClose 由父组件内联传入，放进下方 effect 的依赖会让表单在父组件每次重渲染时被重置；用 ref 持有最新回调
   const onCloseRef = useRef(onClose)
@@ -62,7 +66,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
     form.resetFields()
     if (!dishId) {
       form.setFieldsValue({
-        categoryId: defaultCategoryId ?? categories[0]?.id,
+        categoryId: openingDefaults.current.defaultCategoryId ?? openingDefaults.current.categories[0]?.id,
         onShelf: true,
         specGroups: [],
         addonGroups: [],
@@ -98,7 +102,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       .catch(() => { if (isLatest()) onCloseRef.current() })
       .finally(() => { if (isLatest()) setLoading(false) })
     return invalidate
-  }, [open, dishId, defaultCategoryId, categories, form, beginLoad])
+  }, [open, dishId, form, beginLoad])
 
   const submit = async () => {
     // 校验不通过时 antd 会 reject 一个字段错误对象，不是异常，直接返回即可
@@ -165,17 +169,17 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       <Spin spinning={loading}>
         <Form<FormValues> form={form} layout="vertical" requiredMark="optional">
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="name" label="菜品名称" rules={[{ required: true, whitespace: true, message: '请输入菜品名称' }]}>
                 <Input maxLength={64} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="categoryId" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
                 <Select options={categories.map((c) => ({ value: c.id, label: c.name }))} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="priceYuan"
                 label="基础价（元）"
@@ -202,12 +206,12 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
                 <InputNumber min={0} max={100000} precision={2} style={{ width: '100%' }} prefix="¥" />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="onShelf" label="上架" valuePropName="checked">
                 <Switch />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="sort" label="排序" tooltip="同一分类内数字越小越靠前；留空为默认">
                 <InputNumber min={0} max={9999} precision={0} style={{ width: '100%' }} placeholder="默认" />
               </Form.Item>
@@ -235,14 +239,14 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
                     variant="outlined"
                     style={{ marginBottom: 12 }}
                     title={
-                      <Space>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }}>
                         <Form.Item name={[g.name, 'name']} noStyle rules={[{ required: true, whitespace: true, message: '请输入规格组名称' }]}>
-                          <Input placeholder="规格组名称，如：杯型" maxLength={32} style={{ width: 200 }} />
+                          <Input placeholder="规格组名称，如：杯型" maxLength={32} style={{ width: compact ? '100%' : 200 }} />
                         </Form.Item>
                         <Form.Item name={[g.name, 'required']} noStyle valuePropName="checked" initialValue={true}>
                           <Checkbox>必选</Checkbox>
                         </Form.Item>
-                      </Space>
+                      </div>
                     }
                     extra={<Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(g.name)} />}
                   >
@@ -259,18 +263,18 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
                       {(items, itemOps, { errors }) => (
                         <>
                           {items.map((it) => (
-                            <Space key={it.key} align="baseline" style={{ display: 'flex' }}>
-                              <Form.Item name={[it.name, 'name']} rules={[{ required: true, whitespace: true, message: '请输入名称' }]}>
+                            <div key={it.key} style={{ display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr) auto 32px' : 'minmax(120px, 1fr) 180px 72px 32px', gap: 8, alignItems: 'start' }}>
+                              <Form.Item name={[it.name, 'name']} style={{ minWidth: 0, gridColumn: compact ? '1 / -1' : undefined, marginBottom: compact ? 0 : 24 }} rules={[{ required: true, whitespace: true, message: '请输入名称' }]}>
                                 <Input placeholder="如：大杯" maxLength={32} />
                               </Form.Item>
-                              <Form.Item name={[it.name, 'priceDeltaYuan']} initialValue={0}>
-                                <InputNumber precision={2} min={-100000} max={100000} prefix="加价" style={{ width: 180 }} />
+                              <Form.Item name={[it.name, 'priceDeltaYuan']} initialValue={0} style={{ minWidth: 0 }}>
+                                <InputNumber precision={2} min={-100000} max={100000} prefix="加价" style={{ width: '100%' }} />
                               </Form.Item>
                               <Form.Item name={[it.name, 'isDefault']} valuePropName="checked">
-                                <Checkbox>默认</Checkbox>
+                                <Checkbox style={{ whiteSpace: 'nowrap' }}>默认</Checkbox>
                               </Form.Item>
                               <Button type="text" icon={<DeleteOutlined />} onClick={() => itemOps.remove(it.name)} />
-                            </Space>
+                            </div>
                           ))}
                           <Form.ErrorList errors={errors} />
                           <Button type="dashed" icon={<PlusOutlined />} onClick={() => itemOps.add({ name: '', priceDeltaYuan: 0, isDefault: false })}>
@@ -299,14 +303,14 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
                     variant="outlined"
                     style={{ marginBottom: 12 }}
                     title={
-                      <Space>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }}>
                         <Form.Item name={[g.name, 'name']} noStyle rules={[{ required: true, whitespace: true, message: '请输入加料组名称' }]}>
-                          <Input placeholder="加料组名称，如：小料" maxLength={32} style={{ width: 200 }} />
+                          <Input placeholder="加料组名称，如：小料" maxLength={32} style={{ width: compact ? '100%' : 200 }} />
                         </Form.Item>
                         <Form.Item name={[g.name, 'maxCount']} noStyle initialValue={1}>
-                          <InputNumber min={1} max={30} prefix="最多选" style={{ width: 150 }} />
+                          <InputNumber min={1} max={30} prefix="最多选" style={{ width: compact ? '100%' : 150 }} />
                         </Form.Item>
-                      </Space>
+                      </div>
                     }
                     extra={<Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(g.name)} />}
                   >
@@ -324,15 +328,15 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
                       {(items, itemOps, { errors }) => (
                         <>
                           {items.map((it) => (
-                            <Space key={it.key} align="baseline" style={{ display: 'flex' }}>
-                              <Form.Item name={[it.name, 'name']} rules={[{ required: true, whitespace: true, message: '请输入名称' }]}>
+                            <div key={it.key} style={{ display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr) 32px' : 'minmax(120px, 1fr) 180px 32px', gap: 8, alignItems: 'start' }}>
+                              <Form.Item name={[it.name, 'name']} style={{ minWidth: 0, gridColumn: compact ? '1 / -1' : undefined, marginBottom: compact ? 0 : 24 }} rules={[{ required: true, whitespace: true, message: '请输入名称' }]}>
                                 <Input placeholder="如：珍珠" maxLength={32} />
                               </Form.Item>
-                              <Form.Item name={[it.name, 'priceDeltaYuan']} initialValue={0}>
-                                <InputNumber precision={2} min={0} max={100000} prefix="加价" style={{ width: 180 }} />
+                              <Form.Item name={[it.name, 'priceDeltaYuan']} initialValue={0} style={{ minWidth: 0 }}>
+                                <InputNumber precision={2} min={0} max={100000} prefix="加价" style={{ width: '100%' }} />
                               </Form.Item>
                               <Button type="text" icon={<DeleteOutlined />} onClick={() => itemOps.remove(it.name)} />
-                            </Space>
+                            </div>
                           ))}
                           <Form.ErrorList errors={errors} />
                           <Button type="dashed" icon={<PlusOutlined />} onClick={() => itemOps.add({ name: '', priceDeltaYuan: 0 })}>

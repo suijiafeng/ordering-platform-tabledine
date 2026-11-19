@@ -4,6 +4,63 @@ body {
   margin: 0;
 }
 
+/* 消息内容和弹层均受可见视口约束，长标题、时间和未读标记可分行。 */
+.notification-center {
+  width: 340px;
+  max-width: calc(100vw - 48px);
+}
+
+.notification-center-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.notification-center-list {
+  max-height: min(420px, calc(100vh - 148px));
+  max-height: min(420px, calc(100dvh - 148px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.notification-center-item {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.notification-center-item-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 8px;
+}
+
+.notification-center-item-title {
+  display: flex;
+  flex: 1 1 160px;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.notification-center-item-title > .ant-typography {
+  min-width: 0;
+}
+
+.notification-center-item-title > .ant-badge {
+  flex: none;
+  white-space: nowrap;
+}
+
+.notification-center-item-time {
+  flex: none;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
 /* 主题切换瞬间：关闭过渡，所有元素同一帧换色（见 store/theme.ts） */
 .theme-switching *,
 .theme-switching *::before,

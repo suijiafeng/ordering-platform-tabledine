@@ -96,23 +96,23 @@ export async function passwordLogin(phone: string, password: string) {
 
 /** 扫码解析桌台；silent：首屏由调用方展示错误 */
 export async function resolveTable(qrToken: string): Promise<TableInfo> {
-  const table = await request<Omit<TableInfo, 'qrToken'>>(`/api/v1/c/qr/${encodeURIComponent(qrToken)}`, { auth: false, silent: true })
+  const table = await request<Omit<TableInfo, 'qrToken'>>(`/api/v1/c/qr/${encodeURIComponent(qrToken)}`, { auth: false, silent: true, cache: 'no-store' })
   return { ...table, qrToken }
 }
 
 export const fetchMenu = (storeId: number) =>
-  request<MenuView>(`/api/v1/c/stores/${storeId}/menu`, { auth: false, silent: true })
+  request<MenuView>(`/api/v1/c/stores/${storeId}/menu`, { auth: false, silent: true, cache: 'no-store' })
 
-export const fetchMe = () => request<CustomerProfile>('/api/v1/c/me', { silent: true })
+export const fetchMe = () => request<CustomerProfile>('/api/v1/c/me', { silent: true, cache: 'no-store' })
 
-export const fetchWallet = (page: number, pageSize = 20) =>
-  request<PageResult<WalletTransaction>>(`/api/v1/c/wallet/transactions?page=${page}&pageSize=${pageSize}`)
+export const fetchWallet = (page: number, pageSize = 20, silent = false) =>
+  request<PageResult<WalletTransaction>>(`/api/v1/c/wallet/transactions?page=${page}&pageSize=${pageSize}`, { silent, cache: 'no-store' })
 
-export const fetchOrders = (page: number, pageSize = 20) =>
-  request<PageResult<OrderSummary>>(`/api/v1/c/orders?page=${page}&pageSize=${pageSize}`)
+export const fetchOrders = (page: number, pageSize = 20, silent = false) =>
+  request<PageResult<OrderSummary>>(`/api/v1/c/orders?page=${page}&pageSize=${pageSize}`, { silent, cache: 'no-store' })
 
 /** silent：轮询时失败不打扰，由页面显示「加载失败」 */
-export const fetchOrder = (orderNo: string) => request<OrderDetail>(orderPath(orderNo), { silent: true })
+export const fetchOrder = (orderNo: string) => request<OrderDetail>(orderPath(orderNo), { silent: true, cache: 'no-store' })
 
 /** 仅查询当前会员的原请求；null 不代表原请求已失败，可能还在服务端处理中。 */
 export const fetchOrderByRequest = (clientRequestId: string) =>

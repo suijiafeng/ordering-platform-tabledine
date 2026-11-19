@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { App, Badge, Button, Card, Col, Form, Input, InputNumber, Result, Row, Select, Space, Spin, Switch, Tag, Typography, Grid, theme as antdTheme } from 'antd'
 import { SoundOutlined } from '@ant-design/icons'
 import { fetchStore, setBusinessStatus, updateStore } from '../../api/store'
@@ -7,6 +7,9 @@ import ImageUpload from '../../components/ImageUpload'
 import { ignoreShownError } from '../../utils/errors'
 import { usePollStore } from '../../hooks/useOrderPoll'
 import { playSound, SOUND_META, useSoundStore, type SoundKind } from '../../utils/sound'
+import { useLatestRequest } from '../../hooks/useLatestRequest'
+import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import SyncStatus from '../../components/SyncStatus'
 
 /** 店铺设置（店主）：顶部为即时生效的营业状态 + 新订单提醒（本机）；下方店铺信息、业务参数需点保存 */
 export default function SettingsPage() {
@@ -15,33 +18,60 @@ export default function SettingsPage() {
   const [store, setStore] = useState<StoreDetail | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
+  const dirtyFields = useRef(new Set<string>())
+  const mutating = useRef(false)
+  const beginLoad = useLatestRequest()
   const { counts, remindIntervalMs, setRemindInterval } = usePollStore()
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } = useSoundStore()
   const [previewKind, setPreviewKind] = useState<SoundKind>('newOrder')
   const { token } = antdTheme.useToken()
   const isNarrow = !Grid.useBreakpoint().lg
 
-  const load = useCallback(async () => {
-    setLoadError(false)
+  const load = useCallback(async (silent = false) => {
+    if (mutating.current) return
+    const isLatest = beginLoad()
+    if (!silent) setLoadError(false)
     try {
-      const s = await fetchStore()
+      const s = await fetchStore({ silent })
+      if (!isLatest()) return
       setStore(s)
-      form.setFieldsValue(s)
+      // 其他终端的设置立即显示，但不能覆盖当前用户尚未保存的字段。
+      form.setFieldsValue(Object.fromEntries(Object.entries(s).filter(([key]) => !dirtyFields.current.has(key))))
+      setLoadError(false)
+      setSyncFailed(false)
     } catch (e) {
+      if (!isLatest()) return
       ignoreShownError(e)  // 请求层已提示，这里只切换到可重试的错误态，避免永久转圈
-      setLoadError(true)
+      if (!silent) setLoadError(true)
+      setSyncFailed(true)
     }
-  }, [form])
+  }, [form, beginLoad])
 
   useEffect(() => {
     void load()
   }, [load])
 
+  useVisiblePolling(() => load(true), { enabled: !saving })
+
   const toggleOpen = (open: boolean) => {
     modal.confirm({
       title: open ? '开始营业？' : '暂停营业？',
       content: open ? '顾客可以扫码下单。' : '顾客将无法下单，已支付的订单继续履约。',
-      onOk: async () => setStore(await setBusinessStatus(open)),
+      onOk: async () => {
+        mutating.current = true
+        beginLoad()
+        setSaving(true)
+        try {
+          setStore(await setBusinessStatus(open))
+        } catch (e) {
+          ignoreShownError(e)
+        } finally {
+          mutating.current = false
+          setSaving(false)
+          void load(true)
+        }
+      },
     })
   }
 
@@ -70,21 +100,27 @@ export default function SettingsPage() {
       okText: '确认保存',
     })
     if (!ok) return
+    mutating.current = true
+    beginLoad()
     setSaving(true)
     try {
-      const s = await updateStore(v)
+      const s = await updateStore(form.getFieldsValue())
       setStore(s)
+      dirtyFields.current.clear()
       form.setFieldsValue(s)
+      setSyncFailed(false)
       message.success('已保存')
     } catch (e) {
       ignoreShownError(e)  // 请求层已提示；表单保留用户的修改
     } finally {
+      mutating.current = false
       setSaving(false)
+      void load(true)
     }
   }
 
   if (loadError) {
-    return <Result status="error" title="店铺信息加载失败" extra={<Button type="primary" onClick={load}>重试</Button>} />
+    return <Result status="error" title="店铺信息加载失败" extra={<Button type="primary" onClick={() => void load()}>重试</Button>} />
   }
   if (!store) {
     return <Spin />
@@ -94,6 +130,7 @@ export default function SettingsPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <SyncStatus failed={syncFailed} />
       {/* 即时生效的开关集中在顶部：营业状态（全店）+ 新订单提醒（本机）；下方表单需要点「保存设置」 */}
       <Card styles={{ body: { padding: 0 } }}>
         <Row>
@@ -162,7 +199,7 @@ export default function SettingsPage() {
         </Row>
       </Card>
 
-      <Form form={form} layout="vertical" requiredMark={false}>
+      <Form form={form} layout="vertical" requiredMark={false} onValuesChange={(changed) => Object.keys(changed).forEach((key) => dirtyFields.current.add(key))}>
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={12}>
             <Card title="店铺信息" style={{ height: '100%' }}>
