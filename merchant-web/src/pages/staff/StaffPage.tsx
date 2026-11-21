@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Popconfirm, Radio, Space, Switch, Table, Tag, Typography, theme as antdTheme } from 'antd'
+import { App, Button, Form, Input, Modal, Popconfirm, Radio, Space, Switch, Tag, Typography, theme as antdTheme } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -9,6 +9,7 @@ import { ROLE_META } from '../../utils/auth'
 import { useAuthStore } from '../../store/auth'
 import { ignoreShownError } from '../../utils/errors'
 import Panel, { PageToolbar } from '../../components/Panel'
+import ResponsiveTable from '../../components/ResponsiveTable'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import SyncStatus from '../../components/SyncStatus'
@@ -135,6 +136,7 @@ export default function StaffPage() {
     {
       title: '操作',
       width: 120,
+      fixed: 'right',
       render: (_, r) =>
         r.role === 'OWNER' && r.id !== me?.id ? null : (
           <Button type="link" size="small" onClick={() => openEdit(r)}>编辑</Button>
@@ -160,7 +162,7 @@ export default function StaffPage() {
         </div>
       </div>
       <Panel>
-        <Table rowKey="id" columns={columns} dataSource={list} loading={loading} pagination={false} scroll={{ x: 'max-content' }} />
+        <ResponsiveTable rowKey="id" columns={columns} dataSource={list} loading={loading} pagination={false} scrollX={900} />
       </Panel>
 
       <Modal

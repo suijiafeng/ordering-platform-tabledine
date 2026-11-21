@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Col, Image, Input, InputNumber, Popconfirm, Row, Space, Switch, Table, Tag, Typography } from 'antd'
+import { App, Button, Col, Image, Input, InputNumber, Popconfirm, Row, Space, Switch, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined } from '@ant-design/icons'
 import { deleteDish, listCategories, listDishes, setDishSoldOut, setDishStatus, setDishStock } from '../../api/menu'
@@ -11,6 +11,7 @@ import CategoryPanel from './CategoryPanel'
 import DishFormDrawer from './DishFormDrawer'
 import { ignoreShownError } from '../../utils/errors'
 import Panel, { PageToolbar } from '../../components/Panel'
+import ResponsiveTable from '../../components/ResponsiveTable'
 import SyncStatus from '../../components/SyncStatus'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 
@@ -233,6 +234,7 @@ export default function DishesPage() {
       ? [{
           title: '操作',
           width: 120,
+          fixed: 'right' as const,
           render: (_: unknown, r: DishItem) => (
             <Space>
               <Button type="link" size="small" onClick={() => setDrawer({ open: true, dishId: r.id })}>编辑</Button>
@@ -284,8 +286,8 @@ export default function DishesPage() {
           </Typography.Text>
         </PageToolbar>
         <Panel>
-          <Table<DishItem>
-            scroll={{ x: 'max-content' }}
+          <ResponsiveTable<DishItem>
+            scrollX={980}
             rowKey="id"
             size="middle"
             loading={loading}
