@@ -320,7 +320,10 @@ export default function PlaceOrderPage() {
                 optionFilterProp="label"
                 options={tables.map((t) => ({ value: t.id, label: t.code }))}
               />
-              <InputNumber min={1} max={99} precision={0} value={peopleCount} onChange={(v) => setPeopleCount(v ?? 1)} addonAfter="人" style={{ width: 120 }} />
+              <Space.Compact>
+                <InputNumber min={1} max={99} precision={0} value={peopleCount} onChange={(v) => setPeopleCount(v ?? 1)} style={{ width: 88 }} aria-label="用餐人数" />
+                <Button disabled>人</Button>
+              </Space.Compact>
             </Space>
 
             {cart.length === 0 ? (

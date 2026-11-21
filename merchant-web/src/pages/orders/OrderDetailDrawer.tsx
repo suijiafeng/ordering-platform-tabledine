@@ -294,6 +294,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
 
   return (
     <Drawer
+      closable={{ placement: 'end' }}
       title={
         order ? (
           <Space wrap size={4}>
@@ -360,8 +361,8 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
             <Descriptions.Item label="支付时间">{fmt(order.paidAt)}</Descriptions.Item>
             <Descriptions.Item label="接单时间">{fmt(order.acceptedAt)}</Descriptions.Item>
             {order.cookingStartedAt !== undefined && <Descriptions.Item label="开始制作">{fmt(order.cookingStartedAt ?? null)}</Descriptions.Item>}
-            <Descriptions.Item label="备注" span={isMobile ? 1 : 3}>{order.remark || <Typography.Text type="secondary">无</Typography.Text>}</Descriptions.Item>
-            {order.cancelReason && <Descriptions.Item label="取消原因" span={isMobile ? 1 : 3}><Typography.Text type="danger">{order.cancelReason}</Typography.Text></Descriptions.Item>}
+            <Descriptions.Item label="备注" span="filled">{order.remark || <Typography.Text type="secondary">无</Typography.Text>}</Descriptions.Item>
+            {order.cancelReason && <Descriptions.Item label="取消原因" span="filled"><Typography.Text type="danger">{order.cancelReason}</Typography.Text></Descriptions.Item>}
           </Descriptions>
 
           <Divider orientation="left" plain>菜品明细</Divider>

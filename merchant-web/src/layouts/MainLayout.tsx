@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Alert, Badge, Button, Drawer, Layout, Menu, Space, notification, theme as antdTheme } from 'antd'
+import { Alert, App, Badge, Button, Drawer, Layout, Menu, Space, theme as antdTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import dayjs from 'dayjs'
 import {
@@ -59,6 +59,8 @@ export default function MainLayout() {
   const isOwner = staff?.role === 'OWNER'
   const isKitchen = staff?.role === 'KITCHEN'
   const isMobile = useIsMobile()
+  // 用 App 上下文的 notification，才能跟随深色模式，避免静态方法的主题警告
+  const { notification } = App.useApp()
   const [menuOpen, setMenuOpen] = useState(false)
   // 平板和小屏桌面自动折叠为图标栏，为后厨三列和数据表保留内容宽度。
   const [collapsed, setCollapsed] = useState(false)
@@ -124,8 +126,8 @@ export default function MainLayout() {
       : (orderNos.length === 1 ? '新订单，请接单' : `${orderNos.length} 个新订单，请接单`)
     const link = isKitchen ? '/kitchen' : orderNos.length === 1 ? `/orders?status=PAID&orderNo=${first}` : '/orders?status=PAID'
     addMessage({ kind: 'ORDER', title, description, link, dedupeKey: `${isKitchen ? 'new-making' : 'new-order'}:${[...orderNos].sort().join(',')}` })
-    notification.open({ key: 'new-order', message: title, description, duration: 5, showProgress: true, placement: 'topRight', onClick: () => navigate(link) })
-  }, [lastArrival, navigate, addMessage, isKitchen])
+    notification.open({ key: 'new-order', message: title, description, duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate(link) })
+  }, [lastArrival, navigate, addMessage, isKitchen, notification])
   useEffect(() => {
     if (initialPending > 0) {
       const title = isKitchen ? `有 ${initialPending} 单待制作` : `有 ${initialPending} 单待接单`
@@ -133,10 +135,10 @@ export default function MainLayout() {
       const link = isKitchen ? '/kitchen' : '/orders?status=PAID'
       const nos = isKitchen ? counts?.makingOrderNos : counts?.pendingOrderNos
       addMessage({ kind: 'ORDER', title, description, link, dedupeKey: `initial-${isKitchen ? 'making' : 'pending'}:${nos?.slice().sort().join(',') ?? initialPending}` })
-      notification.warning({ key: 'initial-pending', message: title, description, duration: 5, showProgress: true, placement: 'topRight', onClick: () => navigate(link) })
+      notification.warning({ key: 'initial-pending', message: title, description, duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate(link) })
       consumeInitial()
     }
-  }, [initialPending, counts, consumeInitial, navigate, addMessage, isKitchen])
+  }, [initialPending, counts, consumeInitial, navigate, addMessage, isKitchen, notification])
 
   // 退款申请超过 2 小时未审核（需求 §7.3：再次提醒店主，不自动同意）。数量增加时提醒一次；处理完清零后再出现会再次提醒
   const overdueRefunds = counts?.overdueRefundCount ?? 0
@@ -156,9 +158,9 @@ export default function MainLayout() {
       const description = '顾客正在等待结果，请尽快同意或拒绝。'
       addMessage({ kind: 'REFUND', title, description, link: '/refunds?status=APPLYING' })
       playSound('refundOverdue')
-      notification.warning({ key: 'overdue-refund', message: title, description, duration: 5, showProgress: true, placement: 'topRight', onClick: () => navigate('/refunds?status=APPLYING') })
+      notification.warning({ key: 'overdue-refund', message: title, description, duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate('/refunds?status=APPLYING') })
     }
-  }, [overdueRefunds, isOwner, navigate, addMessage])
+  }, [overdueRefunds, isOwner, navigate, addMessage, notification])
 
   // 顾客接单后申请取消：数量增加时提醒前厅 / 店主（后厨不处理取消申请）。首次加载只建立基线
   const cancelCountRef = useRef<number | null>(null)
@@ -172,10 +174,10 @@ export default function MainLayout() {
       const description = '后厨暂停制作这些订单，请尽快同意或拒绝。'
       const link = '/orders?status=CANCEL_REQUEST'
       addMessage({ kind: 'ORDER', title, description, link })
-      notification.warning({ key: 'cancel-request', message: title, description, duration: 5, showProgress: true, placement: 'topRight', onClick: () => navigate(link) })
+      notification.warning({ key: 'cancel-request', message: title, description, duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate(link) })
       playSound('cancelRequest')
     }
-  }, [counts, isKitchen, navigate, addMessage])
+  }, [counts, isKitchen, navigate, addMessage, notification])
 
   // 后厨出餐（待送餐数增加）：提醒前厅取餐送达。首次加载只建立基线
   const readyCountRef = useRef<number | null>(null)
@@ -200,15 +202,15 @@ export default function MainLayout() {
       const added = current.applying - previous.applying
       const title = `新增 ${added} 笔退款申请`
       addMessage({ kind: 'REFUND', title, description: '顾客已提交退款申请，请及时审核。', link: '/refunds?status=APPLYING' })
-      notification.warning({ key: 'new-refund', message: title, description: '顾客已提交退款申请，请及时审核。', duration: 5, showProgress: true, placement: 'topRight', onClick: () => navigate('/refunds?status=APPLYING') })
+      notification.warning({ key: 'new-refund', message: title, description: '顾客已提交退款申请，请及时审核。', duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate('/refunds?status=APPLYING') })
     }
     if (current.failed > previous.failed) {
       const added = current.failed - previous.failed
       const title = `${added} 笔退款处理失败`
       addMessage({ kind: 'REFUND', title, description: '请重试退款或登记线下退款。', link: '/refunds?status=FAILED' })
-      notification.error({ key: 'failed-refund', message: title, description: '请重试退款或登记线下退款。', duration: 5, showProgress: true, placement: 'topRight', onClick: () => navigate('/refunds?status=FAILED') })
+      notification.error({ key: 'failed-refund', message: title, description: '请重试退款或登记线下退款。', duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate('/refunds?status=FAILED') })
     }
-  }, [counts, isOwner, navigate, addMessage])
+  }, [counts, isOwner, navigate, addMessage, notification])
 
   const badgeFor = (key: string): number => {
     if (!counts) {
@@ -277,7 +279,7 @@ export default function MainLayout() {
             <UserMenu compact />
           </Space>
         </Layout.Header>
-        <Drawer placement="left" open={menuOpen} onClose={() => setMenuOpen(false)} width={240} styles={{ body: { padding: 0 } }} title={<BrandLogo size={24} showSubtitle />}>
+        <Drawer closable={{ placement: 'end' }} placement="left" open={menuOpen} onClose={() => setMenuOpen(false)} width={240} styles={{ body: { padding: 0 } }} title={<BrandLogo size={24} showSubtitle />}>
           {menu(false)}
         </Drawer>
         <Layout.Content style={{ padding: 12 }}>
