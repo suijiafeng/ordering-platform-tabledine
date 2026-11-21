@@ -18,7 +18,12 @@ import { useVisiblePolling } from '@/hooks/useVisiblePolling'
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 /** 桌码来源：?token=xxx。桌码链接 /q/<token> 由 Nginx 302 跳转到 /h5/?token=<token> */
 const tokenFromQuery = (value: string | null) => (value && TOKEN_PATTERN.test(value) ? value : null)
-const errorText = (e: unknown) => (e instanceof ApiError ? e.message : '加载失败，请稍后重试')
+const errorText = (error: unknown) => {
+  if (!(error instanceof ApiError)) return '加载失败，请稍后重试'
+  if (error.status === 0) return '网络连接失败，请检查后重试'
+  if (error.status === 404 || error.status >= 500) return '菜单服务暂不可用，请稍后重试'
+  return error.message
+}
 
 /** 点餐首页：解析桌码 → 菜单（左分类 / 右菜品，滚动联动）→ 规格弹层 → 购物车 */
 export function MenuClient() {
@@ -41,11 +46,11 @@ export function MenuClient() {
   /** quiet：后台刷新，不显示加载页；失败时保留当前菜单 */
   const load = useVisiblePolling(async ({ background: quiet, isCurrent }) => {
     if (!quiet) { setLoading(true); setError('') }
+    let resolved: TableInfo | null = null
     try {
       const queryToken = searchParams.get('token')
       const token = tokenFromQuery(queryToken)
       const current = useOrdering.getState().table
-      let resolved: TableInfo | null = null
       if (queryToken && !token) {
         clearTable()
         if (!quiet) setError('桌码无效，请重新扫描桌上的二维码')
@@ -55,7 +60,7 @@ export function MenuClient() {
         resolved = await resolveTable(token)
       } else if (current) {
         // 站内跳回菜单（登录页「先逛逛」、退出登录、订单列表「去点餐」）不带桌码：沿用已扫的桌台并重新校验，
-        // 不能清空购物车。桌码失效（404）时在下面清掉，要求重新扫码。
+        // 不能清空购物车。桌码失效（40401）时在下面清掉，要求重新扫码。
         resolved = await resolveTable(current.qrToken)
       } else {
         clearTable()
@@ -81,17 +86,17 @@ export function MenuClient() {
       if (removed.length) notify(`${[...new Set(removed)].join('、')} 已售罄或选项有变，已移出购物车`)
       else if (capped.length) notify(`${[...new Set(capped)].join('、')} 剩余不多，购物车数量已调整`)
     } catch (e) {
-      if (!(e instanceof ApiError)) throw e
       if (!isCurrent()) return
       setSyncFailed(true)
-      if (e.code === 40401 || e.status === 404) {
+      if (!resolved && e instanceof ApiError && e.code === 40401) {
         clearTable()
+        setMenu(null)
         setSpecDish(null)
         setDetailDish(null)
         setError('桌码无效，请重新扫描桌上的二维码')
+        return
       }
-      if (quiet) return
-      setError(e.code === 40401 || e.status === 404 ? '桌码无效，请重新扫描桌上的二维码' : errorText(e))
+      if (!quiet) setError(errorText(e))
     } finally {
       if (isCurrent()) setLoading(false)
     }
