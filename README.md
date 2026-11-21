@@ -50,13 +50,13 @@
 
 ## 本地运行
 
-需要 JDK 17+、Maven、Node.js 20+、Docker。下面这组命令在本机跑通过。
+需要 JDK 17+、Maven、Node.js 20+、Docker。在仓库根目录执行以下命令，后三条分别在独立终端运行。
 
 ```bash
 docker compose -f deploy/docker-compose.dev.yml up -d
-cd server && mvn spring-boot:run
-cd merchant-web && npm install && npm run dev
-cd customer-web && npm install && npm run dev
+(cd server && mvn spring-boot:run -Dspring-boot.run.profiles=dev)
+(cd merchant-web && npm install && npm run dev)
+(cd customer-web && npm install && npm run dev)
 ```
 
 | | |
