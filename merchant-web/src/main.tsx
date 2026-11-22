@@ -40,8 +40,12 @@ function Root() {
       }}
       // 设计稿：卡片白底无描边，靠页面暖灰背景区分层次；抽屉 / 弹窗里需要描边的卡片单独写 variant="outlined"
       card={{ variant: 'borderless' }}
+      // 期望把关闭按钮放到右上角。antd 5.29 的 Drawer 只会读组件自己的 closable.placement，
+      // 这里再声明一次以便后续版本生效；各 Drawer 仍需显式传入 closable={{ placement: 'end' }}。
+      drawer={{ closable: { placement: 'end' } }}
     >
-      <AntdApp>
+      {/* 成功提示默认贴在视口顶部正中，会压住右侧订单抽屉标题，把订单号开头截掉。下移到标题栏下方。 */}
+      <AntdApp notification={{ placement: 'bottomRight' }} message={{ top: 88, duration: 2, maxCount: 3 }}>
         <BodyBackground />
         <AntdStaticBridge />
         <RouterProvider router={router} />

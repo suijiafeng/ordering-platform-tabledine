@@ -7,6 +7,8 @@ import { ApiError } from '../utils/request'
 import { playSound, useSoundStore } from '../utils/sound'
 
 const REMIND_KEY = 'merchant_remind_interval'
+/** 本标签页会话内已经提示过的待处理订单号，刷新页面后仍有效，避免「有 N 单待接单」每次刷新都弹 */
+export const SEEN_ORDERS_KEY = 'merchant_poll_seen_orders'
 
 function loadRemind(): number {
   try {
@@ -15,6 +17,43 @@ function loadRemind(): number {
   } catch {
     return 60_000
   }
+}
+
+export function readSeenOrders(): Set<string> | null {
+  try {
+    const raw = sessionStorage.getItem(SEEN_ORDERS_KEY)
+    if (raw == null) return null
+    const arr = JSON.parse(raw) as unknown
+    return Array.isArray(arr) && arr.every((x) => typeof x === 'string') ? new Set(arr as string[]) : null
+  } catch {
+    return null
+  }
+}
+
+export function writeSeenOrders(seen: Set<string> | null) {
+  try {
+    if (seen == null) sessionStorage.removeItem(SEEN_ORDERS_KEY)
+    else sessionStorage.setItem(SEEN_ORDERS_KEY, JSON.stringify([...seen]))
+  } catch {
+    // 隐私模式等无法写入，退化为仅内存
+  }
+}
+
+/**
+ * 比较本轮待处理订单与已见集合。
+ * seen 为 null 表示本会话第一次观察：只建立基线并返回初始数量，不当成「新到单」。
+ * 之后只把未见过的单号当作新增。
+ */
+export function diffPendingOrders(seen: Set<string> | null, pending: string[]): {
+  next: Set<string>
+  initialCount: number | null
+  fresh: string[]
+} {
+  const next = new Set(pending)
+  if (seen == null) {
+    return { next, initialCount: pending.length, fresh: [] }
+  }
+  return { next, initialCount: null, fresh: pending.filter((no) => !seen.has(no)) }
 }
 
 interface PollState {
@@ -65,14 +104,25 @@ export const usePollStore = create<PollState>((set) => ({
  * 轮询的记忆放在模块级而不是组件 ref：布局重新挂载（如从打印页返回）时不会把已有订单当成「首次打开」再提醒一遍。
  * 退出登录时由 resetOrderPollMemory 清空，换账号后重新建立基线。
  */
-let seenOrderNos: Set<string> | null = null
+let seenOrderNos: Set<string> | null = readSeenOrders()
 let lastRemindAt = 0
+/** 本页生命周期内是否已经做过一次基线轮询；刷新后要重新计时，避免立刻响起「未接单持续提醒」 */
+let primed = false
 
 export function resetOrderPollMemory() {
   seenOrderNos = null
   lastRemindAt = 0
+  primed = false
+  writeSeenOrders(null)
   useSoundStore.setState({ blocked: false })
   usePollStore.setState({ counts: null, newArrived: 0, initialPending: 0, lastArrival: null, netFailures: 0, lastSyncAt: null, overdueNotified: 0 })
+}
+
+/** 模拟刷新后模块重新加载：从 sessionStorage 恢复已见订单，不把存量单再当成首次打开。 */
+export function restoreSeenOrdersFromSession() {
+  seenOrderNos = readSeenOrders()
+  lastRemindAt = 0
+  primed = false
 }
 
 onLogout(resetOrderPollMemory)
@@ -100,29 +150,27 @@ export function useOrderPoll(intervalMs = 5000) {
       // 权责分离：前厅 / 店主关心「新支付待接单」；后厨只关心「前厅刚确认、进入制作中」的单
       const isKitchen = useAuthStore.getState().staff?.role === 'KITCHEN'
       const pending = isKitchen ? (c.makingOrderNos ?? []) : (c.pendingOrderNos ?? [])
-      if (seenOrderNos === null) {
-        // 首次打开后台：不播放新单音，但明确告知已有待处理订单
-        seenOrderNos = new Set(pending)
-        if (pending.length > 0) {
-          usePollStore.setState({ initialPending: pending.length })
+      const { next, initialCount, fresh } = diffPendingOrders(seenOrderNos, pending)
+      seenOrderNos = next
+      writeSeenOrders(next)
+      if (initialCount != null) {
+        // 本会话第一次观察：有存量待处理时只弹一次；刷新后 seen 已写入 sessionStorage，不会再走这里
+        if (initialCount > 0) {
+          usePollStore.setState({ initialPending: initialCount })
         }
+      } else if (fresh.length > 0) {
+        usePollStore.setState((s) => ({
+          newArrived: s.newArrived + fresh.length,
+          lastArrival: { seq: (s.lastArrival?.seq ?? 0) + 1, orderNos: fresh },
+        }))
+        playSound(isKitchen ? 'kitchenNewOrder' : 'newOrder')
+        lastRemindAt = Date.now()
+      }
+      // 未接单持续提醒：本页第一次轮询只建立起点，避免刷新后立刻再响
+      if (!primed) {
+        primed = true
+        lastRemindAt = Date.now()
       } else {
-        const seen = seenOrderNos
-        const fresh = pending.filter((no) => !seen.has(no))
-        if (fresh.length > 0) {
-          fresh.forEach((no) => seen.add(no))
-          usePollStore.setState((s) => ({
-            newArrived: s.newArrived + fresh.length,
-            lastArrival: { seq: (s.lastArrival?.seq ?? 0) + 1, orderNos: fresh },
-          }))
-          playSound(isKitchen ? 'kitchenNewOrder' : 'newOrder')
-          lastRemindAt = Date.now()
-        }
-        // 集合只保留仍在待接单的订单，已接单的从记忆中移除（订单号不会复用，去掉只是防止无限增长）
-        for (const no of Array.from(seen)) {
-          if (!pending.includes(no)) seen.delete(no)
-        }
-        // 未接单持续提醒：仍有待接单且距上次提醒超过间隔，再响一次（后厨的制作中订单是正常在做的，不重复提醒）
         const remind = usePollStore.getState().remindIntervalMs
         if (!isKitchen && pending.length > 0 && remind > 0 && useSoundStore.getState().enabled && Date.now() - lastRemindAt >= remind) {
           playSound('remindPending')

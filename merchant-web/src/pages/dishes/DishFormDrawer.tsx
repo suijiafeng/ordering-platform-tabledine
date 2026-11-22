@@ -154,6 +154,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
 
   return (
     <Drawer
+      closable={{ placement: 'end' }}
       title={dishId ? '编辑菜品' : '新建菜品'}
       width={720}
       open={open}

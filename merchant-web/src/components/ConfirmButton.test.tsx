@@ -15,11 +15,11 @@ describe('ConfirmButton', () => {
     const onConfirm = vi.fn()
     render(
       <App>
-        <ConfirmButton confirmText="再点一次确认接单" onConfirm={onConfirm}>接单</ConfirmButton>
+        <ConfirmButton confirmText="确认接单？" onConfirm={onConfirm}>接单</ConfirmButton>
       </App>,
     )
     click('接单')
-    expect(screen.getAllByText('再点一次确认接单').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('确认接单？').length).toBeGreaterThan(0)
     click('确认')
     expect(onConfirm).toHaveBeenCalledOnce()
   })
@@ -28,7 +28,7 @@ describe('ConfirmButton', () => {
     const onConfirm = vi.fn()
     render(
       <App>
-        <ConfirmButton confirmText="再点一次确认接单" onConfirm={onConfirm}>接单</ConfirmButton>
+        <ConfirmButton confirmText="确认接单？" onConfirm={onConfirm}>接单</ConfirmButton>
       </App>,
     )
     click('接单')

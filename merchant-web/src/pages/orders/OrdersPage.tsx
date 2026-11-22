@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Alert, Badge, Button, DatePicker, Input, Space, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, Badge, Button, DatePicker, Input, Space, Tabs, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -13,6 +13,7 @@ import MoneyText from '../../components/MoneyText'
 import { OrderRefundTag, OrderStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from './OrderDetailDrawer'
 import Panel, { PageToolbar } from '../../components/Panel'
+import ResponsiveTable from '../../components/ResponsiveTable'
 import { ignoreShownError } from '../../utils/errors'
 import { useIsKitchen } from '../../utils/auth'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
@@ -163,7 +164,7 @@ export default function OrdersPage() {
       ),
     },
     { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v: string | null) => v || <Typography.Text type="secondary">-</Typography.Text> },
-    { title: '操作', width: 80, render: (_, r) => <Button type="link" size="small" onClick={() => openDetail(r.orderNo)}>详情</Button> },
+    { title: '操作', width: 80, fixed: 'right', render: (_, r) => <Button type="link" size="small" onClick={() => openDetail(r.orderNo)}>详情</Button> },
   ]
 
   const tabLabel = (t: { key: string; label: string }) => {
@@ -187,10 +188,10 @@ export default function OrdersPage() {
       </PageToolbar>
       {syncFailed && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="订单同步暂时中断，当前显示上次结果，恢复后会自动更新。" action={<Button size="small" onClick={() => void load()}>重试</Button>} />}
       <Panel>
-        <Table<OrderSummary>
+        <ResponsiveTable<OrderSummary>
           rowKey="id"
           size="middle"
-          scroll={{ x: 'max-content' }}
+          scrollX={1100}
           loading={loading}
           columns={columns}
           dataSource={data.list}

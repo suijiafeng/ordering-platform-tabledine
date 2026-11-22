@@ -10,7 +10,8 @@ export const useFeedback = create<FeedbackState>((set) => ({
   show: (message, kind = 'info') => {
     clearTimeout(timer)
     set({ message, kind })
-    timer = setTimeout(() => set({ message: '' }), 2200)
+    // 成功提示更短，避免从登录回到结算时还盖在价格上
+    timer = setTimeout(() => set({ message: '' }), kind === 'success' ? 1400 : 2200)
   },
   hide: () => set({ message: '' }),
 }))

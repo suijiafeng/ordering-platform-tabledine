@@ -9,8 +9,9 @@ import { useLatestRequest } from '../../hooks/useLatestRequest'
 import { useIsKitchen, useIsOwner } from '../../utils/auth'
 import { ignoreShownError } from '../../utils/errors'
 import { ApiError } from '../../utils/request'
-import { fenToYuan, formatYuan, yuanToFen } from '../../utils/money'
+import { formatYuan, yuanToFen } from '../../utils/money'
 import Panel, { PageToolbar } from '../../components/Panel'
+import ResponsiveTable from '../../components/ResponsiveTable'
 import OperatorVerifyModal, { type VerifyResult } from '../../components/OperatorVerifyModal'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import SyncStatus from '../../components/SyncStatus'
@@ -298,7 +299,8 @@ export default function MembersPage() {
     },
     {
       title: '操作',
-      width: 150,
+      width: 180,
+      fixed: 'right',
       render: (_, r) => (
         <Space size={0}>
           {canManage && (
@@ -334,12 +336,12 @@ export default function MembersPage() {
         余额由店主或前厅在这里充值（线下收款后登记），取消订单或退款会自动返还到余额。
       </Typography.Paragraph>
       <Panel>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           columns={columns}
           dataSource={data.list}
           loading={loading}
-          scroll={{ x: 'max-content' }}
+          scrollX={960}
           pagination={{ current: page, pageSize: PAGE_SIZE, total: data.total, showSizeChanger: false, onChange: setPage, showTotal: (t) => `共 ${t} 位会员` }}
         />
       </Panel>
@@ -352,6 +354,7 @@ export default function MembersPage() {
         confirmLoading={saving}
         // 点「下一步」会先关掉本框。销毁后返回修改会丢掉手机号、密码和金额，所以保持挂载
         destroyOnHidden={false}
+        forceRender
       >
         <Form form={form} layout="vertical" autoComplete="off">
           <Form.Item
@@ -388,6 +391,7 @@ export default function MembersPage() {
         onCancel={() => setRecharging(null)}
         confirmLoading={saving}
         destroyOnHidden={false}
+        forceRender
       >
         {recharging && (
           <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan(recharging.balance)}</Typography.Text></Typography.Paragraph>
@@ -506,19 +510,32 @@ function TransactionsDrawer({ member, onClose }: { member: MemberItem | null; on
     {
       title: '金额',
       dataIndex: 'amount',
-      width: 110,
+      width: 128,
       align: 'right',
-      render: (v: number, r) => <Typography.Text type={r.credit ? 'success' : undefined}>{r.credit ? '+' : '-'}{fenToYuan(v).toFixed(2)}</Typography.Text>,
+      render: (v: number, r) => <Typography.Text type={r.credit ? 'success' : undefined}>{r.credit ? '+' : '-'}{formatYuan(v)}</Typography.Text>,
     },
-    { title: '变动后余额', dataIndex: 'balanceAfter', width: 110, align: 'right', render: (v: number) => formatYuan(v) },
+    { title: '变动后余额', dataIndex: 'balanceAfter', width: 128, align: 'right', render: (v: number) => formatYuan(v) },
     {
       title: '说明',
-      render: (_, r) => r.remark || (r.outTradeNo ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>订单 {r.outTradeNo}</Typography.Text> : '-'),
+      ellipsis: true,
+      width: 220,
+      render: (_, r) => r.remark || (r.outTradeNo
+        ? (
+            <Typography.Text
+              type="secondary"
+              style={{ fontSize: 12, maxWidth: '100%' }}
+              ellipsis={{ tooltip: `订单 ${r.outTradeNo}` }}
+              copyable={{ text: r.outTradeNo, tooltips: ['复制单号', '已复制'] }}
+            >
+              订单 {r.outTradeNo}
+            </Typography.Text>
+          )
+        : '-'),
     },
   ]
 
   return (
-    <Drawer title={member ? `${member.name} 的余额流水` : '余额流水'} open={member !== null} onClose={onClose} width={640}>
+    <Drawer closable={{ placement: 'end' }} title={member ? `${member.name} 的余额流水` : '余额流水'} open={member !== null} onClose={onClose} width={760}>
       <SyncStatus failed={syncFailed} />
       {member && <Typography.Paragraph>当前余额 <Typography.Text strong>{formatYuan((freshMember?.id === member.id ? freshMember : member).balance)}</Typography.Text></Typography.Paragraph>}
       <Table
@@ -527,6 +544,7 @@ function TransactionsDrawer({ member, onClose }: { member: MemberItem | null; on
         columns={columns}
         dataSource={data.list}
         loading={loading}
+        scroll={{ x: 800 }}
         pagination={{ current: page, pageSize: PAGE_SIZE, total: data.total, showSizeChanger: false, onChange: setPage }}
       />
     </Drawer>

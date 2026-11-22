@@ -11,7 +11,7 @@ import type { CustomerProfile } from '@/lib/types'
 import { notify } from '@/store/feedback'
 import { confirmDialog, getAppShell } from '@/lib/ui'
 import { menuPath } from '@/lib/navigation'
-import { AppBar, EmptyState, PillButton, Skeleton } from '@/components/ui'
+import { AppBar, CloseIcon, EmptyState, PillButton, Skeleton } from '@/components/ui'
 import { useVisiblePolling } from '@/hooks/useVisiblePolling'
 
 /** 我的：余额、订单入口、余额明细入口、修改密码、退出登录 */
@@ -116,9 +116,11 @@ function PasswordItem({ onChanged }: { onChanged: () => void }) {
     <button onClick={openPopup}>修改密码<span className="arrow">›</span></button>
     <Popup visible={open} getContainer={getAppShell} bodyStyle={{ background: 'transparent' }} onMaskClick={busy ? undefined : () => setOpen(false)}>
       <div className="sheet">
-        <div className="sheet-grip" />
+        <div className="sheet-head">
+          <h2 className="t-title">修改密码</h2>
+          <button className="icon-button" type="button" aria-label="关闭修改密码" disabled={busy} onClick={() => setOpen(false)}><CloseIcon /></button>
+        </div>
         <div className="sheet-pad">
-          <h2 className="t-hero" style={{ marginBottom: 18 }}>修改密码</h2>
           <div className="login-form" style={{ marginTop: 0 }}>
             <div className="field"><input type="password" value={oldPassword} placeholder="原密码" maxLength={64} autoComplete="current-password" onChange={(e) => setOldPassword(e.target.value)} /></div>
             <div className="field"><input type="password" value={newPassword} placeholder="新密码（至少 6 位）" maxLength={64} autoComplete="new-password" onChange={(e) => setNewPassword(e.target.value)} /></div>
