@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  App, Button, Card, Checkbox, Col, Divider, Empty, Input, InputNumber, Modal, Radio, Row, Segmented, Select, Space, Spin, Tag, Typography,
+  App, Button, Card, Checkbox, Col, Divider, Empty, Grid, Input, InputNumber, Modal, Radio, Row, Segmented, Select, Space, Spin, Tag, Typography,
   theme as antdTheme,
 } from 'antd'
 import { DeleteOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
@@ -73,6 +73,8 @@ export default function PlaceOrderPage() {
   const { message, modal } = App.useApp()
   const navigate = useNavigate()
   const { token } = antdTheme.useToken()
+  const screens = Grid.useBreakpoint()
+  const dishesOnTop = screens.xl === false
   const [menu, setMenu] = useState<OrderingMenu | null>(null)
   const [tables, setTables] = useState<TableItem[]>([])
   const [loadError, setLoadError] = useState(false)
@@ -327,7 +329,7 @@ export default function PlaceOrderPage() {
             </Space>
 
             {cart.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点左侧菜品加入" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={screens.xl ? '点左侧菜品加入' : dishesOnTop ? '点上方菜品加入' : '点选菜品加入'} />
             ) : (
               <div>
                 {cart.map((l) => (

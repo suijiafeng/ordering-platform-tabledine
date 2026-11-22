@@ -264,7 +264,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
         )}
         {s === 'PAID' && !isKitchen && (
           <>
-            <ConfirmButton type="primary" loading={acting} confirmText="再点一次确认接单" onConfirm={() => void runOrderAction(() => acceptOrder(order.orderNo), '已接单')}>接单</ConfirmButton>
+            <ConfirmButton type="primary" loading={acting} confirmText="确认接单？" onConfirm={() => void runOrderAction(() => acceptOrder(order.orderNo), '已接单')}>接单</ConfirmButton>
             <Button danger loading={acting} onClick={() => { setReason(''); setReasonModal('reject') }}>拒单并退款</Button>
           </>
         )}
@@ -278,11 +278,11 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
         {s === 'MAKING' && !cancelApplying && (
           // 与后厨看板一致：接单后先「开始制作」，再「制作完成」；旧版后端没有 cookingStartedAt 时直接出餐
           order.cookingStartedAt === null
-            ? <ConfirmButton type="primary" loading={acting} confirmText="再点一次开始制作" onConfirm={() => void runOrderAction(() => startCooking(order.orderNo), '已开始制作')}>开始制作</ConfirmButton>
-            : <ConfirmButton type="primary" loading={acting} confirmText="再点一次确认制作完成" onConfirm={() => void runOrderAction(() => readyOrder(order.orderNo), '制作完成，等待取餐')}>制作完成</ConfirmButton>
+            ? <ConfirmButton type="primary" loading={acting} confirmText="确认开始制作？" onConfirm={() => void runOrderAction(() => startCooking(order.orderNo), '已开始制作')}>开始制作</ConfirmButton>
+            : <ConfirmButton type="primary" loading={acting} confirmText="确认制作完成？" onConfirm={() => void runOrderAction(() => readyOrder(order.orderNo), '制作完成，等待取餐')}>制作完成</ConfirmButton>
         )}
         {s === 'READY' && !isKitchen && (
-          <ConfirmButton type="primary" loading={acting} confirmText="再点一次确认送达" onConfirm={() => void runOrderAction(() => deliverOrder(order.orderNo), '已送达')}>送达完成</ConfirmButton>
+          <ConfirmButton type="primary" loading={acting} confirmText="确认送达？" onConfirm={() => void runOrderAction(() => deliverOrder(order.orderNo), '已送达')}>送达完成</ConfirmButton>
         )}
         {canRefund && <Tooltip title={blockedTip}><Button disabled={!!activeRefund} onClick={() => setRefundOpen(true)}>退款</Button></Tooltip>}
         {isOwner && (s === 'MAKING' || s === 'READY') && (
@@ -297,8 +297,15 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
       closable={{ placement: 'end' }}
       title={
         order ? (
-          <Space wrap size={4}>
-            {isMobile ? `桌 ${order.tableCode ?? '-'}` : `订单 ${order.orderNo}`}
+          <Space wrap size={4} style={{ maxWidth: '100%' }}>
+            <Typography.Text
+              copyable={{ text: order.orderNo, tooltips: ['复制单号', '已复制'] }}
+              ellipsis={{ tooltip: `订单 ${order.orderNo}` }}
+              strong
+              style={{ maxWidth: isMobile ? 180 : 280 }}
+            >
+              {isMobile ? `桌 ${order.tableCode ?? '-'}` : `订单 ${order.orderNo}`}
+            </Typography.Text>
             <OrderStatusTag status={order.status} cookingStartedAt={order.cookingStartedAt} />
             <OrderRefundTag status={order.refundStatus} />
           </Space>

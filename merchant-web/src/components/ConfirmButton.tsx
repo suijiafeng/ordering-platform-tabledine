@@ -3,7 +3,7 @@ import { App, Button, type ButtonProps } from 'antd'
 
 interface Props extends Omit<ButtonProps, 'onClick' | 'children'> {
   children: ReactNode
-  /** 确认框标题，如「再点一次确认接单」 */
+  /** 确认框标题，如「确认接单？」 */
   confirmText: ReactNode
   /** 在确认框里点确认才执行 */
   onConfirm: () => void

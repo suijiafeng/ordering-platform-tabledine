@@ -10,40 +10,9 @@ import OrderDetailDrawer from '../orders/OrderDetailDrawer'
 import { ignoreShownError } from '../../utils/errors'
 import { useIsKitchen } from '../../utils/auth'
 import ConfirmButton from '../../components/ConfirmButton'
+import { STAGE_META, isOverdue, minutesSince, splitKitchenColumn, stageOf, type KitchenStage } from './kitchenQueue'
 
 const REFRESH_MS = 5000
-
-/**
- * 后厨看板的三个阶段（只看前厅已确认的订单）：
- * 待制作（制作中、尚未点开始）→ 制作中（已点开始制作）→ 待取餐（已出餐，等前厅取走送达，只读）
- */
-type Stage = 'TODO' | 'COOKING' | 'DONE'
-
-function stageOf(o: OrderSummary): Stage {
-  if (o.status === 'READY') return 'DONE'
-  return o.cookingStartedAt ? 'COOKING' : 'TODO'
-}
-
-/** 各阶段的计时起点与超时阈值（分钟）：接单后 5 分钟没开始做、开始后 20 分钟没做完、做好 5 分钟没被取走，都高亮 */
-const STAGE_META: Record<Stage, { label: string; since: (o: OrderSummary) => string | null; overdueMin: number; sinceText: string }> = {
-  TODO: { label: '待制作', since: (o) => o.acceptedAt, overdueMin: 5, sinceText: '已等待' },
-  COOKING: { label: '制作中', since: (o) => o.cookingStartedAt ?? o.acceptedAt, overdueMin: 20, sinceText: '已制作' },
-  DONE: { label: '待取餐', since: (o) => o.readyAt, overdueMin: 5, sinceText: '已等待' },
-}
-
-function minutesSince(from: string | null): number {
-  return from ? dayjs().diff(dayjs(from), 'minute') : 0
-}
-
-function isOverdue(o: OrderSummary): boolean {
-  const meta = STAGE_META[stageOf(o)]
-  return minutesSince(meta.since(o)) >= meta.overdueMin
-}
-
-/** 超时订单置顶，其余保持后端给的先来后到顺序（sort 是稳定排序） */
-function overdueFirst(list: OrderSummary[]): OrderSummary[] {
-  return [...list].sort((a, b) => Number(isOverdue(b)) - Number(isOverdue(a)))
-}
 
 function elapsed(from: string | null): string {
   if (!from) return ''
@@ -163,17 +132,18 @@ export default function KitchenPage() {
     }
   }
 
-  // 后厨队列只有前厅（或自动接单）确认过的订单，按阶段分三栏；每栏超时的置顶
-  const byStage = (st: Stage) => overdueFirst(orders.filter((o) => stageOf(o) === st))
-  const columns: { stage: Stage; list: OrderSummary[]; empty: string }[] = [
-    { stage: 'TODO', list: byStage('TODO'), empty: '前厅确认订单后会出现在这里' },
-    { stage: 'COOKING', list: byStage('COOKING'), empty: '点「开始制作」后移到这里' },
-    { stage: 'DONE', list: byStage('DONE'), empty: '做好的菜在这里等前厅取餐' },
+  // 后厨队列只有前厅（或自动接单）确认过的订单，按阶段分三栏。
+  // 栏内：未超时按进入本阶段时间从早到晚，已超时单独放在后面（见 kitchenQueue.ts）。
+  const byStage = (st: KitchenStage) => splitKitchenColumn(orders.filter((o) => stageOf(o) === st))
+  const columns: { stage: KitchenStage; current: OrderSummary[]; overdue: OrderSummary[]; empty: string }[] = [
+    { stage: 'TODO', ...byStage('TODO'), empty: '前厅确认订单后会出现在这里' },
+    { stage: 'COOKING', ...byStage('COOKING'), empty: '点「开始制作」后移到这里' },
+    { stage: 'DONE', ...byStage('DONE'), empty: '做好的菜在这里等前厅取餐' },
   ]
   const offline = failures > 0 && (lastSync === null || failures >= 2)
 
   // 新出现的超时订单响一次（同一单同一阶段只响一次）；打开看板时已经超时的只建立基线，不响
-  const overdueKeys = orders.filter(isOverdue).map((o) => `${o.orderNo}:${stageOf(o)}`).sort().join(',')
+  const overdueKeys = orders.filter((o) => isOverdue(o)).map((o) => `${o.orderNo}:${stageOf(o)}`).sort().join(',')
   const notifiedOverdue = useRef<Set<string> | null>(null)
   useEffect(() => {
     if (lastSync === null) return
@@ -251,9 +221,9 @@ export default function KitchenPage() {
             icon={st === 'TODO' ? <FireOutlined /> : <CheckOutlined />}
             loading={acting.has(o.orderNo)}
             disabled={cancelApplying}
-            // 厨房油手 / 戴手套也能点准：按钮 ≥ 64px 高、大字号；点两次才执行，防止点错卡片
+            // 厨房油手 / 戴手套也能点准：按钮 ≥ 64px 高、大字号；弹出确认框后再执行，防止点错卡片
             style={{ minHeight: 64, height: 'auto', padding: '12px 16px', whiteSpace: 'normal', lineHeight: 1.4, fontSize: 20, borderRadius: 12, background: overdue || st === 'TODO' ? undefined : token.colorSuccess }}
-            confirmText={st === 'TODO' ? `再点一次：开始制作 ${o.tableCode ?? ''}` : `再点一次：${o.tableCode ?? ''} 制作完成`}
+            confirmText={st === 'TODO' ? `确认开始制作（桌 ${o.tableCode ?? ''}）？` : `确认制作完成（桌 ${o.tableCode ?? ''}）？`}
             onConfirm={() => void act(o)}
           >
             {cancelApplying ? '等待前厅处理' : st === 'TODO' ? '开始制作' : '制作完成'}
@@ -310,12 +280,20 @@ export default function KitchenPage() {
               <div style={{ background: token.colorFillQuaternary, borderRadius: 8, padding: 12, height: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px 12px' }}>
                   <Typography.Text strong style={{ fontSize: 16 }}>{STAGE_META[c.stage].label}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>{c.list.length}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>{c.current.length + c.overdue.length}</Typography.Text>
                 </div>
-                {c.list.length === 0 ? (
+                {c.current.length + c.overdue.length === 0 ? (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={offline ? '连接中断' : c.empty} style={{ margin: '24px 0' }} />
                 ) : (
-                  <Space direction="vertical" size={12} style={{ width: '100%' }}>{c.list.map(card)}</Space>
+                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                    {c.current.map(card)}
+                    {c.overdue.length > 0 && (
+                      <Typography.Text type="danger" style={{ fontSize: 13, padding: c.current.length ? '4px 4px 0' : 0 }}>
+                        已超时 {c.overdue.length} 单
+                      </Typography.Text>
+                    )}
+                    {c.overdue.map(card)}
+                  </Space>
                 )}
               </div>
             </Col>

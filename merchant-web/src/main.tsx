@@ -44,7 +44,8 @@ function Root() {
       // 这里再声明一次以便后续版本生效；各 Drawer 仍需显式传入 closable={{ placement: 'end' }}。
       drawer={{ closable: { placement: 'end' } }}
     >
-      <AntdApp notification={{ placement: 'bottomRight' }}>
+      {/* 成功提示默认贴在视口顶部正中，会压住右侧订单抽屉标题，把订单号开头截掉。下移到标题栏下方。 */}
+      <AntdApp notification={{ placement: 'bottomRight' }} message={{ top: 88, duration: 2, maxCount: 3 }}>
         <BodyBackground />
         <AntdStaticBridge />
         <RouterProvider router={router} />
