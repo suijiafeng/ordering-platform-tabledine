@@ -204,7 +204,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .notice { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--danger-bg); color: var(--danger); font-size: 13px; }
 
 /* 轻提示：居中黑色胶囊 */
-.toast { position: fixed; z-index: 2100; left: 50%; top: 50%; transform: translate(-50%,-50%); display: flex; align-items: center; min-height: 40px; max-width: 84vw; padding: 8px 14px; border: 0; border-radius: 8px; background: #000; color: #fff; font-size: 14px; animation: fade .12s ease-out; }
+.toast { position: fixed; z-index: 2100; left: 50%; top: calc(12px + var(--safe-top, 0px)); transform: translate(-50%, 0); display: flex; align-items: center; min-height: 40px; max-width: 84vw; padding: 8px 14px; border: 0; border-radius: 8px; background: #000; color: #fff; font-size: 14px; animation: fade .12s ease-out; }
 
 /* ---------- 菜单页 ---------- */
 .menu { height: 100vh; height: 100dvh; display: flex; flex-direction: column; padding-bottom: calc(87px + var(--safe-bottom)); overflow: hidden; background: #fff; }
@@ -487,7 +487,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .balance-amount > span:first-child { color: var(--ink-3); font-size: 13px; }
 .balance-warning { margin: 12px 0 0; padding: 12px; border-radius: var(--r-field); background: var(--brand-strip); color: var(--brand-strip-ink); font-size: 13px; line-height: 1.6; }
 .optional-label { margin-left: 8px; color: var(--ink-4); font-size: 12px; font-weight: 400; }
-.checkout-footnote { margin: 4px 4px 0; color: var(--ink-3); font-size: 12px; line-height: 1.7; }
+.checkout-footnote { margin: 4px 4px 16px; color: var(--ink-3); font-size: 12px; line-height: 1.7; }
 .bar-total .value .t-price { font-size: 22px; }
 .result .amount .t-price { font-size: 36px; }
 .result .amount .yen { font-size: 18px; }

@@ -290,7 +290,9 @@ function OrderView() {
       ) : (
         <BottomBar>
           {secondary}
-          <PillButton className="grow" onClick={() => router.push(menuPath(table?.qrToken))}>继续加菜</PillButton>
+          {order.status === 'DONE' || order.status === 'CANCELLED' || order.status === 'CLOSED'
+            ? <PillButton className="grow" variant="outline" onClick={() => router.push(menuPath(table?.qrToken))}>再来一单</PillButton>
+            : <PillButton className="grow" onClick={() => router.push(menuPath(table?.qrToken))}>继续加菜</PillButton>}
         </BottomBar>
       )}
     </div>
