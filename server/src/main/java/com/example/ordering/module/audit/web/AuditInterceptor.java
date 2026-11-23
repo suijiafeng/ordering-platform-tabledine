@@ -64,12 +64,15 @@ public class AuditInterceptor implements HandlerInterceptor {
     private final StaffMapper staffMapper;
     private final CustomerMapper customerMapper;
     private final ObjectMapper objectMapper;
+    private final ViewAuditThrottle viewThrottle;
 
-    public AuditInterceptor(AuditService auditService, StaffMapper staffMapper, CustomerMapper customerMapper, ObjectMapper objectMapper) {
+    public AuditInterceptor(AuditService auditService, StaffMapper staffMapper, CustomerMapper customerMapper, ObjectMapper objectMapper,
+                            ViewAuditThrottle viewThrottle) {
         this.auditService = auditService;
         this.staffMapper = staffMapper;
         this.customerMapper = customerMapper;
         this.objectMapper = objectMapper;
+        this.viewThrottle = viewThrottle;
     }
 
     @Override
@@ -111,6 +114,11 @@ public class AuditInterceptor implements HandlerInterceptor {
         Object start = request.getAttribute(START_ATTR);
         if (start instanceof Long s) {
             entry.setDurationMs((int) Math.min(Integer.MAX_VALUE, System.currentTimeMillis() - s));
+        }
+        if (opType == AuditOpType.VIEW && entry.getSuccess()
+                && !viewThrottle.shouldRecord(String.join("|", String.valueOf(entry.getStoreId()), entry.getActorType(),
+                String.valueOf(entry.getActorId()), entry.getPath(), String.valueOf(entry.getDetail())))) {
+            return;
         }
         auditService.record(entry);
     }
