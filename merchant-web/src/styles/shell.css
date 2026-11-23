@@ -258,13 +258,46 @@
   gap: 8px;
   flex: none;
 }
+.td-order-banner-close {
+  flex: none;
+}
+/* 手机：两行紧凑布局——第一行标题 + 右上角关闭，第二行摘要 + 操作按钮，不再单独占一行按钮 */
 @media (max-width: 767.98px) {
   .td-order-banner {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'title close'
+      'desc actions';
+    column-gap: 8px;
+    row-gap: 4px;
+    padding: 8px 8px 10px 12px;
+    margin-bottom: 12px;
+  }
+  .td-order-banner-icon {
+    display: none;
+  }
+  .td-order-banner-body {
+    display: contents;
+  }
+  .td-order-banner-title {
+    grid-area: title;
+    align-self: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .td-order-banner-desc {
+    grid-area: desc;
+    align-self: center;
+    font-size: 12px;
   }
   .td-order-banner-actions {
-    width: 100%;
-    justify-content: flex-end;
+    grid-area: actions;
+    gap: 6px;
+  }
+  .td-order-banner-close {
+    grid-area: close;
+    justify-self: end;
   }
 }
 
