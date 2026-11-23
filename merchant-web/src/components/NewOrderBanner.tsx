@@ -112,8 +112,8 @@ export default function NewOrderBanner({ pendingOrderNos, latestHint, onChanged 
           </ConfirmButton>
         )}
         <Button size="small" onClick={() => navigate(`/orders?status=PAID&orderNo=${latest}`)}>查看</Button>
-        <Button size="small" type="text" icon={<CloseOutlined />} aria-label="关闭新订单提示" onClick={dismiss} />
       </div>
+      <Button className="td-order-banner-close" size="small" type="text" icon={<CloseOutlined />} aria-label="关闭新订单提示" onClick={dismiss} />
     </div>
   )
 }

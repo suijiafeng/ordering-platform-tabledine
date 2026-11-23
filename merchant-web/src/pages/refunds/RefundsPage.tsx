@@ -15,6 +15,7 @@ import OrderDetailDrawer from '../orders/OrderDetailDrawer'
 import { ignoreShownError } from '../../utils/errors'
 import Panel from '../../components/Panel'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import { storeTime } from '../../utils/storeTime'
 
 const PAGE_SIZE = 20
 const TABS = [
@@ -128,7 +129,7 @@ export default function RefundsPage() {
     if (m < 1) return '刚刚'
     if (m < 60) return `${m} 分钟前`
     const h = Math.floor(m / 60)
-    return h < 24 ? `${h} 小时${m % 60 ? ` ${m % 60} 分` : ''}前` : dayjs(createdAt).format('MM-DD HH:mm')
+    return h < 24 ? `${h} 小时${m % 60 ? ` ${m % 60} 分` : ''}前` : storeTime(createdAt).format('MM-DD HH:mm')
   }
 
   const confirmApprove = (r: RefundView) => {
@@ -207,9 +208,9 @@ export default function RefundsPage() {
               {r.failReason && <Typography.Text type={r.status === 'FAILED' ? 'danger' : 'secondary'}>{r.failReason}</Typography.Text>}
               {r.rejectReason && <Typography.Text type="secondary">拒绝理由：{r.rejectReason}</Typography.Text>}
               <Typography.Text type={overdue ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
-                申请于 {dayjs(r.createdAt).format('MM-DD HH:mm')}（{waited(r.createdAt)}）
+                申请于 {storeTime(r.createdAt).format('MM-DD HH:mm')}（{waited(r.createdAt)}）
                 {r.operatorName ? ` · ${r.operatorName}` : ''}
-                {r.successAt ? ` · 退款于 ${dayjs(r.successAt).format('MM-DD HH:mm')}` : ''}
+                {r.successAt ? ` · 退款于 ${storeTime(r.successAt).format('MM-DD HH:mm')}` : ''}
               </Typography.Text>
             </Space>
           </Col>

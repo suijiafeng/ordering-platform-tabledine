@@ -1,23 +1,28 @@
 import { Navigate, createBrowserRouter, useLocation } from 'react-router-dom'
+import { Suspense, lazy } from 'react'
 import type { ReactNode } from 'react'
 import MainLayout from './layouts/MainLayout'
-import LoginPage from './pages/login/LoginPage'
-import DashboardPage from './pages/dashboard/DashboardPage'
-import StaffPage from './pages/staff/StaffPage'
-import DishesPage from './pages/dishes/DishesPage'
-import TablesPage from './pages/tables/TablesPage'
-import TablePrintPage from './pages/tables/TablePrintPage'
-import SettingsPage from './pages/settings/SettingsPage'
-import OrdersPage from './pages/orders/OrdersPage'
-import PlaceOrderPage from './pages/orders/PlaceOrderPage'
-import KitchenPage from './pages/kitchen/KitchenPage'
-import RefundsPage from './pages/refunds/RefundsPage'
-import ReportsPage from './pages/reports/ReportsPage'
-import MembersPage from './pages/members/MembersPage'
+const LoginPage = lazy(() => import('./pages/login/LoginPage'))
+const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'))
+const StaffPage = lazy(() => import('./pages/staff/StaffPage'))
+const DishesPage = lazy(() => import('./pages/dishes/DishesPage'))
+const TablesPage = lazy(() => import('./pages/tables/TablesPage'))
+const TablePrintPage = lazy(() => import('./pages/tables/TablePrintPage'))
+const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
+const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'))
+const PlaceOrderPage = lazy(() => import('./pages/orders/PlaceOrderPage'))
+const KitchenPage = lazy(() => import('./pages/kitchen/KitchenPage'))
+const RefundsPage = lazy(() => import('./pages/refunds/RefundsPage'))
+const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
+const MembersPage = lazy(() => import('./pages/members/MembersPage'))
 import ForbiddenPage from './pages/errors/ForbiddenPage'
-import AuditLogsPage from './pages/audit/AuditLogsPage'
+const AuditLogsPage = lazy(() => import('./pages/audit/AuditLogsPage'))
 import { useAuthStore } from './store/auth'
+import PageLoading from './components/PageLoading'
 import type { RouteHandle } from './components/PageBreadcrumb'
+
+/** 各页面按路由拆包，首屏只下载登录页 / 当前页面需要的代码 */
+const page = (el: ReactNode) => <Suspense fallback={<PageLoading />}>{el}</Suspense>
 
 /** 顶栏面包屑名称（见 PageBreadcrumb）。以后加子页面时用嵌套路由，子路由再带自己的 crumb 即可 */
 const crumb = (name: string): RouteHandle => ({ crumb: name })
@@ -46,12 +51,12 @@ function RequireFront({ children }: { children: ReactNode }) {
 /** 首页：后厨账号直接进入后厨队列，其他角色进入工作台 */
 function HomePage() {
   const role = useAuthStore((s) => s.staff?.role)
-  return role === 'KITCHEN' ? <Navigate to="/kitchen" replace /> : <DashboardPage />
+  return role === 'KITCHEN' ? <Navigate to="/kitchen" replace /> : page(<DashboardPage />)
 }
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
-  { path: '/tables/print', element: <RequireAuth><RequireFront><TablePrintPage /></RequireFront></RequireAuth> },
+  { path: '/login', element: page(<LoginPage />) },
+  { path: '/tables/print', element: <RequireAuth><RequireFront>{page(<TablePrintPage />)}</RequireFront></RequireAuth> },
   {
     path: '/',
     element: (
@@ -66,20 +71,20 @@ export const router = createBrowserRouter([
         path: 'orders',
         handle: crumb('订单管理'),
         children: [
-          { index: true, element: <OrdersPage /> },
+          { index: true, element: page(<OrdersPage />) },
           // 代客下单：前厅 / 店主（后厨只能查看订单）
-          { path: 'new', handle: crumb('代客下单'), element: <RequireFront><PlaceOrderPage /></RequireFront> },
+          { path: 'new', handle: crumb('代客下单'), element: <RequireFront>{page(<PlaceOrderPage />)}</RequireFront> },
         ],
       },
-      { path: 'kitchen', handle: crumb('后厨队列'), element: <KitchenPage /> },
-      { path: 'refunds', handle: crumb('退款管理'), element: <RequireOwner><RefundsPage /></RequireOwner> },
-      { path: 'dishes', handle: crumb('菜品管理'), element: <DishesPage /> },
-      { path: 'tables', handle: crumb('桌台管理'), element: <RequireFront><TablesPage /></RequireFront> },
-      { path: 'reports', handle: crumb('数据看板'), element: <RequireOwner><ReportsPage /></RequireOwner> },
-      { path: 'members', handle: crumb('会员充值'), element: <RequireFront><MembersPage /></RequireFront> },
-      { path: 'staff', handle: crumb('员工管理'), element: <RequireOwner><StaffPage /></RequireOwner> },
-      { path: 'settings', handle: crumb('店铺设置'), element: <RequireOwner><SettingsPage /></RequireOwner> },
-      { path: 'audit', handle: crumb('操作日志'), element: <RequireOwner><AuditLogsPage /></RequireOwner> },
+      { path: 'kitchen', handle: crumb('后厨队列'), element: page(<KitchenPage />) },
+      { path: 'refunds', handle: crumb('退款管理'), element: <RequireOwner>{page(<RefundsPage />)}</RequireOwner> },
+      { path: 'dishes', handle: crumb('菜品管理'), element: page(<DishesPage />) },
+      { path: 'tables', handle: crumb('桌台管理'), element: <RequireFront>{page(<TablesPage />)}</RequireFront> },
+      { path: 'reports', handle: crumb('数据看板'), element: <RequireOwner>{page(<ReportsPage />)}</RequireOwner> },
+      { path: 'members', handle: crumb('会员充值'), element: <RequireFront>{page(<MembersPage />)}</RequireFront> },
+      { path: 'staff', handle: crumb('员工管理'), element: <RequireOwner>{page(<StaffPage />)}</RequireOwner> },
+      { path: 'settings', handle: crumb('店铺设置'), element: <RequireOwner>{page(<SettingsPage />)}</RequireOwner> },
+      { path: 'audit', handle: crumb('操作日志'), element: <RequireOwner>{page(<AuditLogsPage />)}</RequireOwner> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

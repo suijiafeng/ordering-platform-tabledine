@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Alert, App, Button, Drawer, Grid, Layout, Space, theme as antdTheme } from 'antd'
-import dayjs from 'dayjs'
 import { AppstoreOutlined, DashboardOutlined, FireOutlined, MenuOutlined, PlusOutlined, UnorderedListOutlined, WalletOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import UserMenu from '../components/UserMenu'
@@ -16,6 +15,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { useNotificationStore } from '../store/notifications'
 import { useStoreInfo } from '../store/storeInfo'
 import { navGroupOf } from './nav'
+import { storeTime } from '../utils/storeTime'
 
 export { NAV_ITEMS } from './nav'
 
@@ -92,7 +92,7 @@ export default function MainLayout() {
       banner
       style={{ marginBottom: 12 }}
       message="网络连接中断，正在重试…"
-      description={lastSyncAt ? `最后同步 ${dayjs(lastSyncAt).format('HH:mm:ss')}，新订单提醒已暂停，恢复后自动同步。` : '无法连接服务器，请检查网络。'}
+      description={lastSyncAt ? `最后同步 ${storeTime(lastSyncAt).format('HH:mm:ss')}，新订单提醒已暂停，恢复后自动同步。` : '无法连接服务器，请检查网络。'}
       action={<Button size="small" danger onClick={() => void retry()}>立即重试</Button>}
     />
   ) : null

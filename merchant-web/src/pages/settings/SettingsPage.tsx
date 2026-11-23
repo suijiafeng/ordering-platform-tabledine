@@ -93,12 +93,9 @@ export default function SettingsPage() {
       title: '确认保存店铺设置？',
       width: 480,
       content: (
-        <div>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>以下修改保存后立即对全店和顾客端生效：</Typography.Paragraph>
-          <ul style={{ paddingInlineStart: 20, margin: 0 }}>
-            {changes.map((c) => <li key={c}>{c}</li>)}
-          </ul>
-        </div>
+        <ul style={{ paddingInlineStart: 20, margin: 0 }}>
+          {changes.map((c) => <li key={c}>{c}</li>)}
+        </ul>
       ),
       okText: '确认保存',
     })
@@ -169,7 +166,7 @@ export default function SettingsPage() {
                   <Badge status={counts ? 'processing' : 'default'} text={<Typography.Text type="secondary" style={{ fontSize: 12 }}>{counts ? '运行中' : '连接中…'}</Typography.Text>} />
                 </Space>
                 <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0', fontSize: 13 }}>
-                  新订单、取消申请、退款、断网等各有提示音；仅对当前浏览器生效，浏览器需点击页面后才能出声
+                  仅对当前浏览器生效
                 </Typography.Paragraph>
               </div>
               <Switch checked={soundEnabled} onChange={setSoundEnabled} aria-label="提示音总开关" />
@@ -216,7 +213,7 @@ export default function SettingsPage() {
               <Form.Item name="address" label="店铺地址">
                 <Input size="large" maxLength={255} />
               </Form.Item>
-              <Form.Item name="businessHours" label="营业时间" extra="仅展示用，如 10:00-22:00">
+              <Form.Item name="businessHours" label="营业时间" extra="仅作展示">
                 <Input size="large" maxLength={64} />
               </Form.Item>
               <Form.Item name="logo" label="店铺 Logo" style={{ marginBottom: 0 }}>
@@ -226,22 +223,22 @@ export default function SettingsPage() {
           </Col>
           <Col xs={24} xl={12}>
             <Card title="业务参数" style={{ height: '100%' }}>
-              <SettingRow label="自动接单" hint="关（默认）：前厅确认后后厨才收到订单；开：支付成功直接进入后厨制作，视为店主授权跳过前厅确认">
+              <SettingRow label="自动接单" hint="开则支付成功后直接进入后厨，跳过前厅确认">
                 <Form.Item name="autoAccept" valuePropName="checked" noStyle>
                   <Switch />
                 </Form.Item>
               </SettingRow>
-              <SettingRow label="未支付自动关单" hint="下单后超过该时间未支付，订单自动关闭">
+              <SettingRow label="未支付自动关单">
                 <Form.Item name="payTimeoutMin" rules={[{ required: true, message: '必填' }]} style={{ margin: 0 }}>
                   <InputNumber size="large" min={5} max={60} precision={0} suffix="分钟" style={{ width: 140 }} />
                 </Form.Item>
               </SettingRow>
-              <SettingRow label="未接单自动退款" hint="手动接单模式下生效，超时未接单自动取消并退款">
+              <SettingRow label="未接单自动退款" hint="仅手动接单时生效">
                 <Form.Item name="acceptTimeoutMin" rules={[{ required: true, message: '必填' }]} style={{ margin: 0 }}>
                   <InputNumber size="large" min={1} max={60} precision={0} suffix="分钟" style={{ width: 140 }} />
                 </Form.Item>
               </SettingRow>
-              <SettingRow label="售后申请时限" hint="订单送达后，顾客可在该时间内申请退款" last>
+              <SettingRow label="售后申请时限" hint="订单送达后起算" last>
                 <Form.Item name="afterSaleHours" rules={[{ required: true, message: '必填' }]} style={{ margin: 0 }}>
                   <InputNumber size="large" min={0} max={168} precision={0} suffix="小时" style={{ width: 140 }} />
                 </Form.Item>
@@ -253,20 +250,19 @@ export default function SettingsPage() {
 
       <Space size={16} wrap>
         <Button type="primary" size="large" loading={saving} onClick={save} style={{ minWidth: 200, height: 52, fontSize: 16 }}>保存设置</Button>
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>修改即时同步到顾客端</Typography.Text>
       </Space>
     </Space>
   )
 }
 
 /** 业务参数的一行：左侧名称 + 说明，右侧控件（对应设计稿的设置项排版） */
-function SettingRow({ label, hint, children, last = false }: { label: string; hint: string; children: ReactNode; last?: boolean }) {
+function SettingRow({ label, hint, children, last = false }: { label: string; hint?: string; children: ReactNode; last?: boolean }) {
   const { token } = antdTheme.useToken()
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0', borderBottom: last ? undefined : `1px solid ${token.colorSplit}` }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14 }}>{label}</div>
-        <div style={{ fontSize: 12, color: token.colorTextTertiary, marginTop: 4 }}>{hint}</div>
+        {hint && <div style={{ fontSize: 12, color: token.colorTextTertiary, marginTop: 4 }}>{hint}</div>}
       </div>
       <div style={{ flex: 'none' }}>{children}</div>
     </div>

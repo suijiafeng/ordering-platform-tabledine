@@ -51,8 +51,6 @@ function LoginForm() {
     <div className="login">
       <div className="login-mark" aria-hidden="true">{table ? table.storeName.trim().charAt(0) : '餐'}</div>
       <h1>{table?.storeName ?? '会员登录'}</h1>
-      <div className="sub">扫码点餐 · 余额支付 · 快捷下单</div>
-
       <form className="login-form" onSubmit={(e) => { e.preventDefault(); void submit() }}>
         <div>
           <div className={`field ${phoneError ? 'invalid' : ''}`.trim()}>
@@ -72,8 +70,7 @@ function LoginForm() {
       </form>
 
       <p className="terms">会员账号由店员开通；没有账号或忘记密码，请联系店员。</p>
-      <div className="alt">其他方式</div>
-      <PillButton variant="ghost" block onClick={() => router.replace(menuPath(table?.qrToken))}>先逛逛菜单</PillButton>
+      <PillButton className="browse" variant="ghost" block onClick={() => router.replace(menuPath(table?.qrToken))}>先逛逛菜单</PillButton>
     </div>
   )
 }

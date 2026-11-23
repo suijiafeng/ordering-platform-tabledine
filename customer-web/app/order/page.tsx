@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useState } from 'react'
+import { Fragment, Suspense, useState } from 'react'
 import { applyRefund, cancelOrder, payOrder, requestCancelOrder, withdrawRefund } from '@/lib/api'
 import { ignoreShownError } from '@/lib/errors'
 import {
@@ -156,7 +156,7 @@ function OrderView() {
       <div className="screen">
         <AppBar title="订单详情" fallback="/orders" />
         {fatal
-          ? <EmptyState title={fatal} desc="可以回到列表看看其他订单" action={<PillButton onClick={() => router.replace('/orders')}>查看全部订单</PillButton>} />
+          ? <EmptyState title={fatal} action={<PillButton onClick={() => router.replace('/orders')}>查看全部订单</PillButton>} />
           : loadFailed
             ? <EmptyState icon="!" title="订单加载失败" desc="正在自动重试…" action={<PillButton onClick={() => void refresh()}>立即重试</PillButton>} />
             : <Skeleton rows={3} variant="card" label="订单加载中…" />}
@@ -230,12 +230,21 @@ function OrderView() {
                   <PillButton variant="outline" className="grow" disabled={busy} onClick={() => void refresh()}>刷新进度</PillButton>
                   <PillButton variant="outline" className="grow" onClick={() => router.push(menuPath(table?.qrToken))}>同桌再点一单</PillButton>
                 </div>
-                <p className="order-next-hint">
-                  {order.status === 'MAKING' || order.status === 'READY' ? '已开始制作，如需取消请联系店员' : '商家接单后开始制作，请留意订单进度'}
-                  {order.canCancel && <> · <button type="button" className="link" disabled={busy} onClick={cancel}>取消订单</button></>}
-                  {order.canRequestCancel && <> · <button type="button" className="link" disabled={busy} onClick={requestCancel}>申请取消</button></>}
-                  {activeApplying && <> · <button type="button" className="link" disabled={busy} onClick={withdraw}>撤回退款</button></>}
-                </p>
+                {(() => {
+                  const cooking = order.status === 'MAKING' || order.status === 'READY'
+                  const parts = [
+                    cooking ? '已开始制作，如需取消请联系店员' : null,
+                    order.canCancel ? <button type="button" className="link" disabled={busy} onClick={cancel}>取消订单</button> : null,
+                    order.canRequestCancel ? <button type="button" className="link" disabled={busy} onClick={requestCancel}>申请取消</button> : null,
+                    activeApplying ? <button type="button" className="link" disabled={busy} onClick={withdraw}>撤回退款</button> : null,
+                  ].filter((p) => p != null)
+                  if (!parts.length) return null
+                  return (
+                    <p className="order-next-hint">
+                      {parts.map((part, i) => <Fragment key={i}>{i > 0 && ' · '}{part}</Fragment>)}
+                    </p>
+                  )
+                })()}
                 {order.canApplyRefund && (
                   <div className="order-next-foot">
                     <span>菜品有问题？</span>

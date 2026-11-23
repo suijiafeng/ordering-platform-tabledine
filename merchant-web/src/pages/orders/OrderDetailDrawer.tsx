@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Alert, App, Button, Descriptions, Divider, Drawer, Input, Modal, Space, Spin, Table, Tag, Timeline, Tooltip, Typography, theme as antdTheme } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import dayjs from 'dayjs'
 import { acceptOrder, approveCancelRequest, cancelOrder, deliverOrder, getOrder, readyOrder, rejectCancelRequest, rejectOrder, startCooking } from '../../api/order'
 import type { OperatorType, OrderDetail, OrderItemView, OrderStatus, RefundView } from '../../api/types'
 import { formatYuan } from '../../utils/money'
@@ -15,6 +14,7 @@ import ConfirmButton from '../../components/ConfirmButton'
 import { ignoreShownError } from '../../utils/errors'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import { storeTime } from '../../utils/storeTime'
 
 interface Props {
   orderNo: string | null
@@ -26,7 +26,7 @@ interface Props {
   readOnly?: boolean
 }
 
-const fmt = (v: string | null | undefined) => (v ? dayjs(v).format('MM-DD HH:mm:ss') : '-')
+const fmt = (v: string | null | undefined) => (v ? storeTime(v).format('MM-DD HH:mm:ss') : '-')
 
 /**
  * 时间线条目：状态日志 +「开始制作」（后厨开工不是订单状态变化，单独插入）。

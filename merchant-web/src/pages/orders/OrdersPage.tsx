@@ -20,6 +20,7 @@ import { useIsKitchen } from '../../utils/auth'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useOrderEvents } from '../../store/orderEvents'
+import { storeTime } from '../../utils/storeTime'
 
 const PAGE_SIZE = 20
 
@@ -204,7 +205,7 @@ export default function OrdersPage() {
         <Space direction="vertical" size={0}>
           <Typography.Text className="order-no">{r.orderNo}</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {dayjs(r.createdAt).format('MM-DD HH:mm')} · {r.payMode === 'PAY_LATER' ? (r.paidAt ? '先吃后付·已结账' : '先吃后付') : PLATFORM[r.platform]} · {r.peopleCount} 人
+            {storeTime(r.createdAt).format('MM-DD HH:mm')} · {r.payMode === 'PAY_LATER' ? (r.paidAt ? '先吃后付·已结账' : '先吃后付') : PLATFORM[r.platform]} · {r.peopleCount} 人
           </Typography.Text>
         </Space>
       ),
@@ -243,7 +244,7 @@ export default function OrdersPage() {
               {isUnsettledRow(r) && <Tag color="gold">未结账</Tag>}
             </Space>
             {r.status === 'MAKING' && r.cookingStartedAt && (
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(r.cookingStartedAt).format('HH:mm')} 开始制作</Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{storeTime(r.cookingStartedAt).format('HH:mm')} 开始制作</Typography.Text>
             )}
           </Space>
         )
@@ -287,7 +288,7 @@ export default function OrdersPage() {
         <div style={{ textAlign: 'right' }}>{cell('金额')}</div>
       </div>
       <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 6 }}>
-        {dayjs(r.createdAt).format('HH:mm')} · {r.payMode === 'PAY_LATER' ? (r.paidAt ? '先吃后付·已结账' : '先吃后付') : PLATFORM[r.platform]} · {r.peopleCount} 人 · <span className="order-no">{r.orderNo}</span>
+        {storeTime(r.createdAt).format('HH:mm')} · {r.payMode === 'PAY_LATER' ? (r.paidAt ? '先吃后付·已结账' : '先吃后付') : PLATFORM[r.platform]} · {r.peopleCount} 人 · <span className="order-no">{r.orderNo}</span>
       </Typography.Text>
       <div style={{ marginTop: 8 }}>
         {r.items.map((i) => `${i.dishName}${i.specDesc ? `(${i.specDesc})` : ''} ×${i.quantity}`).join('、') || '-'}

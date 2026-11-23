@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState, useRef } from 'react'
 import { Alert, App, Button, Descriptions, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Space, Switch, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, ReloadOutlined, WalletOutlined } from '@ant-design/icons'
-import dayjs from 'dayjs'
 import { createMember, getMember, listMemberTransactions, listMembers, rechargeMember, setMemberEnabled, updateMember } from '../../api/member'
 import type { MemberItem, WalletTransaction } from '../../api/types'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
@@ -15,6 +14,7 @@ import ResponsiveTable from '../../components/ResponsiveTable'
 import OperatorVerifyModal, { type VerifyResult } from '../../components/OperatorVerifyModal'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import SyncStatus from '../../components/SyncStatus'
+import { storeTime } from '../../utils/storeTime'
 
 const PAGE_SIZE = 20
 
@@ -281,7 +281,7 @@ export default function MembersPage() {
       width: 120,
       render: (v: number) => <Typography.Text strong type={v <= 0 ? 'secondary' : undefined}>{formatYuan(v)}</Typography.Text>,
     },
-    { title: '开户时间', dataIndex: 'createdAt', width: 150, render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm') },
+    { title: '开户时间', dataIndex: 'createdAt', width: 150, render: (v: string) => storeTime(v).format('YYYY-MM-DD HH:mm') },
     {
       title: '状态',
       dataIndex: 'enabled',
@@ -331,10 +331,6 @@ export default function MembersPage() {
           onSearch={(v) => { setKeyword(v.trim()); setPage(1) }}
         />
       </PageToolbar>
-      <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 16 }}>
-        顾客用手机号 + 密码登录 H5 点餐页；下单时直接从账户余额扣费，不经过微信 / 支付宝。
-        余额由店主或前厅在这里充值（线下收款后登记），取消订单或退款会自动返还到余额。
-      </Typography.Paragraph>
       <Panel bareOnMobile>
         <ResponsiveTable
           rowKey="id"
@@ -348,7 +344,7 @@ export default function MembersPage() {
               <span className="td-table-badge" style={{ borderRadius: '50%' }}>{r.name.slice(0, 1)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Typography.Text strong>{r.name}</Typography.Text>
-                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>{r.phone} · {dayjs(r.createdAt).format('YYYY-MM-DD')} 开户</div>
+                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>{r.phone} · {storeTime(r.createdAt).format('YYYY-MM-DD')} 开户</div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 16 }}>{cell('余额')}</div>
@@ -390,7 +386,7 @@ export default function MembersPage() {
             <Input.Password placeholder={isNew ? '6~64 位' : '留空不修改'} />
           </Form.Item>}
           {isNew && (
-            <Form.Item name="initialYuan" label="开户充值（元，可选）" extra="线下收款后在这里登记，顾客即可开始点餐">
+            <Form.Item name="initialYuan" label="开户充值（元，可选）">
               <InputNumber min={0} max={1000000} precision={2} style={{ width: '100%' }} prefix="¥" placeholder="0.00" />
             </Form.Item>
           )}
@@ -429,7 +425,7 @@ export default function MembersPage() {
           <Form.Item name="yuan" label="充值金额（元）" rules={[{ required: true, type: 'number', min: 0.01, max: 1000000, message: '请输入 0.01 ~ 1000000 之间的金额' }]}>
             <InputNumber min={0.01} max={1000000} precision={2} style={{ width: '100%' }} prefix="¥" autoFocus />
           </Form.Item>
-          <Form.Item name="remark" label="备注（可选）" extra="如：现金 / 转账，便于日后核对">
+          <Form.Item name="remark" label="备注（可选）">
             <Input maxLength={100} />
           </Form.Item>
           <Typography.Text type="secondary">充值只登记余额，不会向顾客收款；请先线下收款再操作。</Typography.Text>
@@ -519,7 +515,7 @@ function TransactionsDrawer({ member, onClose }: { member: MemberItem | null; on
   useVisiblePolling(() => load(true), { enabled: !!memberId })
 
   const columns: ColumnsType<WalletTransaction> = [
-    { title: '时间', dataIndex: 'createdAt', width: 150, render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss') },
+    { title: '时间', dataIndex: 'createdAt', width: 150, render: (v: string) => storeTime(v).format('MM-DD HH:mm:ss') },
     { title: '类型', dataIndex: 'type', width: 100, render: (v: WalletTransaction['type']) => <Tag color={TXN_TYPE[v].color}>{TXN_TYPE[v].label}</Tag> },
     {
       title: '金额',

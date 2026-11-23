@@ -76,10 +76,10 @@ export default function OrdersPage() {
   } else if (failed && !orders.length) {
     content = <EmptyState icon="!" title="订单加载失败" desc="请检查网络后重试" action={<PillButton onClick={() => void refresh()}>重新加载</PillButton>} />
   } else if (!orders.length) {
-    content = <EmptyState title="还没有订单" desc="下单后可在这里查看进度" action={<PillButton onClick={() => router.push('/')}>去点餐</PillButton>} />
+    content = <EmptyState title="还没有订单" action={<PillButton onClick={() => router.push('/')}>去点餐</PillButton>} />
   } else {
     content = <>
-    {!visible.length && !hasMore && !moreFailed && <EmptyState inset title={filter === 'active' ? '没有进行中的订单' : '没有已结束的订单'} desc="切换上面的筛选看看其他订单" />}
+    {!visible.length && !hasMore && !moreFailed && <EmptyState inset title={filter === 'active' ? '没有进行中的订单' : '没有已结束的订单'} />}
     {visible.map((order) => (
       <article className="order-card" key={order.orderNo} onClick={() => openOrder(order.orderNo)}>
         <div className="order-top">

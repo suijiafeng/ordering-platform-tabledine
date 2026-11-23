@@ -5,18 +5,37 @@ export const yuan = (cents: number) => (cents / 100).toFixed(2).replace(/\.00$/,
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
+/** 门店所在时区：订单时间按门店墙钟显示，与顾客手机的时区设置无关 */
+export const STORE_TZ = 'Asia/Shanghai'
+
+const storeParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: STORE_TZ, hourCycle: 'h23',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+})
+
+/** 把时间拆成门店时区的年月日时分秒（都是两位数字字符串，年份四位） */
+function inStore(d: Date) {
+  const m: Record<string, string> = {}
+  for (const p of storeParts.formatToParts(d)) m[p.type] = p.value
+  return m as { year: string; month: string; day: string; hour: string; minute: string; second: string }
+}
+
 /** 列表 / 详情用的时间：MM-DD HH:mm；不是今年的订单带上年份，避免跨年后混淆 */
 export function dateTime(value?: string | null): string {
   if (!value) return ''
   const d = new Date(value)
-  const year = d.getFullYear() === new Date().getFullYear() ? '' : `${d.getFullYear()}-`
-  return `${year}${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (Number.isNaN(d.getTime())) return ''
+  const p = inStore(d)
+  const year = p.year === inStore(new Date()).year ? '' : `${p.year}-`
+  return `${year}${p.month}-${p.day} ${p.hour}:${p.minute}`
 }
 
 /** 状态时间线用：同一分钟内可能发生多次流转，带上秒 */
 export function dateTimeWithSeconds(value?: string | null): string {
   if (!value) return ''
-  return `${dateTime(value)}:${pad(new Date(value).getSeconds())}`
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${dateTime(value)}:${inStore(d).second}`
 }
 
 /** 剩余秒数转 mm:ss */
@@ -123,5 +142,6 @@ export function clockTime(value?: string | null) {
   if (!value) return ''
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const p = inStore(d)
+  return `${p.hour}:${p.minute}`
 }

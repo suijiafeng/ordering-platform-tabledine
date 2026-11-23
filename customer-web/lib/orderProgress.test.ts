@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { clockTime, maskPhone } from './format'
+import { clockTime, dateTime, dateTimeWithSeconds, maskPhone } from './format'
 import { cookingMinutes, progressIndex, progressTimes, statusHeroTitle } from './orderProgress'
 import type { OrderDetail } from './types'
 
-/** 按运行环境本地时区构造 ISO，避免 CI/开发机时区不同导致时刻断言失败 */
-const at = (hour: number, minute: number) => {
-  const d = new Date(2026, 10, 22, hour, minute, 0)
-  return d.toISOString()
-}
+/** 门店（Asia/Shanghai）当天的某个时刻；显示按门店时区，与运行环境时区无关 */
+const at = (hour: number, minute: number) => `2026-11-22T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+08:00`
 
 const base = {
   logs: [] as OrderDetail['logs'],
@@ -20,9 +17,16 @@ describe('maskPhone / clockTime', () => {
     expect(maskPhone('13800000001')).toBe('138****0001')
     expect(maskPhone('')).toBe('')
   })
-  it('formats clock time in local zone', () => {
+  it('formats clock time in the store time zone', () => {
     expect(clockTime(at(12, 31))).toBe('12:31')
+    // 东京 13:31 = 门店 12:31
+    expect(clockTime('2026-11-22T13:31:00+09:00')).toBe('12:31')
     expect(clockTime(null)).toBe('')
+  })
+  it('formats date time in the store time zone', () => {
+    // 东京 11-23 00:30 仍是门店 11-22 23:30
+    expect(dateTimeWithSeconds('2026-11-22T15:30:05Z').endsWith('11-22 23:30:05')).toBe(true)
+    expect(dateTime('2020-01-01T00:00:00+08:00')).toBe('2020-01-01 00:00')
   })
 })
 

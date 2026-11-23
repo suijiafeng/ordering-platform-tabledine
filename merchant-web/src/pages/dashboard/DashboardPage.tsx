@@ -8,6 +8,7 @@ import { exportReport, fetchDashboard } from '../../api/report'
 import { acceptOrder, kitchenQueue, listOrders } from '../../api/order'
 import { listRefunds } from '../../api/refund'
 import { listTables } from '../../api/table'
+import { listDishes } from '../../api/menu'
 import type { DashboardToday, OrderSummary, RefundView, StoreDetail, TableItem } from '../../api/types'
 import { formatYuan } from '../../utils/money'
 import { useIsOwner } from '../../utils/auth'
@@ -26,6 +27,7 @@ import OrderDetailDrawer from '../orders/OrderDetailDrawer'
 import { summarizeItems } from '../../components/NewOrderBanner'
 import { changeRate, chartHours, greeting, hourlySeries, prepStats, tableStates } from './dashboardData'
 import '../../styles/dashboard.css'
+import { storeTime, storeToday } from '../../utils/storeTime'
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -77,6 +79,8 @@ export default function DashboardPage() {
   const [detail, setDetail] = useState<string | null>(null)
   const [acting, setActing] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  /** 菜名 → 图片，热销榜显示缩略图；拿不到就显示首字 */
+  const [dishImages, setDishImages] = useState<Record<string, string>>({})
   const beginLoad = useLatestRequest()
 
   /** 5 秒一次：KPI、待处理、后厨、在桌订单 */
@@ -110,7 +114,7 @@ export default function DashboardPage() {
   /** 30 秒一次：今日全部订单（分时趋势、出餐用时） */
   const loadToday = useCallback(async () => {
     try {
-      setToday(await ordersOfDay(dayjs().format('YYYY-MM-DD')))
+      setToday(await ordersOfDay(storeToday()))
     } catch (e) {
       ignoreShownError(e)
       setToday((prev) => prev ?? [])
@@ -118,10 +122,16 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!isOwner) return
+    listDishes({ page: 1, pageSize: 100 }, { silent: true })
+      .then((r) => setDishImages(Object.fromEntries(r.list.filter((d) => d.image).map((d) => [d.name, d.image as string]))))
+      .catch(() => undefined)
+  }, [isOwner])
   useEffect(() => { void loadToday() }, [loadToday])
   useEffect(() => {
     listTables({ silent: true }).then(setTables).catch(ignoreShownError)
-    if (isOwner) ordersOfDay(dayjs().subtract(1, 'day').format('YYYY-MM-DD')).then(setYesterday).catch(ignoreShownError)
+    if (isOwner) ordersOfDay(storeTime().subtract(1, 'day').format('YYYY-MM-DD')).then(setYesterday).catch(ignoreShownError)
   }, [isOwner])
   useEffect(() => { if (orderEvents > 0) void load(true) }, [orderEvents, load])
   useVisiblePolling(() => load(true))
@@ -141,13 +151,13 @@ export default function DashboardPage() {
     }
   }
   const exportToday = async () => {
-    const d = dayjs().format('YYYY-MM-DD')
+    const d = storeToday()
     setExporting(true)
     try { await exportReport(d, d) } catch (e) { ignoreShownError(e) } finally { setExporting(false) }
   }
 
   // ---------- 派生数据 ----------
-  const nowHour = dayjs().hour()
+  const nowHour = storeTime().hour()
   const [fromH, toH] = useMemo(() => chartHours(store?.businessHours, [...(today ?? []), ...yesterday]), [store?.businessHours, today, yesterday])
   const todaySeries = useMemo(() => hourlySeries(today ?? [], fromH, toH), [today, fromH, toH])
   const ySeries = useMemo(() => hourlySeries(yesterday, fromH, toH), [yesterday, fromH, toH])
@@ -173,12 +183,14 @@ export default function DashboardPage() {
   const avgTicket = orderCount ? (stats?.paidAmount ?? 0) / orderCount : 0
   const daily = stats?.daily ?? []
   const refundSum = refunds.reduce((s, r) => s + r.amount, 0)
-  const now = dayjs()
+  const now = storeTime()
   const openState = store ? (store.businessStatus === 1 ? '营业中' : '已暂停营业') : ''
 
   const Rate = ({ v, suffix }: { v: number | null; suffix: string }) => v === null
-    ? <span>{suffix.replace('较', '昨日同时段无数据，')}</span>
-    : <span className={v >= 0 ? 'td-up' : 'td-down'}>{v >= 0 ? '▲' : '▼'} {Math.abs(v * 100).toFixed(1)}% <span style={{ color: 'var(--td-text-3)' }}>{suffix}</span></span>
+    ? <span>昨日同时段无数据</span>
+    : v === 0
+      ? <span className="td-flat">持平 <span style={{ color: 'var(--td-text-3)' }}>{suffix}</span></span>
+      : <span className={v > 0 ? 'td-up' : 'td-down'}>{v > 0 ? '▲' : '▼'} {Math.abs(v * 100).toFixed(1)}% <span style={{ color: 'var(--td-text-3)' }}>{suffix}</span></span>
 
   const todoItems = todoTab === 'PAID' ? pending : todoTab === 'CANCEL' ? cancelReqs : []
   const todoBody = todoTab === 'REFUND' ? (
@@ -278,12 +290,15 @@ export default function DashboardPage() {
     </section>
   )
 
-  const top = stats?.topDishes ?? []
+  // 整单退款后净销量为 0 的菜不进热销榜
+  const top = (stats?.topDishes ?? []).filter((d) => d.quantity > 0)
   const topMax = Math.max(1, ...top.map((d) => d.quantity))
   const hotList = top.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有售出菜品" /> : top.slice(0, 5).map((d, i) => (
     <div key={d.dishName} className="td-hot">
       <span className={`td-rank${i < 3 ? ' is-top' : ''}`}>{i + 1}</span>
-      <span className="td-dish-ph" style={i >= 3 ? { opacity: 0.75 } : undefined}>{d.dishName.slice(0, 1)}</span>
+      <span className="td-dish-ph" style={i >= 3 ? { opacity: 0.75 } : undefined}>
+        {dishImages[d.dishName] ? <img src={dishImages[d.dishName]} alt={d.dishName} loading="lazy" /> : d.dishName.slice(0, 1)}
+      </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <Typography.Text ellipsis>{d.dishName}</Typography.Text>
@@ -347,7 +362,7 @@ export default function DashboardPage() {
           <div className="td-hero">
             <div className="td-hero-label">今日实收（元）</div>
             <div className="td-hero-value">{stats ? (net / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</div>
-            <div className="td-hero-sub">{rate === null ? '昨日同时段无数据' : `${rate >= 0 ? '▲' : '▼'} ${Math.abs(rate * 100).toFixed(1)}% 较昨日同时段`}</div>
+            <div className="td-hero-sub">{rate === null ? '昨日同时段无数据' : rate === 0 ? '与昨日同时段持平' : `${rate > 0 ? '▲' : '▼'} ${Math.abs(rate * 100).toFixed(1)}% 较昨日同时段`}</div>
             <div className="td-hero-grid">
               <div><b>{orderCount}</b><span>订单</span></div>
               <div><b>{formatYuan(Math.round(avgTicket))}</b><span>客单价</span></div>
@@ -387,7 +402,7 @@ export default function DashboardPage() {
               <span className="td-table-badge">{o.tableCode ?? '外带'}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="td-line" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><Tag color="orange" style={{ marginInlineEnd: 0 }}>待接单</Tag><WaitTag order={o} /></div>
-                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>{dayjs(o.createdAt).format('HH:mm')} · {o.peopleCount} 人</div>
+                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>{storeTime(o.createdAt).format('HH:mm')} · {o.peopleCount} 人</div>
               </div>
               <span className="td-money" style={{ fontSize: 18 }}>{formatYuan(o.payAmount)}</span>
             </div>
@@ -438,7 +453,7 @@ export default function DashboardPage() {
               <span className="td-kpi-top">今日订单<Sparkline values={daily.map((d) => d.orderCount)} color="#2563EB" /></span>
               <span className="td-kpi-value">{stats ? orderCount : '—'}<small>单</small></span>
               <span className="td-kpi-foot">
-                {stats && <><span className={orderDelta >= 0 ? 'td-up' : 'td-down'}>{orderDelta >= 0 ? '▲' : '▼'} {Math.abs(orderDelta)} 单</span> 客单价 {formatYuan(Math.round(avgTicket))}</>}
+                {stats && <>{orderDelta === 0 ? <span className="td-flat">与昨日持平</span> : <span className={orderDelta > 0 ? 'td-up' : 'td-down'}>{orderDelta > 0 ? '▲' : '▼'} {Math.abs(orderDelta)} 单</span>} 客单价 {formatYuan(Math.round(avgTicket))}</>}
               </span>
             </div>
           </>

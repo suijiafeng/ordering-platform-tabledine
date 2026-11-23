@@ -32,7 +32,7 @@ function CartItemList({ items, setQuantity }: {
 }
 
 function BalanceHint({ count, total, loggedIn, balance }: { count: number; total: number; loggedIn: boolean; balance: number | null }) {
-  if (!count) return <span className="sub">先去挑几道菜吧</span>
+  if (!count) return null
   if (loggedIn && balance !== null) {
     const remain = balance - total
     return <span className="sub">余额 ¥{yuan(balance)} · 支付后剩 ¥{yuan(remain)}</span>
@@ -88,7 +88,7 @@ export function CartBar({ disabled }: { disabled: boolean }) {
         {count > 0 && <button className="text-action" onClick={clearCart}>清空</button>}
       </div>
       <div className="cart-panel-body cart-items">
-        {count ? <CartItemList items={items} setQuantity={setQuantity} /> : <div className="cart-panel-empty">还没选菜，先去挑几道吧</div>}
+        {count ? <CartItemList items={items} setQuantity={setQuantity} /> : <div className="cart-panel-empty">还没选菜</div>}
       </div>
       <div className="cart-panel-foot">
         <div className="kv"><span>小计</span><span>{count ? <Price value={yuan(total)} /> : '¥0'}</span></div>

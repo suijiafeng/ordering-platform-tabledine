@@ -112,7 +112,7 @@ for (const width of [320, 375, 430, 768]) {
     await page.setViewportSize({ width, height: 812 })
     const { errors } = await setup(page)
     await page.goto('/h5/?token=demo-table')
-    await expect(page.getByRole('button', { name: /会员余额支付/ })).toBeVisible()
+    await expect(page.getByText('会员余额支付')).toBeVisible()
     const add = page.locator('.dishes').getByRole('button', { name: '增加招牌红烧肉', exact: true })
     await add.click()
     expect(await add.evaluate(el => [el.clientWidth, el.clientHeight])).toEqual([44, 44])
@@ -158,7 +158,7 @@ test('登录返回结算保留草稿；再次确认才创建订单和支付', as
   await page.getByLabel('密码', { exact: true }).fill('test-password')
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page.getByLabel('口味备注')).toHaveValue('少盐，不放葱')
-  await expect(page.getByText('本次支付 ¥38，预计剩余 ¥62')).toBeVisible()
+  await expect(page.getByText('可用 ¥100 · 支付后剩 ¥62')).toBeVisible()
   expect(state.created).toHaveLength(0)
   await page.getByRole('button', { name: '确认并支付', exact: true }).click()
   // 下单即扣款：先弹窗确认桌号与金额，取消则不创建订单
@@ -184,7 +184,7 @@ test('余额不足先充值刷新，不创建占库存的订单', async ({ page 
   expect(state.created).toHaveLength(0)
   state.balance = 10000
   await page.locator('.bottom-bar').getByRole('button', { name: '刷新余额', exact: true }).click()
-  await expect(page.getByText('本次支付 ¥38，预计剩余 ¥62')).toBeVisible()
+  await expect(page.getByText('可用 ¥100 · 支付后剩 ¥62')).toBeVisible()
   await expect(page.getByRole('button', { name: '确认并支付', exact: true })).toBeEnabled()
   expect(state.created).toHaveLength(0)
 })
@@ -196,7 +196,7 @@ test('余额刷新失败展示可恢复提示，重试后恢复', async ({ page 
   await expect(page.getByText(/暂时无法查询余额/)).toBeVisible()
   state.balanceFailure = false
   await page.getByRole('button', { name: '刷新余额', exact: true }).click()
-  await expect(page.getByText('本次支付 ¥38，预计剩余 ¥62')).toBeVisible()
+  await expect(page.getByText('可用 ¥100 · 支付后剩 ¥62')).toBeVisible()
 })
 
 test('提交后菜价变化时不自动支付，跳到收银台核对', async ({ page }) => {
@@ -461,8 +461,9 @@ test('结算页已登录条、支付卡片与实付说明不被底栏遮挡', as
   expect(errors).toEqual([])
 })
 
+/** 门店（Asia/Shanghai）当天的某个时刻；H5 按门店时区显示，与浏览器时区无关 */
 function localAt(hour: number, minute: number) {
-  return new Date(2026, 10, 22, hour, minute, 0).toISOString()
+  return new Date(`2026-11-22T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+08:00`).toISOString()
 }
 
 test('制作中订单展示五步进度、制作时长与同桌再点', async ({ page }) => {
@@ -510,4 +511,40 @@ test('已完成订单展示五步进度与次要操作，退款为文字链接',
   await expect(page.getByRole('button', { name: '申请退款 ›' })).toBeVisible()
   await expect(page.getByRole('button', { name: '再来一单' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '继续加菜' })).toHaveCount(0)
+})
+
+test('桌码已停用（40402）提示重新扫码并清掉旧桌台，不显示「菜单服务不可用」', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  // 之前扫过的旧桌台和购物车：桌码失效后应被清掉
+  await page.addInitScript(({ table }) => {
+    if (sessionStorage.getItem('ux-fixture')) return
+    sessionStorage.setItem('ux-fixture', 'yes')
+    localStorage.setItem('ordering-customer-state', JSON.stringify({ version: 0, state: { table, items: [] } }))
+  }, { table })
+  let menuCalls = 0
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path.includes('/qr/')) {
+      await route.fulfill({ status: 404, json: { code: 40402, message: '桌码已失效，请联系店员' } })
+      return
+    }
+    if (path.endsWith('/menu')) menuCalls += 1
+    await route.fulfill({ status: 404, json: { code: 40401, message: '资源不存在' } })
+  })
+  await page.goto('/h5/?token=disabled-table')
+  await expect(page.getByText('桌码已失效', { exact: true })).toBeVisible()
+  await expect(page.getByText('请重新扫描桌上的二维码，或联系店员')).toBeVisible()
+  await expect(page.getByText('菜单服务暂不可用')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '重新加载' })).toHaveCount(0)
+  expect(menuCalls).toBe(0)
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('ordering-customer-state') ?? '{}'))
+  expect(stored.state?.table ?? null).toBeNull()
+  expect(errors).toEqual([])
+})
+
+test('桌码格式不对时同样提示桌码已失效', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ status: 500, json: { code: 50001, message: '不应请求' } }))
+  await page.goto('/h5/?token=bad%20token!')
+  await expect(page.getByText('桌码已失效', { exact: true })).toBeVisible()
 })

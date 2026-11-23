@@ -23,15 +23,28 @@
       <br />后厨队列：待制作，超时订单标红
     </td>
   </tr>
+  <tr>
+    <td width="400" valign="top">
+      <img src="docs/screenshots/merchant-dashboard.png" width="400" alt="店主工作台" />
+      <br />店主工作台：今日实收、分时趋势、待处理、热销与桌台
+    </td>
+    <td width="400" valign="top">
+      <img src="docs/screenshots/merchant-mobile.png" width="400" alt="商家后台手机版" />
+      <br />手机上的商家后台：底部 Tab、卡片式待接单
+    </td>
+  </tr>
 </table>
 
 ## 功能
 
 - 扫桌码进入 H5 菜单，选规格后用会员余额支付。没有微信或支付宝在线收款。
-- 商家接单、后厨制作、送达；超时未接单会自动取消并退款。
+- 商家接单、后厨制作、送达；超时未接单会自动取消并退款。前台可以代客下单、先吃后付。
 - 退款退回会员余额，店主审核。
-- 菜品、桌台二维码、会员充值、员工账号。
+- 菜品、桌台二维码、会员充值、员工账号、操作审计日志。
+- 店主工作台：今日实收、分时趋势（对比昨日）、待处理、热销、桌台和出餐用时。
+- 商家后台适配手机（底部 Tab + 卡片列表），支持暗色模式；新订单有提示音和顶部横幅。
 - 店主、前厅、后厨看到的菜单和接口不同。
+- 日期和时间一律按门店时区（Asia/Shanghai）显示和统计，店主在外地打开也不会错位。
 
 ## 技术栈
 
@@ -65,6 +78,8 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 | 商家后台 | http://localhost:5173 ，`admin` / `admin123` |
 | 顾客 H5 | http://127.0.0.1:3000/h5/?token=dev-table-a1 |
 | 会员 | `13800000001` / `staff123`，余额 100 元 |
+
+开发库会写入一套演示数据：5 个分类、17 道带图菜品（含规格和小料）、A1–A3、B1–B4、包间1 共 8 张桌台。菜品图是 AI 生成的演示图，只用于本地演示，见 [server/src/main/resources/dev-uploads/demo/README.md](server/src/main/resources/dev-uploads/demo/README.md)。上面的截图来自生产镜像（`deploy/nginx/Dockerfile` 构建的静态站点）。
 
 后端默认端口是 `server.port`（8080）。前端把 `/api` 代理到 `API_PROXY_TARGET`。换端口时两个前端一起改。Docker 29 跑测试要加 `-DargLine="-Dapi.version=1.44"`，否则集成测试会被跳过。
 

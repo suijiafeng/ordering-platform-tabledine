@@ -1,6 +1,10 @@
 server:
   port: 8080
   shutdown: graceful
+  # 生产经 nginx（https）反代到本服务（http）：按内网代理传来的 X-Forwarded-Proto / X-Forwarded-For 还原协议和客户端地址。
+  # 否则浏览器带的 Origin（https://域名）与后端看到的 http://域名 不同源，所有写请求都会被当成跨域拒绝（403 Invalid CORS request）。
+  # Tomcat 只信任内网 / 本机代理传来的转发头，公网客户端伪造的无效。
+  forward-headers-strategy: native
 
 spring:
   application:

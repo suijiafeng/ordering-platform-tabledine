@@ -187,7 +187,6 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
               <Form.Item
                 name="priceYuan"
                 label="基础价（元）"
-                extra="实际售价 = 基础价 + 所选规格加价 + 加料；任何一种规格组合的售价都必须大于 0"
                 rules={[
                   { required: true, message: '请输入价格' },
                   ({ getFieldValue }) => ({
@@ -216,7 +215,7 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
               </Form.Item>
             </Col>
             <Col xs={12} sm={6}>
-              <Form.Item name="sort" label="排序" tooltip="同一分类内数字越小越靠前；留空为默认">
+              <Form.Item name="sort" label="排序">
                 <InputNumber min={0} max={9999} precision={0} style={{ width: '100%' }} placeholder="默认" />
               </Form.Item>
             </Col>

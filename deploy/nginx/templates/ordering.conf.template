@@ -1,5 +1,13 @@
 # 域名来自 deploy/.env 的 DOMAIN：nginx 镜像启动时用 envsubst 把本模板渲染为 /etc/nginx/conf.d/ordering.conf
 
+# 压缩文本类静态资源与接口响应（商家端主包约 1.7 MB，压缩后约 0.5 MB）；本文件位于 http 级别，对下面两个 server 都生效
+gzip on;
+gzip_vary on;
+gzip_proxied any;
+gzip_comp_level 5;
+gzip_min_length 1024;
+gzip_types text/css text/plain application/javascript application/json image/svg+xml application/xml;
+
 # HTTP：证书签发校验 + 其余跳转 HTTPS
 server {
     listen 80;
@@ -86,9 +94,21 @@ server {
         return 404;
     }
 
-    # 商家端（SPA）
+    # 商家端带内容哈希的构建产物：长期缓存；不存在的文件直接 404，不回落到 index.html
+    location /assets/ {
+        root /usr/share/nginx/merchant;
+        try_files $uri =404;
+        include /etc/nginx/includes/security-headers.inc;
+        include /etc/nginx/includes/csp-merchant.inc;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # 商家端（SPA）：入口页每次校验，发版后浏览器立刻拿到新的资源清单
     location / {
         root /usr/share/nginx/merchant;
         try_files $uri /index.html;
+        include /etc/nginx/includes/security-headers.inc;
+        include /etc/nginx/includes/csp-merchant.inc;
+        add_header Cache-Control "no-cache";
     }
 }

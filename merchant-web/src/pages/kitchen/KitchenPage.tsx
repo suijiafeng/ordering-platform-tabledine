@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, App, Button, Card, Col, Empty, Row, Select, Space, Switch, Tag, Typography, theme as antdTheme } from 'antd'
 import { CheckOutlined, FireOutlined, SoundOutlined } from '@ant-design/icons'
-import dayjs from 'dayjs'
 import { kitchenQueue, readyOrder, startCooking } from '../../api/order'
 import type { OrderSummary } from '../../api/types'
 import { usePollStore } from '../../hooks/useOrderPoll'
@@ -11,6 +10,7 @@ import { ignoreShownError } from '../../utils/errors'
 import { useIsKitchen } from '../../utils/auth'
 import ConfirmButton from '../../components/ConfirmButton'
 import { STAGE_META, isOverdue, minutesSince, splitKitchenColumn, stageOf, type KitchenStage } from './kitchenQueue'
+import { storeTime } from '../../utils/storeTime'
 
 const REFRESH_MS = 5000
 
@@ -238,7 +238,7 @@ export default function KitchenPage() {
       <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
         <Space size="large" wrap align="center">
           <Typography.Text type={offline ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
-            {offline ? '连接中断，正在重试…' : lastSync ? `最后同步 ${dayjs(lastSync).format('HH:mm:ss')} · 每 5 秒刷新` : '正在连接…'}
+            {offline ? '连接中断，正在重试…' : lastSync ? `最后同步 ${storeTime(lastSync).format('HH:mm:ss')} · 每 5 秒刷新` : '正在连接…'}
           </Typography.Text>
         </Space>
         <Space wrap>
@@ -266,7 +266,7 @@ export default function KitchenPage() {
           type="error"
           showIcon
           message="无法连接服务器"
-          description={lastSync ? `当前显示的是 ${dayjs(lastSync).format('HH:mm:ss')} 的队列，可能已不是最新。恢复连接后会自动刷新。` : '尚未获取到队列，请检查网络或服务器。'}
+          description={lastSync ? `当前显示的是 ${storeTime(lastSync).format('HH:mm:ss')} 的队列，可能已不是最新。恢复连接后会自动刷新。` : '尚未获取到队列，请检查网络或服务器。'}
           action={<Button size="small" onClick={() => void load()}>立即重试</Button>}
         />
       )}

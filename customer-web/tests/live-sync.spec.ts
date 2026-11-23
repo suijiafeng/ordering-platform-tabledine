@@ -127,7 +127,7 @@ test('结算自动同步充值和营业，保留输入内容且恢复无需刷�
   await page.getByRole('button', { name: '增加就餐人数', exact: true }).click()
   s.balance = 20000; s.storeOpen = false
   await tick(page)
-  await expect(page.getByText('本次支付 ¥10，预计剩余 ¥190', { exact: true })).toBeVisible()
+  await expect(page.getByText('可用 ¥200 · 支付后剩 ¥190', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '已打烊', exact: true })).toBeDisabled()
   await expect(page.getByLabel('口味备注')).toHaveValue('同步时保留备注')
   s.storeOpen = true

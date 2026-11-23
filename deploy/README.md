@@ -52,6 +52,10 @@ V18 新增顾客下单请求记录。原请求结果未知且查无订单时，�
 
 nginx 必须保留官方镜像默认的 `nginx -g "daemon off;"` 命令，不能在 Compose 中改成 `/bin/sh`，否则入口脚本会跳过模板渲染。证书定时重载由 `nginx/40-reload-certificates.sh` 启动钩子负责，nginx 仍作为 PID 1 接收停止信号。
 
+nginx 以 HTTPS 对外、用 HTTP 转发给后端，并带上 `X-Forwarded-Proto` / `X-Forwarded-For`。后端在 `application.yml` 里开了 `server.forward-headers-strategy: native`，据此还原顾客看到的 `https://` 地址和真实 IP；关掉它，浏览器登录会被 CORS 以 403 拒绝。后端只信任内网和本机来源的转发头，不要把 8080 直接暴露到公网。
+
+nginx 对文本类响应开了 gzip；`/assets/` 下带哈希的商家后台资源缓存一年（`immutable`），`index.html` 用 `no-cache`，发版后刷新即可拿到新版本。
+
 CI 构建镜像后执行 `./scripts/test-nginx-startup.sh ordering-web:ci`，使用临时自签名证书验证域名替换、进程入口和两个静态站点，不连接生产数据库。
 
 ## 日常运维
@@ -74,4 +78,4 @@ gunzip -c /backup/ordering-2026-10-05.sql.gz | docker compose exec -T postgres p
 - **报「后端启动失败」**：脚本会打印最近的后端日志，照着提示改 `.env` 后重新运行即可。
 - **改了域名**：改 `.env` 的 `DOMAIN` 后重新运行 `./deploy.sh`，会为新域名签证书并重新渲染 nginx 配置。
 - **重置所有数据**（只在测试阶段用）：`docker compose down -v` 会删掉数据库、图片和证书，之后 `./deploy.sh` 会按首次部署重新初始化。
-- **只想在本机跑起来看看**：不需要这套编排。按仓库根目录 README 的「本地开发」，用 `docker-compose.dev.yml` 只起一个数据库，其余在本机运行。
+- **只想在本机跑起来看看**：不需要这套编排。按仓库根目录 README 的「本地运行」，用 `docker-compose.dev.yml` 只起一个数据库，其余在本机运行。

@@ -41,6 +41,15 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(authed(get("/api/v1/m/members"), owner)).andExpect(status().isOk());
         assertThat(getData("/api/v1/m/audit-logs?opType=VIEW&category=会员", owner).path("total").asLong()).isPositive();
 
+        // 页面后台同步反复拉同一份会员列表：10 分钟内只记一条；换了查询条件照常记录
+        String keyword = "k" + System.nanoTime();
+        long before = getData("/api/v1/m/audit-logs?opType=VIEW&category=会员", owner).path("total").asLong();
+        for (int i = 0; i < 3; i++) {
+            mvc.perform(authed(get("/api/v1/m/members?keyword=" + keyword), owner)).andExpect(status().isOk());
+        }
+        mvc.perform(authed(get("/api/v1/m/members?keyword=" + keyword + "&page=2"), owner)).andExpect(status().isOk());
+        assertThat(getData("/api/v1/m/audit-logs?opType=VIEW&category=会员", owner).path("total").asLong()).isEqualTo(before + 2);
+
         // 只有店主能查；日志只能追加，数据库层禁止修改和删除
         mvc.perform(authed(get("/api/v1/m/audit-logs"), staffToken())).andExpect(status().isForbidden());
         assertThatThrownBy(() -> jdbc.update("UPDATE audit_log SET action = 'x'")).hasMessageContaining("append-only");

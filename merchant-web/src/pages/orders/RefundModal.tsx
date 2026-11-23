@@ -181,7 +181,7 @@ export default function RefundModal({ order, open, onClose, onDone }: Props) {
           <Table<OrderItemView> rowKey="id" size="small" pagination={false} columns={columns} dataSource={items} style={{ marginBottom: 16 }} />
         )}
         {type === 'CUSTOM' && (
-          <Form.Item label="退款金额（元）" extra="用于售后补偿等场景，不能超过可退余额">
+          <Form.Item label="退款金额（元）" extra="不能超过可退余额">
             <InputNumber min={0.01} max={fenToYuan(refundable)} precision={2} value={amountYuan} onChange={setAmountYuan} style={{ width: 200 }} prefix="¥" />
           </Form.Item>
         )}
