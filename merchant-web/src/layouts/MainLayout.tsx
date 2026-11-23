@@ -1,56 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Alert, App, Badge, Button, Drawer, Layout, Menu, Space, theme as antdTheme } from 'antd'
-import type { MenuProps } from 'antd'
+import { Alert, App, Button, Drawer, Grid, Layout, Space, theme as antdTheme } from 'antd'
 import dayjs from 'dayjs'
-import {
-  AppstoreOutlined,
-  AuditOutlined,
-  BarChartOutlined,
-  DashboardOutlined,
-  FireOutlined,
-  MenuOutlined,
-  OrderedListOutlined,
-  QrcodeOutlined,
-  RollbackOutlined,
-  SettingOutlined,
-  TeamOutlined,
-  WalletOutlined,
-} from '@ant-design/icons'
+import { MenuOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import UserMenu from '../components/UserMenu'
-import BrandLogo from '../components/BrandLogo'
 import ThemeToggle from '../components/ThemeToggle'
 import NotificationBell from '../components/NotificationBell'
 import PageBreadcrumb from '../components/PageBreadcrumb'
+import SideNav from '../components/SideNav'
+import NewOrderBanner from '../components/NewOrderBanner'
 import { useOrderPoll, usePollStore } from '../hooks/useOrderPoll'
 import { playSound, unlockSound, useSoundStore } from '../utils/sound'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useNotificationStore } from '../store/notifications'
+import { useStoreInfo } from '../store/storeInfo'
+import { navGroupOf } from './nav'
 
-interface NavItem {
-  key: string
-  label: string
-  icon: React.ReactNode
-  ownerOnly?: boolean
-  /** 前厅 / 店主才能看；后厨账号隐藏（权责分离：后厨只处理前厅确认过的订单） */
-  frontOnly?: boolean
+export { NAV_ITEMS } from './nav'
+
+const COLLAPSE_KEY = 'merchant_sider_collapsed'
+
+function loadCollapsed(): boolean | null {
+  try {
+    const v = localStorage.getItem(COLLAPSE_KEY)
+    return v === '1' ? true : v === '0' ? false : null
+  } catch {
+    return null
+  }
 }
-
-/** 菜单与需求文档 v1.2 §15 商家端页面清单对应 */
-export const NAV_ITEMS: NavItem[] = [
-  { key: '/', label: '工作台', icon: <DashboardOutlined />, frontOnly: true },
-  { key: '/orders', label: '订单管理', icon: <OrderedListOutlined /> },
-  { key: '/kitchen', label: '后厨队列', icon: <FireOutlined /> },
-  { key: '/refunds', label: '退款管理', icon: <RollbackOutlined />, ownerOnly: true },
-  { key: '/dishes', label: '菜品管理', icon: <AppstoreOutlined /> },
-  { key: '/tables', label: '桌台管理', icon: <QrcodeOutlined />, frontOnly: true },
-  { key: '/members', label: '会员充值', icon: <WalletOutlined />, frontOnly: true },
-  { key: '/reports', label: '数据看板', icon: <BarChartOutlined />, ownerOnly: true },
-  { key: '/staff', label: '员工管理', icon: <TeamOutlined />, ownerOnly: true },
-  { key: '/settings', label: '店铺设置', icon: <SettingOutlined />, ownerOnly: true },
-  { key: '/audit', label: '操作日志', icon: <AuditOutlined />, ownerOnly: true },
-]
 
 export default function MainLayout() {
   const navigate = useNavigate()
@@ -62,8 +40,17 @@ export default function MainLayout() {
   // 用 App 上下文的 notification，才能跟随深色模式，避免静态方法的主题警告
   const { notification } = App.useApp()
   const [menuOpen, setMenuOpen] = useState(false)
-  // 平板和小屏桌面自动折叠为图标栏，为后厨三列和数据表保留内容宽度。
-  const [collapsed, setCollapsed] = useState(false)
+  // 平板和小屏桌面（< 1200）默认折叠为图标栏，为后厨三列和数据表保留内容宽度；用户手动切换后记住选择
+  const screens = Grid.useBreakpoint()
+  const [collapseChoice, setCollapseChoice] = useState<boolean | null>(loadCollapsed)
+  const collapsed = collapseChoice ?? screens.xl === false
+  const toggleCollapsed = () => {
+    const next = !collapsed
+    setCollapseChoice(next)
+    try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0') } catch { /* 隐私模式 */ }
+  }
+  const refreshStore = useStoreInfo((s) => s.refresh)
+  useEffect(() => { void refreshStore() }, [refreshStore])
   const { token } = antdTheme.useToken()
   // 全局新订单轮询（提示音 + 菜单角标）
   const { counts, retry } = useOrderPoll()
@@ -126,6 +113,8 @@ export default function MainLayout() {
       : (orderNos.length === 1 ? '新订单，请接单' : `${orderNos.length} 个新订单，请接单`)
     const link = isKitchen ? '/kitchen' : orderNos.length === 1 ? `/orders?status=PAID&orderNo=${first}` : '/orders?status=PAID'
     addMessage({ kind: 'ORDER', title, description, link, dedupeKey: `${isKitchen ? 'new-making' : 'new-order'}:${[...orderNos].sort().join(',')}` })
+    // 前厅 / 店主看内容区顶部的待接单横幅（NewOrderBanner），不再弹右下角浮层压住按钮
+    if (!isKitchen) return
     notification.open({ key: 'new-order', message: title, description, duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate(link) })
   }, [lastArrival, navigate, addMessage, isKitchen, notification])
   useEffect(() => {
@@ -135,7 +124,7 @@ export default function MainLayout() {
       const link = isKitchen ? '/kitchen' : '/orders?status=PAID'
       const nos = isKitchen ? counts?.makingOrderNos : counts?.pendingOrderNos
       addMessage({ kind: 'ORDER', title, description, link, dedupeKey: `initial-${isKitchen ? 'making' : 'pending'}:${nos?.slice().sort().join(',') ?? initialPending}` })
-      notification.warning({ key: 'initial-pending', message: title, description, duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate(link) })
+      if (isKitchen) notification.warning({ key: 'initial-pending', message: title, description, duration: 5, showProgress: true, placement: 'bottomRight', onClick: () => navigate(link) })
       consumeInitial()
     }
   }, [initialPending, counts, consumeInitial, navigate, addMessage, isKitchen, notification])
@@ -212,55 +201,30 @@ export default function MainLayout() {
     }
   }, [counts, isOwner, navigate, addMessage, notification])
 
-  const badgeFor = (key: string): number => {
+  const badgeFor = (key: string): { count: number; hot?: boolean } => {
     if (!counts) {
-      return 0
+      return { count: 0 }
     }
     if (key === '/orders') {
       // 前厅要处理的：待接单 + 顾客取消申请 + 待送餐 + 先吃后付未结账；后厨对订单只读，不显示待办角标
-      if (isKitchen) return 0
-      return counts.pendingAcceptCount + (counts.cancelRequestCount ?? 0) + (counts.readyCount ?? 0) + (counts.unsettledCount ?? 0)
+      if (isKitchen) return { count: 0 }
+      const urgent = counts.pendingAcceptCount + (counts.cancelRequestCount ?? 0)
+      return { count: urgent + (counts.readyCount ?? 0) + (counts.unsettledCount ?? 0), hot: urgent > 0 }
     }
     if (key === '/kitchen') {
       // 与后厨队列同一口径：只有前厅已确认的制作中订单
-      return counts.makingCount
+      return { count: counts.makingCount, hot: isKitchen }
     }
     if (key === '/refunds') {
-      return counts.applyingRefundCount + counts.failedRefundCount
+      return { count: counts.applyingRefundCount + counts.failedRefundCount, hot: true }
     }
-    return 0
+    return { count: 0 }
   }
 
-  const items: MenuProps['items'] = useMemo(
-    () => NAV_ITEMS.filter((i) => (!i.ownerOnly || isOwner) && (!i.frontOnly || !isKitchen)).map((i) => {
-      const n = badgeFor(i.key)
-      return {
-        key: i.key,
-        icon: i.icon,
-        // 文字放在 Badge 外面：Badge 根节点自带 color: colorText，包住文字会盖掉深色侧栏的菜单颜色
-        label: <div>{i.label} {n > 0 && <Badge count={n} size="small" offset={[0, -10]} color={i.key === '/refunds' ? 'red' : 'orange'} />}</div>,
-      }
-    }),
-    [isOwner, isKitchen, counts], // eslint-disable-line react-hooks/exhaustive-deps
-  )
-
-  const selected = NAV_ITEMS.map((i) => i.key)
-    .filter((k) => (k === '/' ? location.pathname === '/' : location.pathname.startsWith(k)))
-    .slice(-1)
-
-  const menu = (dark: boolean) => (
-    <Menu
-      mode="inline"
-      theme={dark ? 'dark' : 'light'}
-      style={dark ? { borderInlineEnd: 'none' } : undefined}
-      selectedKeys={selected}
-      items={items}
-      onClick={({ key }) => {
-        navigate(key)
-        setMenuOpen(false)
-      }}
-    />
-  )
+  const banner = !isKitchen && counts ? (
+    <NewOrderBanner pendingOrderNos={counts.pendingOrderNos} latestHint={lastArrival?.orderNos[0]} onChanged={() => void retry()} />
+  ) : null
+  const group = navGroupOf(location.pathname)
 
   if (isMobile) {
     // 手机：顶栏 + 抽屉菜单；内容区留给页面
@@ -279,12 +243,20 @@ export default function MainLayout() {
             <UserMenu compact />
           </Space>
         </Layout.Header>
-        <Drawer closable={{ placement: 'end' }} placement="left" open={menuOpen} onClose={() => setMenuOpen(false)} width={240} styles={{ body: { padding: 0 } }} title={<BrandLogo size={24} showSubtitle />}>
-          {menu(false)}
+        <Drawer
+          closable={{ placement: 'end' }}
+          placement="left"
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          width={260}
+          styles={{ body: { padding: 0, background: 'var(--td-sider)' }, header: { display: 'none' } }}
+        >
+          <SideNav badgeFor={badgeFor} onNavigate={() => setMenuOpen(false)} />
         </Drawer>
         <Layout.Content style={{ padding: 12 }}>
           {netBanner}
           {soundBanner}
+          {banner}
           <Outlet />
         </Layout.Content>
       </Layout>
@@ -296,23 +268,20 @@ export default function MainLayout() {
       {/* 侧栏固定在视口内（sticky），菜单过长时侧栏自身滚动；右侧内容随页面滚动 */}
       <Layout.Sider
         theme="dark"
-        width={220}
-        breakpoint="xl"
-        collapsedWidth={64}
-        onCollapse={setCollapsed}
-        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto', zIndex: 11 }}
+        width={232}
+        collapsed={collapsed}
+        collapsedWidth={72}
+        trigger={null}
+        style={{ position: 'sticky', top: 0, height: '100vh', zIndex: 11 }}
       >
-        <div
-          style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', paddingInline: collapsed ? 0 : 20, cursor: 'pointer' }}
-          onClick={() => navigate('/')}
-        >
-          <BrandLogo size={28} showName={!collapsed} showSubtitle inverted />
-        </div>
-        {menu(true)}
+        <SideNav collapsed={collapsed} onToggle={toggleCollapsed} badgeFor={badgeFor} />
       </Layout.Sider>
       <Layout>
         <Layout.Header style={{ background: token.colorBgContainer, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingInline: 24, boxShadow: `0 1px 0 ${token.colorSplit}`, position: 'sticky', top: 0, zIndex: 10 }}>
-          <PageBreadcrumb />
+          <div className="td-header-title">
+            {group && <span className="td-header-crumb">{group}</span>}
+            <PageBreadcrumb />
+          </div>
           <Space size={8}>
             <NotificationBell />
             <ThemeToggle />
@@ -322,6 +291,7 @@ export default function MainLayout() {
         <Layout.Content style={{ padding: 24 }}>
           {netBanner}
           {soundBanner}
+          {banner}
           <Outlet />
         </Layout.Content>
       </Layout>

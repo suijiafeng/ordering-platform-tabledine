@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { App, Badge, Button, Card, Col, Form, Input, InputNumber, Result, Row, Select, Space, Spin, Switch, Tag, Typography, Grid, theme as antdTheme } from 'antd'
 import { SoundOutlined } from '@ant-design/icons'
 import { fetchStore, setBusinessStatus, updateStore } from '../../api/store'
+import { useStoreInfo } from '../../store/storeInfo'
 import type { StoreDetail, StoreUpdateRequest } from '../../api/types'
 import ImageUpload from '../../components/ImageUpload'
 import { ignoreShownError } from '../../utils/errors'
@@ -63,7 +64,9 @@ export default function SettingsPage() {
         beginLoad()
         setSaving(true)
         try {
-          setStore(await setBusinessStatus(open))
+          const next = await setBusinessStatus(open)
+          setStore(next)
+          useStoreInfo.getState().set(next)
         } catch (e) {
           ignoreShownError(e)
         } finally {
@@ -106,6 +109,7 @@ export default function SettingsPage() {
     try {
       const s = await updateStore(form.getFieldsValue())
       setStore(s)
+      useStoreInfo.getState().set(s)
       dirtyFields.current.clear()
       form.setFieldsValue(s)
       setSyncFailed(false)

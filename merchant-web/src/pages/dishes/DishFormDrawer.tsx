@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { App, Button, Card, Checkbox, Col, Drawer, Form, Grid, Input, InputNumber, Row, Select, Space, Spin, Switch, Typography } from 'antd'
+import { App, Button, Card, Checkbox, Col, Drawer, Form, Grid, Input, InputNumber, Row, Select, Spin, Switch, Typography } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { createDish, getDish, updateDish } from '../../api/menu'
 import type { Category, DishSaveRequest } from '../../api/types'
@@ -160,11 +160,14 @@ export default function DishFormDrawer({ open, dishId, categories, defaultCatego
       open={open}
       onClose={onClose}
       destroyOnHidden
-      extra={
-        <Space>
-          <Button onClick={onClose}>取消</Button>
-          <Button type="primary" loading={saving} onClick={submit}>保存</Button>
-        </Space>
+      // 与订单抽屉一致：关闭在右上角，保存 / 取消放在底部固定栏
+      footer={
+        <div className="td-drawer-footer">
+          <div className="td-drawer-footer-main">
+            <Button onClick={onClose}>取消</Button>
+            <Button type="primary" loading={saving} onClick={submit}>保存</Button>
+          </div>
+        </div>
       }
     >
       <Spin spinning={loading}>

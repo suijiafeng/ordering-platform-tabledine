@@ -1,42 +1,76 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Alert, Badge, Button, DatePicker, Input, Space, Tabs, Tag, Typography } from 'antd'
+import { Alert, App, Button, DatePicker, Dropdown, Input, Space, Tabs, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { ReloadOutlined, PlusOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined, DownOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
-import { listOrders } from '../../api/order'
-import type { OrderSummary } from '../../api/types'
+import { acceptOrder, deliverOrder, listOrders } from '../../api/order'
+import type { NewOrderCount, OrderDetail, OrderSummary } from '../../api/types'
 import { PLATFORM } from '../../utils/orderStatus'
 import { usePollStore } from '../../hooks/useOrderPoll'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import MoneyText from '../../components/MoneyText'
+import ConfirmButton from '../../components/ConfirmButton'
 import { OrderRefundTag, OrderStatusTag } from '../../components/StatusTag'
 import OrderDetailDrawer from './OrderDetailDrawer'
-import Panel, { PageToolbar } from '../../components/Panel'
+import Panel from '../../components/Panel'
 import ResponsiveTable from '../../components/ResponsiveTable'
 import { ignoreShownError } from '../../utils/errors'
 import { useIsKitchen } from '../../utils/auth'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { useOrderEvents } from '../../store/orderEvents'
 
 const PAGE_SIZE = 20
 
-/** 状态页签：key 为逗号分隔的后端状态 */
+/** 页签 key：后端状态（逗号分隔）或下面几个特殊筛选 */
+/** 「进行中」：待接单 + 制作中 + 待送餐，默认页签 */
+export const ACTIVE_TAB = 'ACTIVE'
+const ACTIVE_STATUSES = 'PAID,MAKING,READY'
+/** 「全部」 */
+export const ALL_TAB = 'ALL'
 /** 「取消申请」页签：按取消申请筛选，而不是按订单状态 */
 const CANCEL_TAB = 'CANCEL_REQUEST'
 /** 「未结账」页签：先吃后付、还没结账的订单 */
 const UNSETTLED_TAB = 'UNSETTLED'
 
-const TABS: { key: string; label: string }[] = [
-  { key: '', label: '全部' },
-  { key: 'PAID', label: '待接单' },
-  { key: CANCEL_TAB, label: '取消申请' },
-  { key: UNSETTLED_TAB, label: '未结账' },
-  { key: 'MAKING', label: '待制作 / 制作中' },
-  { key: 'READY', label: '待送餐' },
+interface TabDef {
+  key: string
+  label: string
+  /** 计数取自轮询接口；hot = 需要马上处理，计数用主色 */
+  count?: (c: NewOrderCount) => number
+  hot?: boolean
+}
+
+export const TABS: TabDef[] = [
+  { key: ACTIVE_TAB, label: '进行中', count: (c) => c.pendingAcceptCount + c.makingCount + (c.readyCount ?? 0), hot: true },
+  { key: 'PAID', label: '待接单', count: (c) => c.pendingAcceptCount, hot: true },
+  { key: 'MAKING', label: '制作中', count: (c) => c.makingCount },
+  { key: 'READY', label: '待送餐', count: (c) => c.readyCount ?? 0 },
+  { key: CANCEL_TAB, label: '取消申请', count: (c) => c.cancelRequestCount ?? 0, hot: true },
+  { key: UNSETTLED_TAB, label: '未结账', count: (c) => c.unsettledCount ?? 0 },
   { key: 'DONE', label: '已完成' },
+  { key: ALL_TAB, label: '全部' },
+]
+/** 不常用的状态收进「更多状态」 */
+export const MORE_TABS: TabDef[] = [
   { key: 'CANCELLED', label: '已取消' },
   { key: 'PENDING_PAY,CLOSED', label: '未支付' },
 ]
+
+/** 页签 → 列表接口参数 */
+export function tabQuery(tab: string): { status?: string; cancelRequest?: 'APPLYING'; unsettled?: boolean } {
+  if (tab === ACTIVE_TAB) return { status: ACTIVE_STATUSES }
+  if (tab === ALL_TAB) return {}
+  if (tab === CANCEL_TAB) return { cancelRequest: 'APPLYING' }
+  if (tab === UNSETTLED_TAB) return { unsettled: true }
+  return { status: tab }
+}
+
+/** 先吃后付、还没结账（已取消 / 已关闭的不算） */
+function isUnsettledRow(r: OrderSummary): boolean {
+  return r.payMode === 'PAY_LATER' && !r.paidAt && r.status !== 'CANCELLED' && r.status !== 'CLOSED'
+}
 
 /** 订单管理：按状态筛选、搜索订单号 / 桌号、按日期过滤；点击查看详情并操作 */
 export default function OrdersPage() {
@@ -44,8 +78,15 @@ export default function OrdersPage() {
   const isKitchen = useIsKitchen()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const status = params.get('status') ?? ''
+  // 没带 status 时默认「进行中」；旧链接 status= 空串视为「全部」
+  const rawStatus = params.get('status')
+  const status = rawStatus === null ? ACTIVE_TAB : rawStatus === '' ? ALL_TAB : rawStatus
+  const isMobile = useIsMobile()
+  const { message } = App.useApp()
+  const [actingNo, setActingNo] = useState<string | null>(null)
+  const orderEvents = useOrderEvents((s) => s.version)
   const [keyword, setKeyword] = useState('')
+  const [searchText, setSearchText] = useState('')
   const [date, setDate] = useState<Dayjs | null>(null)
   const [page, setPage] = useState(1)
   const [data, setData] = useState<{ list: OrderSummary[]; total: number }>({ list: [], total: 0 })
@@ -68,9 +109,7 @@ export default function OrdersPage() {
     if (!background) setLoading(true)
     try {
       const res = await listOrders({
-        status: status && status !== CANCEL_TAB && status !== UNSETTLED_TAB ? status : undefined,
-        cancelRequest: status === CANCEL_TAB ? 'APPLYING' : undefined,
-        unsettled: status === UNSETTLED_TAB || undefined,
+        ...tabQuery(status),
         keyword: keyword || undefined,
         date: date ? date.format('YYYY-MM-DD') : undefined,
         page,
@@ -93,6 +132,11 @@ export default function OrdersPage() {
   }, [load])
   useVisiblePolling(() => load(true))
 
+  // 新订单横幅里接单后静默刷新
+  useEffect(() => {
+    if (orderEvents > 0) void load(true)
+  }, [orderEvents]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // 轮询到新订单时自动刷新列表
   useEffect(() => {
     if (newArrived > 0) {
@@ -112,16 +156,49 @@ export default function OrdersPage() {
     setParams(next, { replace: true })
   }
 
+  /** 列表里的快捷操作（接单 / 送达）：成功后静默刷新，失败由请求层提示 */
+  const quickAction = async (r: OrderSummary, fn: (no: string) => Promise<OrderDetail>, ok: string) => {
+    setActingNo(r.orderNo)
+    try {
+      await fn(r.orderNo)
+      message.success(`${ok}${r.tableCode ? ` · ${r.tableCode} 桌` : ''}`)
+      void load(true)
+    } catch (e) {
+      ignoreShownError(e)
+    } finally {
+      setActingNo(null)
+    }
+  }
+
+  /** 每行一个主操作：待接单→接单、待送餐→送达、取消申请→处理申请、未结账→结账；其余只有详情 */
+  const primaryAction = (r: OrderSummary) => {
+    if (isKitchen) return null
+    const busy = actingNo === r.orderNo
+    if (r.status === 'PAID') {
+      return <ConfirmButton type="primary" size="small" loading={busy} confirmText={`确认接单${r.tableCode ? `（${r.tableCode} 桌）` : ''}？`} onConfirm={() => void quickAction(r, acceptOrder, '已接单')}>接单</ConfirmButton>
+    }
+    if (r.status === 'MAKING' && r.cancelRequestStatus === 'APPLYING') {
+      return <Button size="small" danger onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>处理申请</Button>
+    }
+    if (isUnsettledRow(r)) {
+      return <Button size="small" color="gold" variant="solid" onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>结账</Button>
+    }
+    if (r.status === 'READY') {
+      return <ConfirmButton size="small" color="blue" variant="solid" loading={busy} confirmText={`确认送达${r.tableCode ? `（${r.tableCode} 桌）` : ''}？`} onConfirm={() => void quickAction(r, deliverOrder, '已送达')}>送达</ConfirmButton>
+    }
+    return null
+  }
+
   const columns: ColumnsType<OrderSummary> = [
     {
       title: '桌号',
       dataIndex: 'tableCode',
-      width: 80,
+      width: 72,
       render: (v: string | null) => <Typography.Text strong style={{ fontSize: 16 }}>{v ?? '-'}</Typography.Text>,
     },
     {
       title: '订单',
-      width: 180,
+      width: 190,
       render: (_, r) => (
         <Space direction="vertical" size={0}>
           <Typography.Text className="order-no">{r.orderNo}</Typography.Text>
@@ -134,12 +211,15 @@ export default function OrdersPage() {
     {
       title: '菜品',
       render: (_, r) => (
-        <Typography.Text ellipsis style={{ maxWidth: 320, display: 'inline-block' }}>
-          {r.items.map((i) => `${i.dishName}${i.specDesc ? `(${i.specDesc})` : ''}×${i.quantity}`).join('、')}
-        </Typography.Text>
+        <Space direction="vertical" size={0} style={{ maxWidth: 360 }}>
+          <Typography.Text ellipsis={{ tooltip: true }} style={{ maxWidth: 360 }}>
+            {r.items.map((i) => `${i.dishName}${i.specDesc ? `(${i.specDesc})` : ''} ×${i.quantity}`).join('、') || '-'}
+          </Typography.Text>
+          {r.remark && <Typography.Text ellipsis={{ tooltip: r.remark }} style={{ fontSize: 12, color: '#D97706', maxWidth: 360 }}>备注：{r.remark}</Typography.Text>}
+        </Space>
       ),
     },
-    { title: '金额', dataIndex: 'payAmount', width: 100, align: 'right', render: (v: number, r) => (
+    { title: '金额', dataIndex: 'payAmount', width: 110, align: 'right', render: (v: number, r) => (
       <Space direction="vertical" size={0} style={{ alignItems: 'flex-end' }}>
         <MoneyText fen={v} strong />
         {r.refundedAmount > 0 && <Typography.Text type="danger" style={{ fontSize: 12 }}>已退 ¥{(r.refundedAmount / 100).toFixed(2)}</Typography.Text>}
@@ -147,57 +227,113 @@ export default function OrdersPage() {
     ) },
     {
       title: '状态',
-      render: (_, r) => (
-        <Space direction="vertical" size={2}>
-          {/* 接单后先是「待制作」，后厨点开始制作后才是「制作中」 */}
-          <Space size={4} wrap>
-            <OrderStatusTag status={r.status} cookingStartedAt={r.cookingStartedAt} />
-            <OrderRefundTag status={r.refundStatus} />
-            {r.status === 'MAKING' && r.cancelRequestStatus === 'APPLYING' && <Tag color="error">顾客申请取消</Tag>}
-            {r.source === 'MERCHANT' && <Tag color="purple">前厅代客</Tag>}
-            {r.payMode === 'PAY_LATER' && !r.paidAt && r.status !== 'CANCELLED' && r.status !== 'CLOSED' && <Tag color="gold">未结账</Tag>}
+      width: 220,
+      render: (_, r) => {
+        const waited = r.status === 'PAID' && r.paidAt ? Math.max(0, dayjs().diff(dayjs(r.paidAt), 'minute')) : null
+        return (
+          <Space direction="vertical" size={2}>
+            {/* 接单后先是「待制作」，后厨点开始制作后才是「制作中」 */}
+            <Space size={4} wrap>
+              <OrderStatusTag status={r.status} cookingStartedAt={r.cookingStartedAt} />
+              {waited !== null && <Tag color={waited >= 3 ? 'error' : 'default'} icon={<ClockCircleOutlined />}>{waited < 1 ? '刚刚' : `${waited} 分钟`}</Tag>}
+              <OrderRefundTag status={r.refundStatus} />
+              {r.status === 'MAKING' && r.cancelRequestStatus === 'APPLYING' && <Tag color="error">顾客申请取消</Tag>}
+              {r.source === 'MERCHANT' && <Tag color="purple">前厅代客</Tag>}
+              {isUnsettledRow(r) && <Tag color="gold">未结账</Tag>}
+            </Space>
+            {r.status === 'MAKING' && r.cookingStartedAt && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(r.cookingStartedAt).format('HH:mm')} 开始制作</Typography.Text>
+            )}
           </Space>
-          {r.status === 'MAKING' && r.cookingStartedAt && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(r.cookingStartedAt).format('HH:mm')} 开始制作</Typography.Text>
-          )}
+        )
+      },
+    },
+    {
+      title: '操作',
+      width: 150,
+      fixed: 'right',
+      align: 'right',
+      render: (_, r) => (
+        <Space size={6}>
+          {primaryAction(r)}
+          <Button size="small" onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>详情</Button>
         </Space>
       ),
     },
-    { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v: string | null) => v || <Typography.Text type="secondary">-</Typography.Text> },
-    { title: '操作', width: 80, fixed: 'right', render: (_, r) => <Button type="link" size="small" onClick={() => openDetail(r.orderNo)}>详情</Button> },
   ]
 
-  const tabLabel = (t: { key: string; label: string }) => {
-    const n = t.key === 'PAID' ? counts?.pendingAcceptCount : t.key === 'MAKING' ? counts?.makingCount : t.key === 'READY' ? counts?.readyCount : t.key === CANCEL_TAB ? counts?.cancelRequestCount : t.key === UNSETTLED_TAB ? counts?.unsettledCount : 0
-    return n ? <Badge count={n} size="small" offset={[8, -2]}>{t.label}</Badge> : t.label
+  const countOf = (t: TabDef) => (counts && t.count ? t.count(counts) : 0)
+  const tabLabel = (t: TabDef) => {
+    const n = countOf(t)
+    return (
+      <span>
+        {t.label}
+        {n > 0 && <span className={`td-tab-count${t.hot ? ' is-hot' : ''}`}>{n}</span>}
+      </span>
+    )
   }
+  const switchTab = (k: string) => {
+    setPage(1)
+    const next = new URLSearchParams(params)
+    if (k === ACTIVE_TAB) next.delete('status')
+    else next.set('status', k)
+    next.delete('orderNo')
+    setParams(next, { replace: true })
+  }
+  const moreActive = MORE_TABS.find((t) => t.key === status)
+  const tabItems = [...TABS, ...(moreActive ? [moreActive] : [])].map((t) => ({ key: t.key, label: tabLabel(t) }))
+  const resetFilters = () => { setKeyword(''); setSearchText(''); setDate(null); setPage(1) }
+  const filtered = keyword !== '' || date !== null
 
   return (
     <div>
-      <Tabs
-        activeKey={status}
-        tabBarStyle={{ marginBottom: 16 }}
-        onChange={(k) => { setPage(1); const next = new URLSearchParams(params); if (k) { next.set('status', k) } else { next.delete('status') } setParams(next, { replace: true }) }}
-        items={TABS.map((t) => ({ key: t.key, label: tabLabel(t) }))}
-      />
-      <PageToolbar extra={<Button size="large" icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>}>
-        <Input.Search size="large" allowClear placeholder="订单号 / 桌号" style={{ width: 320, maxWidth: '100%' }} onSearch={(v) => { setKeyword(v.trim()); setPage(1) }} />
-        <DatePicker size="large" value={date} onChange={(d) => { setDate(d); setPage(1) }} placeholder="下单日期" allowClear />
-        {isKitchen && <Tag style={{ marginInlineEnd: 0 }}>后厨账号仅可查看</Tag>}
-        {!isKitchen && <Button size="large" type="primary" icon={<PlusOutlined />} onClick={() => navigate('/orders/new')}>代客下单</Button>}
-      </PageToolbar>
       {syncFailed && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="订单同步暂时中断，当前显示上次结果，恢复后会自动更新。" action={<Button size="small" onClick={() => void load()}>重试</Button>} />}
-      <Panel>
-        <ResponsiveTable<OrderSummary>
-          rowKey="id"
-          size="middle"
-          scrollX={1100}
-          loading={loading}
-          columns={columns}
-          dataSource={data.list}
-          onRow={(r) => ({ onClick: () => openDetail(r.orderNo), style: { cursor: 'pointer' } })}
-          pagination={{ current: page, pageSize: PAGE_SIZE, total: data.total, onChange: setPage, showTotal: (t) => `共 ${t} 单` }}
-        />
+      <Panel padding={0} style={{ overflow: 'hidden' }}>
+        <div className="td-orders-card">
+          <Tabs
+            activeKey={status}
+            onChange={switchTab}
+            items={tabItems}
+            tabBarExtraContent={{
+              right: (
+                <Dropdown
+                  trigger={['click']}
+                  menu={{ items: MORE_TABS.map((t) => ({ key: t.key, label: t.label })), selectable: true, selectedKeys: moreActive ? [moreActive.key] : [], onClick: ({ key }) => switchTab(key) }}
+                >
+                  <Button type="text" size="small">{isMobile ? '更多' : '更多状态'} <DownOutlined /></Button>
+                </Dropdown>
+              ),
+            }}
+          />
+          <div className="td-orders-filters">
+            <Input.Search
+              allowClear
+              placeholder="订单号 / 桌号"
+              value={searchText}
+              onChange={(e) => { setSearchText(e.target.value); if (!e.target.value) { setKeyword(''); setPage(1) } }}
+              style={{ width: isMobile ? '100%' : 220 }}
+              onSearch={(v) => { setKeyword(v.trim()); setPage(1) }}
+            />
+            <DatePicker value={date} onChange={(d) => { setDate(d); setPage(1) }} placeholder="下单日期" allowClear style={{ width: isMobile ? 'calc(50% - 4px)' : 140 }} />
+            {filtered && <Button type="link" onClick={resetFilters}>重置</Button>}
+            {isKitchen && <Tag style={{ marginInlineEnd: 0 }}>后厨账号仅可查看</Tag>}
+            <span className="td-spacer" />
+            <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+            {!isKitchen && <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/orders/new')}>代客下单</Button>}
+          </div>
+          <div style={isMobile ? { padding: '0 12px 12px' } : undefined}>
+            <ResponsiveTable<OrderSummary>
+              rowKey="id"
+              size="middle"
+              scrollX={1080}
+              loading={loading}
+              columns={columns}
+              dataSource={data.list}
+              onRow={(r) => ({ onClick: () => openDetail(r.orderNo), style: { cursor: 'pointer' } })}
+              pagination={{ current: page, pageSize: PAGE_SIZE, total: data.total, onChange: setPage, showTotal: (t) => `共 ${t} 单`, style: { paddingInline: 20 } }}
+            />
+          </div>
+        </div>
       </Panel>
       <OrderDetailDrawer orderNo={detail} open={!!detail} onClose={() => openDetail(null)} onChanged={() => void load()} readOnly={isKitchen} />
     </div>

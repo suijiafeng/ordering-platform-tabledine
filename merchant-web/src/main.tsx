@@ -10,6 +10,7 @@ import { useThemeStore } from './store/theme'
 import { AntdStaticBridge } from './utils/antdStatic'
 import { buildTheme } from './theme'
 import './styles/responsive.css'
+import './styles/shell.css'
 
 dayjs.locale('zh-cn')
 
@@ -22,7 +23,22 @@ function BodyBackground() {
     document.body.style.color = token.colorText
     // 让原生滚动条 / 表单控件也切换配色
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
-  }, [token.colorBgLayout, token.colorText, isDark])
+    // 自定义外壳（侧栏、横幅、页签计数）用的颜色变量，跟随 antd token 和深浅主题
+    const vars: Record<string, string> = {
+      '--td-primary': token.colorPrimary,
+      '--td-primary-bg': token.colorPrimaryBg,
+      '--td-primary-border': token.colorPrimaryBorder,
+      '--td-text': token.colorText,
+      '--td-text-2': token.colorTextSecondary,
+      '--td-text-3': token.colorTextTertiary,
+      '--td-border': token.colorBorder,
+      '--td-split': token.colorSplit,
+      '--td-bg': token.colorBgLayout,
+      '--td-card': token.colorBgContainer,
+      '--td-fill': token.colorFillAlter,
+    }
+    for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v)
+  }, [token, isDark])
   return null
 }
 
@@ -40,6 +56,8 @@ function Root() {
       }}
       // 设计稿：卡片白底无描边，靠页面暖灰背景区分层次；抽屉 / 弹窗里需要描边的卡片单独写 variant="outlined"
       card={{ variant: 'borderless' }}
+      // 两字按钮（接单、送达、详情）不自动插空格，与设计稿一致
+      button={{ autoInsertSpace: false }}
       // 期望把关闭按钮放到右上角。antd 5.29 的 Drawer 只会读组件自己的 closable.placement，
       // 这里再声明一次以便后续版本生效；各 Drawer 仍需显式传入 closable={{ placement: 'end' }}。
       drawer={{ closable: { placement: 'end' } }}

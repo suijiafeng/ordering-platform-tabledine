@@ -1,8 +1,8 @@
 import { theme as antdTheme, type ThemeConfig } from 'antd'
 
 /**
- * 商家端令牌：火焰橙主色、暖灰表面，沿用界面收紧后的圆角和轻阴影。
- * 只改颜色，不改组件结构。
+ * 商家端令牌（R4 设计稿）：火焰橙主色、暖灰表面、8 / 12px 圆角、轻阴影。
+ * 自定义外壳（侧栏、横幅、页签计数）通过 main.tsx 写到 :root 的 --td-* 变量取同一套颜色。
  */
 export const BRAND_PRIMARY = '#E8590C'
 /** 侧栏深色底（深浅主题共用） */
@@ -37,6 +37,9 @@ const lightToken: ThemeConfig['token'] = {
   colorSplit: '#EFE9E1',
   colorBgLayout: '#F6F4F1',
   colorFillAlter: '#F6F4F1',
+  // 主色浅底 / 描边：新订单横幅、待处理计数、选中态背景
+  colorPrimaryBg: '#FFF4EC',
+  colorPrimaryBorder: '#FFD8BF',
 }
 
 const buttonComponent: NonNullable<ThemeConfig['components']>['Button'] = {
@@ -62,7 +65,9 @@ const siderComponents: ThemeConfig['components'] = {
   Card: cardComponent,
   Modal: modalComponent,
   Button: buttonComponent,
-  Table: { headerBg: '#FFFFFF', headerColor: '#A8A29E', headerSplitColor: 'transparent', rowHoverBg: '#FDF6F0' },
+  Table: { headerBg: '#FAF8F5', headerColor: '#78716C', headerSplitColor: 'transparent', rowHoverBg: '#FDF6F0', cellPaddingBlock: 14, cellPaddingBlockMD: 12 },
+  Tabs: { horizontalItemPadding: '14px 0', horizontalItemGutter: 28, itemColor: '#78716C', titleFontSize: 14 },
+  Drawer: { footerPaddingBlock: 12, footerPaddingInline: 24 },
   Segmented: { itemSelectedBg: '#292524', itemSelectedColor: '#FFFFFF', borderRadius: 6, borderRadiusSM: 6, trackPadding: 2 },
 }
 
@@ -75,7 +80,8 @@ export function buildTheme(isDark: boolean): ThemeConfig {
         ...siderComponents,
         // 侧栏颜色深浅共用；内容区不要沿用浅色 bodyBg，否则深色文字算法会把字画成浅色
         Layout: { siderBg: SIDER_BG, triggerBg: SIDER_BG },
-        Table: { headerSplitColor: 'transparent' },
+        Table: { headerSplitColor: 'transparent', cellPaddingBlock: 14, cellPaddingBlockMD: 12 },
+        Tabs: { horizontalItemPadding: '14px 0', horizontalItemGutter: 28, titleFontSize: 14 },
         Segmented: { itemSelectedBg: BRAND_PRIMARY, itemSelectedColor: '#FFFFFF', borderRadius: 6, borderRadiusSM: 6, trackPadding: 2 },
       },
     }
