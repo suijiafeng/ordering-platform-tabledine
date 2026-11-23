@@ -8,7 +8,7 @@ import { OfflineBanner } from '@/components/OfflineBanner'
 import { LandingRecorder } from '@/components/ui'
 
 export const metadata: Metadata = { title: '扫码点餐', description: '门店自助点餐' }
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#f5562b' }
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#E8590C' }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="zh-CN"><body><main className="app-shell"><AntdMobileCompat /><LandingRecorder /><OfflineBanner />{children}<Feedback /><DialogHost /></main></body></html>
