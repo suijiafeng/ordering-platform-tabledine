@@ -64,7 +64,7 @@ button.td-kpi:hover {
   border-color: var(--td-primary-border);
 }
 .td-kpi.is-alert {
-  background: linear-gradient(135deg, var(--td-primary-bg), var(--td-card) 70%);
+  background: var(--td-primary-bg);
   border-color: var(--td-primary-border);
 }
 .td-kpi-top {
@@ -103,6 +103,9 @@ button.td-kpi:hover {
 }
 .td-down {
   color: #dc2626;
+}
+.td-flat {
+  color: var(--td-text-3);
 }
 .td-row {
   display: grid;
@@ -265,9 +268,15 @@ button.td-kpi:hover {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  color: #fff;
+  overflow: hidden;
+  color: var(--td-primary);
   font-weight: 700;
-  background: linear-gradient(135deg, #f7843a, #c2410c);
+  background: var(--td-primary-bg);
+}
+.td-dish-ph img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .td-bar {
   height: 6px;
@@ -331,7 +340,7 @@ button.td-kpi:hover {
   border-radius: 16px;
   padding: 18px 16px;
   color: #fff;
-  background: linear-gradient(135deg, #f7843a, #e8590c 55%, #c2410c);
+  background: #e8590c;
 }
 .td-hero .td-hero-label {
   font-size: 13px;

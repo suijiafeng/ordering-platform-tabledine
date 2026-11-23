@@ -520,7 +520,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 
 
 /* ===== H5 小范围改版：品牌色、菜品卡、悬浮购物车、三档布局、结算与订单进度 ===== */
-.menu-hero { background: linear-gradient(160deg, var(--brand-2), var(--brand)); }
+.menu-hero { background: var(--brand); }
 .menu-hero-inner { width: 100%; }
 .menu-brand { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .menu-mark { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,.2); color: #fff; font-size: 18px; font-weight: 700; }
