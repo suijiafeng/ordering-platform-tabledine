@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ApiError, fetchMenu, resolveTable } from '@/lib/api'
+import { NOT_FOUND, QR_INVALID } from '@/lib/errors'
 import { defaultSelection, hasOptions } from '@/lib/pricing'
 import { imageSrc, yuan } from '@/lib/format'
 import type { Dish, MenuView, Selection, TableInfo } from '@/lib/types'
@@ -37,6 +38,8 @@ export function MenuClient() {
   const [detailDish, setDetailDish] = useState<Dish | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  /** 桌码格式不对、不存在或已停用：提示重新扫码，「重新加载」没有意义 */
+  const [invalidTable, setInvalidTable] = useState(false)
   const [syncFailed, setSyncFailed] = useState(false)
   const dishesRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -45,7 +48,7 @@ export function MenuClient() {
 
   /** quiet：后台刷新，不显示加载页；失败时保留当前菜单 */
   const load = useVisiblePolling(async ({ background: quiet, isCurrent }) => {
-    if (!quiet) { setLoading(true); setError('') }
+    if (!quiet) { setLoading(true); setError(''); setInvalidTable(false) }
     let resolved: TableInfo | null = null
     try {
       const queryToken = searchParams.get('token')
@@ -53,14 +56,14 @@ export function MenuClient() {
       const current = useOrdering.getState().table
       if (queryToken && !token) {
         clearTable()
-        if (!quiet) setError('桌码无效，请重新扫描桌上的二维码')
+        if (!quiet) setInvalidTable(true)
         return
       }
       if (token) {
         resolved = await resolveTable(token)
       } else if (current) {
         // 站内跳回菜单（登录页「先逛逛」、退出登录、订单列表「去点餐」）不带桌码：沿用已扫的桌台并重新校验，
-        // 不能清空购物车。桌码失效（40401）时在下面清掉，要求重新扫码。
+        // 不能清空购物车。桌码失效（40401 / 40402）时在下面清掉，要求重新扫码。
         resolved = await resolveTable(current.qrToken)
       } else {
         clearTable()
@@ -88,12 +91,12 @@ export function MenuClient() {
     } catch (e) {
       if (!isCurrent()) return
       setSyncFailed(true)
-      if (!resolved && e instanceof ApiError && e.code === 40401) {
+      if (!resolved && e instanceof ApiError && (e.code === QR_INVALID || e.code === NOT_FOUND)) {
         clearTable()
         setMenu(null)
         setSpecDish(null)
         setDetailDish(null)
-        setError('桌码无效，请重新扫描桌上的二维码')
+        setInvalidTable(true)
         return
       }
       if (!quiet) setError(errorText(e))
@@ -231,6 +234,14 @@ export function MenuClient() {
   }
 
   if (loading) return <div className="screen on-white"><Skeleton rows={5} label="菜品加载中…" /></div>
+  if (invalidTable) {
+    return (
+      <div className="screen on-white">
+        <EmptyState icon="!" title="桌码已失效" desc="请重新扫描桌上的二维码，或联系店员" />
+        <div className="center">{accountButton(true)}</div>
+      </div>
+    )
+  }
   if (error) {
     return (
       <div className="screen on-white">

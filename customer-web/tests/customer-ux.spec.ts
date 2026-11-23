@@ -512,3 +512,39 @@ test('已完成订单展示五步进度与次要操作，退款为文字链接',
   await expect(page.getByRole('button', { name: '再来一单' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '继续加菜' })).toHaveCount(0)
 })
+
+test('桌码已停用（40402）提示重新扫码并清掉旧桌台，不显示「菜单服务不可用」', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  // 之前扫过的旧桌台和购物车：桌码失效后应被清掉
+  await page.addInitScript(({ table }) => {
+    if (sessionStorage.getItem('ux-fixture')) return
+    sessionStorage.setItem('ux-fixture', 'yes')
+    localStorage.setItem('ordering-customer-state', JSON.stringify({ version: 0, state: { table, items: [] } }))
+  }, { table })
+  let menuCalls = 0
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path.includes('/qr/')) {
+      await route.fulfill({ status: 404, json: { code: 40402, message: '桌码已失效，请联系店员' } })
+      return
+    }
+    if (path.endsWith('/menu')) menuCalls += 1
+    await route.fulfill({ status: 404, json: { code: 40401, message: '资源不存在' } })
+  })
+  await page.goto('/h5/?token=disabled-table')
+  await expect(page.getByText('桌码已失效', { exact: true })).toBeVisible()
+  await expect(page.getByText('请重新扫描桌上的二维码，或联系店员')).toBeVisible()
+  await expect(page.getByText('菜单服务暂不可用')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '重新加载' })).toHaveCount(0)
+  expect(menuCalls).toBe(0)
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('ordering-customer-state') ?? '{}'))
+  expect(stored.state?.table ?? null).toBeNull()
+  expect(errors).toEqual([])
+})
+
+test('桌码格式不对时同样提示桌码已失效', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ status: 500, json: { code: 50001, message: '不应请求' } }))
+  await page.goto('/h5/?token=bad%20token!')
+  await expect(page.getByText('桌码已失效', { exact: true })).toBeVisible()
+})

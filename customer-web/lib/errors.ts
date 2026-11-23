@@ -2,6 +2,8 @@ import { ApiError } from './api'
 
 export const UNAUTHORIZED = 40101
 export const NOT_FOUND = 40401
+/** 桌码不存在或已停用（后端 QR_INVALID） */
+export const QR_INVALID = 40402
 
 /**
  * 请求层已经提示过的业务 / 网络错误（ApiError）可以忽略；其他异常是代码缺陷，继续抛出。
