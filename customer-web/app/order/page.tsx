@@ -5,9 +5,10 @@ import { Suspense, useState } from 'react'
 import { applyRefund, cancelOrder, payOrder, requestCancelOrder, withdrawRefund } from '@/lib/api'
 import { ignoreShownError } from '@/lib/errors'
 import {
-  countdownText, dateTime, dateTimeWithSeconds, displayStatus, itemOptionsText, orderStatusDesc, payNote, orderStatusText, refundStatusText, statusLogText, yuan,
+  countdownText, dateTime, dateTimeWithSeconds, itemOptionsText, orderStatusDesc, payNote, refundStatusText, statusLogText, yuan,
 } from '@/lib/format'
-import type { OrderDetail, OrderStatus, RefundRecord } from '@/lib/types'
+import { cookingMinutes, isActiveOrder, lastUpdatedLabel, PROGRESS_STEPS, progressIndex, progressTimes, statusHeroTitle } from '@/lib/orderProgress'
+import type { OrderDetail, RefundRecord } from '@/lib/types'
 import { useMemberBalance } from '@/hooks/useMemberBalance'
 import { useCountdown } from '@/hooks/useCountdown'
 import { useOrderPolling } from '@/hooks/useOrderPolling'
@@ -18,28 +19,42 @@ import { menuPath } from '@/lib/navigation'
 import { useOrdering } from '@/store/ordering'
 import { AppBar, BottomBar, Card, EmptyState, PillButton, Skeleton } from '@/components/ui'
 
-/** 已支付 → 已接单 → 制作中 → 已出餐：支付完成后立即点亮第一步，避免看起来仍未提交。ACCEPTED = 已接单、后厨未开工 */
-const STEPS = [
-  { label: '已支付', from: ['PAID', 'ACCEPTED', 'MAKING', 'READY'] },
-  { label: '已接单', from: ['ACCEPTED', 'MAKING', 'READY'] },
-  { label: '制作中', from: ['MAKING', 'READY'] },
-  { label: '已出餐', from: ['READY'] },
-] as const
-const IN_PROGRESS: OrderStatus[] = ['PAID', 'MAKING', 'READY']
+function statusDesc(order: OrderDetail) {
+  if (order.cancelReason) return order.cancelReason
+  const minutes = cookingMinutes(order)
+  if (order.status === 'MAKING' && minutes != null) {
+    return `已开始制作 ${minutes} 分钟，出餐后服务员送到 ${order.tableCode} 桌`
+  }
+  if (order.status === 'READY') return `菜品已做好，服务员即将送到 ${order.tableCode} 桌`
+  if (order.status === 'DONE') return `已送达 ${order.tableCode} 桌，感谢光临，欢迎再来`
+  return orderStatusDesc(order.status, order.cookingStartedAt)
+}
 
 function StatusCard({ order }: { order: OrderDetail }) {
-  const shown = displayStatus(order.status, order.cookingStartedAt)
-  const now = shown === 'ACCEPTED' ? 1 : shown === 'MAKING' ? 2 : shown === 'READY' ? 3 : 0
+  const now = progressIndex(order.status, order.cookingStartedAt)
+  const times = progressTimes(order)
+  const updated = lastUpdatedLabel(order)
+  const tone = order.status === 'DONE' ? 'done' : order.status === 'CANCELLED' || order.status === 'CLOSED' ? 'muted' : 'active'
   return (
-    <div className="status-card">
-      <div className="title">{orderStatusText(order.status, order.cookingStartedAt)}</div>
-      <div className="desc">{order.cancelReason || orderStatusDesc(order.status, order.cookingStartedAt)}</div>
-      {IN_PROGRESS.includes(order.status) && (
+    <div className={`status-card ${tone}`}>
+      <div className="status-card-top">
+        <div>
+          <div className="title">{statusHeroTitle(order.status, order.cookingStartedAt)}</div>
+          <div className="desc">{statusDesc(order)}</div>
+        </div>
+        {updated && isActiveOrder(order.status) && order.status !== 'DONE' && <span className="status-updated">{updated}</span>}
+      </div>
+      {now !== null && (
         <div className="steps">
-          {STEPS.map((step, index) => (
-            <div key={step.label} aria-current={index === now ? 'step' : undefined} className={`step ${(step.from as readonly string[]).includes(shown) ? 'done' : ''} ${index === now ? 'now' : ''}`.trim()}>
-              <span className="pt" />
-              {step.label}
+          {PROGRESS_STEPS.map((label, index) => (
+            <div
+              key={label}
+              aria-current={index === now ? 'step' : undefined}
+              className={`step ${index <= now ? 'done' : ''} ${index === now ? 'now' : ''}`.trim()}
+            >
+              <span className="pt">{index <= now ? '✓' : ''}</span>
+              <span className="step-label">{label}</span>
+              {times[index] && <span className="step-time">{times[index]}</span>}
             </div>
           ))}
         </div>
@@ -91,7 +106,7 @@ function OrderView() {
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
   const pendingPay = order?.status === 'PENDING_PAY'
-  const { balance, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(pendingPay)
+  const { balance, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(pendingPay || order?.status === 'DONE')
   const insufficient = balance !== null && !!order && balance < order.payAmount
 
   const runOrderAction = async (action: () => Promise<unknown>, success?: string) => {
@@ -155,16 +170,8 @@ function OrderView() {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .reverse()
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0)
-  const secondary = order.canCancel
-    ? <PillButton className="grow" variant="outline" disabled={busy} onClick={cancel}>取消订单</PillButton>
-    : order.canRequestCancel
-      ? <PillButton className="grow" variant="outline" disabled={busy} onClick={requestCancel}>申请取消</PillButton>
-      : activeApplying
-        ? <PillButton className="grow" variant="outline" disabled={busy} onClick={withdraw}>撤回退款</PillButton>
-        : null
-
   return (
-    <div className={`screen ${pendingPay ? 'has-bar-tall' : 'has-bar'}`}>
+    <div className={`screen ${pendingPay ? 'has-bar-tall' : ''}`}>
       <AppBar title={pendingPay ? '收银台' : '订单详情'} fallback="/orders" />
       <div className="body-pad">
         {loadFailed && <div className="notice">网络不稳定，订单状态可能不是最新</div>}
@@ -192,58 +199,84 @@ function OrderView() {
               <span className="pay-radio" aria-hidden="true" />
             </div>
           </Card>
-        </> : <StatusCard order={order} />}
+        </> : <>
+          <StatusCard order={order} />
+          <Card className="order-next">
+            {order.status === 'DONE' ? (
+              <>
+                <h2 className="card-title">接下来</h2>
+                <div className="order-next-grid">
+                  <button type="button" className="order-next-card" onClick={() => router.push(menuPath(table?.qrToken))}>
+                    <strong>同桌再点一单</strong>
+                    <span>会生成新订单，单独支付</span>
+                  </button>
+                  <button type="button" className="order-next-card" onClick={() => router.push('/wallet')}>
+                    <strong>查看余额流水</strong>
+                    <span>{balance !== null ? `本单 −¥${yuan(order.payAmount)} · 剩 ¥${yuan(balance)}` : '查看充值、消费与退款'}</span>
+                  </button>
+                </div>
+                <div className="order-next-foot">
+                  <span>菜品有问题？</span>
+                  {order.canApplyRefund
+                    ? <button type="button" className="refund-link" disabled={busy} onClick={() => setRefundOpen(true)}>申请退款 ›</button>
+                    : <span className="t-cap">请联系店员协助</span>}
+                </div>
+              </>
+            ) : order.status === 'CANCELLED' || order.status === 'CLOSED' ? (
+              <PillButton className="grow" variant="outline" onClick={() => router.push(menuPath(table?.qrToken))}>同桌再点一单</PillButton>
+            ) : (
+              <>
+                <div className="order-next-btns">
+                  <PillButton variant="outline" className="grow" disabled={busy} onClick={() => void refresh()}>刷新进度</PillButton>
+                  <PillButton variant="outline" className="grow" onClick={() => router.push(menuPath(table?.qrToken))}>同桌再点一单</PillButton>
+                </div>
+                <p className="order-next-hint">
+                  {order.status === 'MAKING' || order.status === 'READY' ? '已开始制作，如需取消请联系店员' : '商家接单后开始制作，请留意订单进度'}
+                  {order.canCancel && <> · <button type="button" className="link" disabled={busy} onClick={cancel}>取消订单</button></>}
+                  {order.canRequestCancel && <> · <button type="button" className="link" disabled={busy} onClick={requestCancel}>申请取消</button></>}
+                  {activeApplying && <> · <button type="button" className="link" disabled={busy} onClick={withdraw}>撤回退款</button></>}
+                </p>
+                {order.canApplyRefund && (
+                  <div className="order-next-foot">
+                    <span>菜品有问题？</span>
+                    <button type="button" className="refund-link" disabled={busy} onClick={() => setRefundOpen(true)}>申请退款 ›</button>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+        </>}
 
         <Card>
-          <div className="kv"><span>桌号</span><span>{order.tableCode}桌</span></div>
-          <div className="kv">
-            <span>订单号</span>
-            <span>
-              {order.orderNo}
-              <button className="mini-btn" style={{ marginLeft: 8 }} onClick={async () => notify((await copyText(order.orderNo)) ? '订单号已复制' : '复制失败，请长按选择')}>复制</button>
-            </span>
-          </div>
+          <div className="section-heading"><h2 className="card-title">菜品明细 <span className="card-count">{itemCount} 件</span></h2></div>
+          {order.items.map((item) => (
+            <div className="li" key={item.id}>
+              <span className="li-tile" aria-hidden="true">{item.dishName.trim().charAt(0) || '菜'}</span>
+              <span className="li-name">
+                {item.dishName}
+                {itemOptionsText(item) && <span className="li-sub">{itemOptionsText(item)}</span>}
+                {item.refundedQty > 0 && <span className="li-sub">已退 {item.refundedQty} 份</span>}
+              </span>
+              <span className="li-qty">×{item.quantity}</span>
+              <span className="li-amt">¥{yuan(item.totalPrice)}</span>
+            </div>
+          ))}
+          {order.refundedAmount > 0 && <div className="kv accent"><span>已退款</span><span>-¥{yuan(order.refundedAmount)}</span></div>}
+          <div className="kv strong"><span>余额支付 · 实付</span><span>¥{yuan(order.payAmount)}</span></div>
+        </Card>
+
+        <Card>
+          <div className="kv"><span>订单号</span><span>{order.orderNo} · <button type="button" className="link" onClick={async () => notify((await copyText(order.orderNo)) ? '订单号已复制' : '复制失败，请长按选择')}>复制</button></span></div>
           <div className="kv"><span>下单时间</span><span>{dateTime(order.createdAt)}</span></div>
           {order.paidAt && <div className="kv"><span>支付时间</span><span>{dateTime(order.paidAt)}</span></div>}
           <div className="kv"><span>就餐人数</span><span>{order.peopleCount} 人</span></div>
           {order.remark && <div className="kv"><span>备注</span><span>{order.remark}</span></div>}
         </Card>
 
-        <Card>
-          <h2 className="card-title">菜品明细（{itemCount} 件）</h2>
-          {order.items.map((item) => (
-            <div className="li" key={item.id}>
-              <span className="li-name">
-                {item.dishName}
-                {itemOptionsText(item) && <span className="li-sub">{itemOptionsText(item)}</span>}
-                {item.refundedQty > 0 && <span className="li-sub">已退 {item.refundedQty} 份</span>}
-              </span>
-              <span className="li-qty">x{item.quantity}</span>
-              <span className="li-amt">¥{yuan(item.totalPrice)}</span>
-            </div>
-          ))}
-        </Card>
-
-        <Card>
-          <div className="kv"><span>菜品小计</span><span>¥{yuan(order.totalAmount)}</span></div>
-          {order.refundedAmount > 0 && <div className="kv accent"><span>已退款</span><span>-¥{yuan(order.refundedAmount)}</span></div>}
-          <div className="kv strong"><span>实付</span><span>¥{yuan(order.payAmount)}</span></div>
-        </Card>
-
         {order.refunds.length > 0 && (
           <Card>
             <h2 className="card-title">退款记录</h2>
             {order.refunds.map((refund) => <RefundRecordView key={refund.refundNo} refund={refund} />)}
-          </Card>
-        )}
-
-        {order.canApplyRefund && (
-          <Card className="after-sale">
-            <div>
-              <h2 className="card-title" style={{ marginBottom: 6 }}>售后服务</h2>
-              <div className="t-cap">如菜品存在问题，建议先联系店员协助处理。</div>
-            </div>
-            <button className="entry" disabled={busy} onClick={() => setRefundOpen(true)}>申请退款 ›</button>
           </Card>
         )}
 
@@ -279,20 +312,13 @@ function OrderView() {
         />
       </div>
 
-      {pendingPay ? (
+      {pendingPay && (
         <BottomBar stack>
           <PillButton size="lg" block loading={busy || (insufficient && balanceLoading)} loadingLabel={busy ? '正在处理…' : '刷新中…'} onClick={insufficient ? refreshBalance : pay}>{insufficient ? '充值后刷新余额' : `确认支付 ¥${yuan(order.payAmount)}`}</PillButton>
           <div className="bar-hint">
             支付失败可在「我的订单」中重新支付
             {order.canCancel && <> · <button className="link" disabled={busy} onClick={cancel}>取消订单</button></>}
           </div>
-        </BottomBar>
-      ) : (
-        <BottomBar>
-          {secondary}
-          {order.status === 'DONE' || order.status === 'CANCELLED' || order.status === 'CLOSED'
-            ? <PillButton className="grow" variant="outline" onClick={() => router.push(menuPath(table?.qrToken))}>再来一单</PillButton>
-            : <PillButton className="grow" onClick={() => router.push(menuPath(table?.qrToken))}>继续加菜</PillButton>}
         </BottomBar>
       )}
     </div>

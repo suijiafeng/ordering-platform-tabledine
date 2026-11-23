@@ -114,6 +114,11 @@ export function MenuClient() {
   }, [keyword, menu])
 
   /** 右侧滚动时高亮当前分类：最后一个顶部已滚过可视区顶端的分类 */
+  const containerScrolls = () => {
+    const container = dishesRef.current
+    return !!container && container.scrollHeight > container.clientHeight + 8
+  }
+
   const syncActiveCategory = () => {
     const container = dishesRef.current
     if (!container || !menu) return
@@ -126,11 +131,11 @@ export function MenuClient() {
       }, 120)
       return
     }
-    const containerTop = container.getBoundingClientRect().top
+    const top = containerScrolls() ? container.getBoundingClientRect().top : 88
     let current = menu.categories[0]?.id ?? null
     for (const category of menu.categories) {
       const section = document.getElementById(`cat-${category.id}`)
-      if (section && section.getBoundingClientRect().top - containerTop <= 24) current = category.id
+      if (section && section.getBoundingClientRect().top - top <= 24) current = category.id
     }
     setActiveCategory(current)
   }
@@ -143,10 +148,21 @@ export function MenuClient() {
     setActiveCategory(categoryId)
     if (scrollStopTimer.current) window.clearTimeout(scrollStopTimer.current)
     scrollStopTimer.current = window.setTimeout(() => { scrollingTo.current = null }, 700)
-    container.scrollTo({ top: container.scrollTop + section.getBoundingClientRect().top - container.getBoundingClientRect().top, behavior: 'smooth' })
+    if (containerScrolls()) {
+      container.scrollTo({ top: container.scrollTop + section.getBoundingClientRect().top - container.getBoundingClientRect().top, behavior: 'smooth' })
+    } else {
+      const top = section.getBoundingClientRect().top + window.scrollY - 24
+      window.scrollTo({ top, behavior: 'smooth' })
+    }
   }
 
-  /** 加入购物车并提示；限量菜达到上限时说明剩余份数 */
+  useEffect(() => {
+    const onScroll = () => syncActiveCategory()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  })
+
+    /** 加入购物车并提示；限量菜达到上限时说明剩余份数 */
   const addToCart = (dish: Dish, selection: Selection = defaultSelection(dish), quantity = 1) => {
     const added = add(dish, selection, quantity)
     if (added === quantity) notify('已加入购物车', 'success')
@@ -164,10 +180,14 @@ export function MenuClient() {
 
   const goAccount = () => router.push(table ? `/me?token=${encodeURIComponent(table.qrToken)}` : '/me')
   /** 顶栏里是头像圆钮（省地方，长店名也不会把它挤变形）；白底空状态页用文字按钮 */
+  const goOrders = () => router.push('/orders')
   const accountButton = (onWhite?: boolean) => (
     onWhite
       ? <button className="mini-btn" onClick={goAccount}>我的</button>
-      : <button className="menu-avatar" aria-label="我的" onClick={goAccount}><PersonIcon /></button>
+      : <div className="menu-account">
+          <button className="menu-orders-btn" onClick={goOrders}>我的订单</button>
+          <button className="menu-avatar" aria-label="我的" onClick={goAccount}><PersonIcon /></button>
+        </div>
   )
 
   const dishRow = (dish: Dish) => {
@@ -238,17 +258,22 @@ export function MenuClient() {
   return (
     <div className="menu">
       <header className="menu-hero">
-        <div className="menu-hero-row">
-          <div>
-            <div className="menu-store">{table.storeName}</div>
-            <div className="menu-table"><span className="menu-table-badge">{table.tableCode}桌</span><span>堂食 · {table.storeOpen ? '营业中' : '已打烊'}</span></div>
+        <div className="menu-hero-inner">
+          <div className="menu-hero-row">
+            <div className="menu-brand">
+              <span className="menu-mark" aria-hidden="true">{table.storeName.trim().charAt(0) || '餐'}</span>
+              <div>
+                <div className="menu-store">{table.storeName}</div>
+                <div className="menu-table"><span className="menu-table-badge">{table.tableCode}桌</span><span>堂食 · {table.storeOpen ? '营业中' : '已打烊'}</span></div>
+              </div>
+            </div>
+            {accountButton()}
           </div>
-          {accountButton()}
-        </div>
-        <div className="search-field">
-          <SearchIcon />
-          <input ref={searchRef} type="search" enterKeyHint="search" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="想吃什么？搜菜名或口味" aria-label="搜索菜品" />
-          {keyword && <button className="icon-button search-clear" aria-label="清空搜索" onClick={clearSearch}><CloseIcon /></button>}
+          <div className="search-field">
+            <SearchIcon />
+            <input ref={searchRef} type="search" enterKeyHint="search" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="想吃什么？搜菜名或口味" aria-label="搜索菜品" />
+            {keyword && <button className="icon-button search-clear" aria-label="清空搜索" onClick={clearSearch}><CloseIcon /></button>}
+          </div>
         </div>
       </header>
       <button className="menu-payment-note" onClick={() => void alertDialog('本店使用会员余额支付', '可以先选菜，结算前再登录。没有会员账号或余额不足，请联系店员开户、充值。充值后可在结算页刷新余额。')}>
@@ -258,6 +283,7 @@ export function MenuClient() {
       {!table.storeOpen && <div className="menu-closed">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
       {syncFailed && <div className="notice" role="status">菜单暂未更新，正在自动重试…</div>}
 
+      <div className="menu-workspace">
       {matched ? (
         <div className="dishes search-results">
           <div className="search-summary" role="status">找到 {matched.length} 道菜品</div>
@@ -285,15 +311,15 @@ export function MenuClient() {
             {menu && menu.categories.length === 0 && <EmptyState inset title="暂无菜品" desc="店家还没有上架菜品" />}
             {menu?.categories.map((category) => (
               <section id={`cat-${category.id}`} key={category.id}>
-                <h2 className="cat-head">{category.name}</h2>
+                <h2 className="cat-head">{category.name}{category.dishes.length > 0 && <span className="cat-count">{category.dishes.length} 道</span>}</h2>
                 {category.dishes.map(dishRow)}
               </section>
             ))}
           </div>
         </div>
       )}
-
       <CartBar disabled={!table.storeOpen} />
+      </div>
       <DishDetail dish={detailDish} onClose={() => setDetailDish(null)} onAdd={(dish) => { setDetailDish(null); addDish(dish) }} />
       <SpecSheet
         dish={specDish}

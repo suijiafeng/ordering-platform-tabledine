@@ -234,7 +234,7 @@ for (const status of ['PENDING_PAY', 'CANCELLED', 'CLOSED'] as const) {
 test('待接单订单点亮已支付进度，收银台可刷新余额', async ({ page }) => {
   const { state } = await setup(page, { status: 'PAID' })
   await page.goto('/h5/order/?orderNo=UX202610110001')
-  await expect(page.locator('.step[aria-current="step"]')).toHaveText('已支付')
+  await expect(page.locator('.step[aria-current="step"] .step-label')).toHaveText('已支付')
   state.order = makeOrder()
   state.balance = 1000
   await page.reload()
@@ -417,4 +417,97 @@ test('新记录不允许更换会员后停止原请求', async ({ page }) => {
   await expect(page.getByText('请使用上次下单的会员账号停止原请求', { exact: true })).toBeVisible()
   expect(state.abandoned).toHaveLength(0)
   expect(state.tombstones.size).toBe(0)
+})
+
+test('1440 宽屏三栏布局：分类栏、菜品网格与常驻购物车共用状态', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { errors } = await setup(page)
+  await page.goto('/h5/?token=demo-table')
+  await expect(page.locator('.cart-panel')).toBeVisible()
+  await expect(page.locator('.cart-bar')).toBeHidden()
+  const columns = await page.locator('.menu-workspace').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length)
+  expect(columns).toBe(3)
+  const add = page.locator('.dishes').getByRole('button', { name: '增加招牌红烧肉', exact: true })
+  await add.click()
+  expect(await add.evaluate(el => [el.clientWidth, el.clientHeight])).toEqual([44, 44])
+  await expect(page.locator('.cart-panel').getByText('招牌红烧肉', { exact: true })).toBeVisible()
+  await expect(page.locator('.cat-badge')).toHaveText('1')
+  await expect(page.locator('.cart-panel').getByRole('button', { name: '去结算' })).toBeEnabled()
+  await page.locator('.cart-panel').getByRole('button', { name: '去结算' }).click()
+  await expect(page).toHaveURL(/\/checkout/)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test('结算页已登录条、支付卡片与实付说明不被底栏遮挡', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 })
+  const { errors } = await setup(page, { cart: true })
+  await page.goto('/h5/checkout/')
+  await expect(page.getByText('已登录 测试会员 138****0001')).toBeVisible()
+  await expect(page.getByRole('button', { name: '切换' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '少辣' })).toHaveCount(0)
+  await expect(page.locator('.pay-option')).toContainText('会员余额')
+  const footnote = page.locator('.checkout-footnote')
+  const total = page.locator('.checkout-pay-total')
+  await footnote.scrollIntoViewIfNeeded()
+  const footBox = await footnote.boundingBox()
+  const totalBox = await total.boundingBox()
+  const bar = await page.locator('.bottom-bar').boundingBox()
+  expect(footBox).toBeTruthy()
+  expect(totalBox).toBeTruthy()
+  expect(bar).toBeTruthy()
+  expect(footBox!.y + footBox!.height).toBeLessThanOrEqual(bar!.y + 1)
+  expect(totalBox!.y + totalBox!.height).toBeLessThanOrEqual(bar!.y + 1)
+  expect(errors).toEqual([])
+})
+
+function localAt(hour: number, minute: number) {
+  return new Date(2026, 10, 22, hour, minute, 0).toISOString()
+}
+
+test('制作中订单展示五步进度、制作时长与同桌再点', async ({ page }) => {
+  const { state } = await setup(page, { status: 'MAKING' })
+  const paidAt = localAt(12, 31)
+  const acceptedAt = localAt(12, 32)
+  const cookingAt = localAt(12, 35)
+  state.order.paidAt = paidAt
+  state.order.cookingStartedAt = cookingAt
+  state.order.canCancel = false
+  state.order.logs = [
+    { toStatus: 'PAID', operatorType: 'SYSTEM', remark: null, createdAt: paidAt },
+    { toStatus: 'MAKING', operatorType: 'MERCHANT', remark: null, createdAt: acceptedAt },
+  ]
+  await page.goto('/h5/order/?orderNo=UX202610110001')
+  await expect(page.getByText('后厨制作中')).toBeVisible()
+  await expect(page.getByText(/已开始制作 \d+ 分钟/)).toBeVisible()
+  await expect(page.locator('.step')).toHaveCount(5)
+  await expect(page.locator('.step[aria-current="step"] .step-label')).toHaveText('制作中')
+  await expect(page.locator('.step-time')).toHaveText(['12:31', '12:32', '12:35'])
+  await expect(page.getByRole('button', { name: '刷新进度' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '同桌再点一单' })).toBeVisible()
+})
+
+test('已完成订单展示五步进度与次要操作，退款为文字链接', async ({ page }) => {
+  const { state } = await setup(page, { status: 'DONE' })
+  const paidAt = localAt(12, 31)
+  state.order.paidAt = paidAt
+  state.order.cookingStartedAt = localAt(12, 35)
+  state.order.canCancel = false
+  state.order.canApplyRefund = true
+  state.order.logs = [
+    { toStatus: 'PAID', operatorType: 'SYSTEM', remark: null, createdAt: paidAt },
+    { toStatus: 'MAKING', operatorType: 'MERCHANT', remark: null, createdAt: localAt(12, 32) },
+    { toStatus: 'READY', operatorType: 'KITCHEN', remark: null, createdAt: localAt(12, 44) },
+    { toStatus: 'DONE', operatorType: 'MERCHANT', remark: null, createdAt: localAt(12, 46) },
+  ]
+  await page.goto('/h5/order/?orderNo=UX202610110001')
+  await expect(page.getByText('已完成', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.step')).toHaveCount(5)
+  await expect(page.locator('.step.done')).toHaveCount(5)
+  await expect(page.locator('.step-time')).toHaveText(['12:31', '12:32', '12:35', '12:44', '12:46'])
+  await expect(page.getByRole('button', { name: '同桌再点一单' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看余额流水' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '申请退款 ›' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '再来一单' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '继续加菜' })).toHaveCount(0)
 })

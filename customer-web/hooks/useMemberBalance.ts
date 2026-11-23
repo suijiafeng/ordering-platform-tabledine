@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react'
 import { fetchMe } from '@/lib/api'
 import { ignoreShownError } from '@/lib/errors'
+import type { CustomerProfile } from '@/lib/types'
 import { useVisiblePolling } from './useVisiblePolling'
 
 /** 余额自动同步但不作为最终扣款依据；失败保留旧显示并显式标记。 */
 export function useMemberBalance(enabled: boolean) {
+  const [profile, setProfile] = useState<CustomerProfile | null>(null)
   const [balance, setBalance] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -14,7 +16,7 @@ export function useMemberBalance(enabled: boolean) {
     if (!background) setLoading(true)
     try {
       const profile = await fetchMe()
-      if (isCurrent()) { setBalance(profile.balance); setFailed(false) }
+      if (isCurrent()) { setProfile(profile); setBalance(profile.balance); setFailed(false) }
     } catch (e) {
       if (isCurrent()) setFailed(true)
       ignoreShownError(e)
@@ -24,8 +26,8 @@ export function useMemberBalance(enabled: boolean) {
   }, { enabled })
 
   useEffect(() => {
-    if (!enabled) { setBalance(null); setFailed(false); setLoading(false) }
+    if (!enabled) { setProfile(null); setBalance(null); setFailed(false); setLoading(false) }
   }, [enabled])
 
-  return { balance, loading, failed, refresh }
+  return { balance, profile, loading, failed, refresh }
 }

@@ -108,3 +108,20 @@ export function imageSrc(path: string | null) {
 /** 确认支付弹窗的说明：一句话，余额已知时带上支付后余额 */
 export const payNote = (balance: number | null, amount: number) =>
   balance !== null ? `余额支付，支付后剩余 ¥${yuan(balance - amount)}` : '使用会员余额支付'
+
+
+/** 11 位手机号中间四位打码，用于已登录提示 */
+export function maskPhone(phone?: string | null) {
+  if (!phone) return ''
+  const digits = phone.replace(/\s/g, '')
+  if (digits.length === 11) return `${digits.slice(0, 3)}****${digits.slice(7)}`
+  return phone
+}
+
+/** 进度节点用的当天时刻 HH:mm */
+export function clockTime(value?: string | null) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}

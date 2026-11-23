@@ -8,11 +8,11 @@ import { getToken } from '@/lib/auth'
 import { beginCheckout, checkoutMatchesCart, checkoutPayload, CheckoutStorageError, finishCheckout, readPendingCheckout, type PendingCheckout } from '@/lib/checkout-request'
 import { CheckoutRecovery } from '@/components/CheckoutRecovery'
 import { ignoreShownError } from '@/lib/errors'
-import { itemOptionsText, payNote, yuan } from '@/lib/format'
+import { itemOptionsText, maskPhone, payNote, yuan } from '@/lib/format'
 import { cartCount, cartTotal, useOrdering } from '@/store/ordering'
 import { menuPath } from '@/lib/navigation'
 import { notify } from '@/store/feedback'
-import { confirmDialog } from '@/lib/ui'
+import { alertDialog, confirmDialog } from '@/lib/ui'
 import { useMemberBalance } from '@/hooks/useMemberBalance'
 import { useVisiblePolling } from '@/hooks/useVisiblePolling'
 import { AppBar, BottomBar, Card, EmptyState, PillButton, Price, Skeleton, Stepper } from '@/components/ui'
@@ -52,7 +52,7 @@ export default function CheckoutPage() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)  // null：尚未在浏览器端读取登录态
   const [tableSyncFailed, setTableSyncFailed] = useState(false)
   const [tableInvalid, setTableInvalid] = useState(false)
-  const { balance, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(loggedIn === true)
+  const { balance, profile, loading: balanceLoading, failed: balanceFailed, refresh: refreshBalance } = useMemberBalance(loggedIn === true)
   const total = cartTotal(items)
   const returnToMenu = menuPath(table?.qrToken)
   // 余额不足时不创建订单：避免生成一笔待支付订单、占用限量库存，再让顾客手动取消
@@ -173,48 +173,37 @@ export default function CheckoutPage() {
   }
 
   const actionText = tableInvalid ? '桌码已失效' : !table.storeOpen ? '已打烊' : !loggedIn ? '登录后确认' : insufficient ? '刷新余额' : '确认并支付'
+  const remain = balance !== null ? balance - total : null
   return (
-    <div className="screen has-bar">
+    <div className="screen has-bar checkout-screen">
       <AppBar title="确认订单" fallback={returnToMenu} />
       <div className="body-pad">
         {tableSyncFailed && <div className="notice" role="status">{tableInvalid ? '桌码已失效，请重新扫描桌上的二维码；已选菜品仍保留。' : '营业信息暂未更新，正在自动重试…'}</div>}
+        {loggedIn && profile && (
+          <div className="login-ok-bar" role="status">
+            <span>已登录 {profile.nickname || '会员'} {maskPhone(profile.phone)}</span>
+            <button className="text-action" onClick={() => router.push(`/login?redirect=${encodeURIComponent('/checkout')}`)}>切换</button>
+          </div>
+        )}
         <Card className="table-card">
+          <span className="table-mark" aria-hidden="true">{table.tableCode}</span>
           <div>
-            <div className="label">用餐桌号</div>
-            <div className="value">{table.tableCode}桌</div>
+            <div className="value">{table.tableCode}桌 · 堂食</div>
+            <div className="checkout-store"><strong>{table.storeName}</strong><span>请确认桌号与座位一致</span></div>
           </div>
-          <div className="checkout-store"><strong>{table.storeName}</strong><span>堂食 · 请确认桌号后再支付</span></div>
-        </Card>
-
-        <Card className="checkout-payment">
-          <div className="section-heading">
-            <h2 className="card-title">余额支付</h2>
-            {loggedIn && <button className="text-action" disabled={balanceLoading} onClick={() => void refreshBalance()}>{balanceLoading ? '刷新中…' : '刷新余额'}</button>}
-          </div>
-          <div role="status" aria-live="polite">
-            {!loggedIn ? <>
-              <p className="payment-lead">选好的菜品已保留，登录后再确认支付</p>
-              <p className="payment-note">本店使用会员余额。首次用餐或忘记密码，请联系店员协助。</p>
-            </> : balanceLoading ? <p className="payment-note">正在查询余额…</p>
-              : balanceFailed ? <p className="payment-note">暂时无法查询余额，请刷新重试。支付结果以实际余额为准。</p>
-                : balance !== null && <>
-                  <div className="balance-amount"><span>当前可用</span><Price value={yuan(balance)} /></div>
-                  {insufficient
-                    ? <p className="balance-warning">还差 ¥{yuan(total - balance)}，请联系店员充值后刷新余额。</p>
-                    : <p className="payment-note">本次支付 ¥{yuan(total)}，预计剩余 ¥{yuan(balance - total)}</p>}
-                </>}
-          </div>
+          <button className="text-action table-switch" onClick={() => void alertDialog('不是这桌？', '请扫描正确桌台上的二维码后再下单。已选菜品会保留。')}>不是这桌？</button>
         </Card>
 
         <Card>
-          <div className="section-heading"><h2 className="card-title">已选菜品 · {cartCount(items)} 件</h2><button className="text-action" onClick={() => router.push(returnToMenu)}>返回修改</button></div>
+          <div className="section-heading"><h2 className="card-title">已选菜品 <span className="card-count">{cartCount(items)} 件</span></h2><button className="text-action" onClick={() => router.push(returnToMenu)}>返回修改</button></div>
           {items.map((item) => (
             <div className="li" key={item.key}>
+              <TileMini name={item.name} />
               <span className="li-name">
                 {item.name}
                 {itemOptionsText(item) && <span className="li-sub">{itemOptionsText(item)}</span>}
               </span>
-              <span className="li-qty">x{item.quantity}</span>
+              <span className="li-qty">×{item.quantity}</span>
               <span className="li-amt">¥{yuan(item.unitPrice * item.quantity)}</span>
             </div>
           ))}
@@ -240,22 +229,48 @@ export default function CheckoutPage() {
           </div>
         </Card>
 
-        <Card>
+        <Card className="checkout-payment">
+          <h2 className="card-title">支付方式</h2>
+          <div className="pay-option" role="status" aria-live="polite">
+            <span className="pay-icon" aria-hidden="true">余</span>
+            <div className="pay-main">
+              <div className="name">会员余额</div>
+              {!loggedIn ? <div className="sub">选好的菜品已保留，登录后再确认支付</div>
+                : balanceLoading ? <div className="sub">正在查询余额…</div>
+                  : balanceFailed ? <div className="sub">暂时无法查询余额，请刷新重试</div>
+                    : balance !== null ? (
+                      <div className="sub">{insufficient
+                        ? <>可用 ¥{yuan(balance)} · 还差 ¥{yuan(total - balance)}</>
+                        : <>可用 ¥{yuan(balance)} · 支付后剩 ¥{yuan(remain ?? 0)}</>}</div>
+                    ) : null}
+            </div>
+            {loggedIn && <button className="text-action" disabled={balanceLoading} onClick={() => void refreshBalance()}>{balanceLoading ? '刷新中…' : '刷新余额'}</button>}
+          </div>
+          {!loggedIn && <p className="payment-note">本店使用会员余额。首次用餐或忘记密码，请联系店员协助。</p>}
+          {loggedIn && !balanceLoading && !balanceFailed && balance !== null && (
+            insufficient
+              ? <p className="balance-warning">还差 ¥{yuan(total - balance)}，请联系店员充值后刷新余额。</p>
+              : <p className="payment-note">本次支付 ¥{yuan(total)}，预计剩余 ¥{yuan(balance - total)}</p>
+          )}
           <div className="kv"><span>菜品小计</span><span>¥{yuan(total)}</span></div>
-          <div className="kv strong"><span>应付</span><span>¥{yuan(total)}</span></div>
+          <div className="kv strong checkout-pay-total"><span>实付</span><span>¥{yuan(total)}</span></div>
+          <p className="checkout-footnote">
+            确认后立即从会员余额扣款；商家接单前可取消，取消或退款原路退回余额。
+          </p>
         </Card>
-        <p className="checkout-footnote">
-          确认后将从会员余额支付。如菜品价格有变化，会请你重新核对。退款会退回到余额。
-        </p>
       </div>
 
       <BottomBar>
         <div className="bar-total grow">
-          <span className="label">应付</span>
+          <span className="label">实付 · 余额支付</span>
           <span className="value"><Price value={yuan(total)} /></span>
         </div>
         <PillButton loading={submitting || (insufficient && balanceLoading)} loadingLabel={submitting ? '正在提交…' : '刷新中…'} disabled={!table.storeOpen || tableInvalid} onClick={insufficient && loggedIn ? refreshBalance : submit}>{actionText}</PillButton>
       </BottomBar>
     </div>
   )
+}
+
+function TileMini({ name }: { name: string }) {
+  return <span className="li-tile" aria-hidden="true">{name.trim().charAt(0) || '菜'}</span>
 }
