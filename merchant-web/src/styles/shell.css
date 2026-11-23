@@ -336,3 +336,116 @@
 .td-orders-card .ant-table-wrapper .ant-table-tbody > tr > td:last-child {
   padding-right: 20px;
 }
+
+/* ---------- 共用：桌号块 ---------- */
+.td-table-badge {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--td-fill);
+  color: var(--td-text);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* ---------- 手机：订单状态胶囊（横向滑动） ---------- */
+.td-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 -12px 12px;
+  padding: 2px 12px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.td-chips::-webkit-scrollbar {
+  display: none;
+}
+.td-chip {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  border: 1px solid var(--td-border);
+  background: var(--td-card);
+  color: var(--td-text);
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.td-chip.is-on {
+  background: var(--td-primary);
+  border-color: var(--td-primary);
+  color: #fff;
+}
+.td-chip-n {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-2);
+}
+.td-chip-n.is-hot {
+  color: var(--td-primary);
+  font-weight: 600;
+}
+.td-chip.is-on .td-chip-n {
+  color: #fff;
+}
+.td-card-actions {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+/* ---------- 手机：底部标签栏 ---------- */
+.td-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--td-card);
+  border-top: 1px solid var(--td-split);
+}
+.td-tabbar button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--td-text-2);
+  cursor: pointer;
+}
+.td-tabbar button .anticon {
+  font-size: 20px;
+}
+.td-tabbar button.is-on {
+  color: var(--td-primary);
+}
+.td-tabbar-badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}

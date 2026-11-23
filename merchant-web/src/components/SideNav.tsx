@@ -1,5 +1,5 @@
 import { Tooltip } from 'antd'
-import { MenuFoldOutlined, MenuUnfoldOutlined, RightOutlined } from '@ant-design/icons'
+import { CloseOutlined, MenuFoldOutlined, MenuUnfoldOutlined, RightOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate } from 'react-router-dom'
 import BrandLogo from './BrandLogo'
 import { activeNavKey, visibleGroups } from '../layouts/nav'
@@ -13,13 +13,15 @@ export interface SideNavProps {
   /** 菜单角标：返回 0 不显示；hot 为橙色强调（需要立即处理） */
   badgeFor: (key: string) => { count: number; hot?: boolean }
   onNavigate?: () => void
+  /** 手机抽屉里：右上角显示关闭按钮 */
+  onClose?: () => void
 }
 
 /**
  * 分组侧栏（R4）：品牌 + 店铺营业状态 + 分组菜单 + 折叠按钮。
  * 折叠后分组名变成分隔线，菜单只留图标，悬停显示名称，角标挪到图标右上角。
  */
-export default function SideNav({ collapsed = false, onToggle, badgeFor, onNavigate }: SideNavProps) {
+export default function SideNav({ collapsed = false, onToggle, badgeFor, onNavigate, onClose }: SideNavProps) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const role = useAuthStore((s) => s.staff?.role)
@@ -34,9 +36,16 @@ export default function SideNav({ collapsed = false, onToggle, badgeFor, onNavig
 
   return (
     <div className={`td-sider${collapsed ? ' is-collapsed' : ''}`}>
-      <button type="button" className="td-brand" onClick={() => go(role === 'KITCHEN' ? '/kitchen' : '/')} aria-label="回到首页">
-        <BrandLogo size={30} showName={!collapsed} showSubtitle inverted />
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <button type="button" className="td-brand" onClick={() => go(role === 'KITCHEN' ? '/kitchen' : '/')} aria-label="回到首页" style={{ flex: 1 }}>
+          <BrandLogo size={30} showName={!collapsed} showSubtitle inverted />
+        </button>
+        {onClose && (
+          <button type="button" className="td-collapse" style={{ width: 40, height: 40, marginRight: 12, justifyContent: 'center', padding: 0 }} onClick={onClose} aria-label="关闭菜单">
+            <CloseOutlined />
+          </button>
+        )}
+      </div>
       <Tooltip title={collapsed ? storeText : undefined} placement="right">
         <button
           type="button"

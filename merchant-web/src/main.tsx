@@ -36,6 +36,9 @@ function BodyBackground() {
       '--td-bg': token.colorBgLayout,
       '--td-card': token.colorBgContainer,
       '--td-fill': token.colorFillAlter,
+      // 侧栏：深色主题下更深一档
+      '--td-sider': isDark ? '#110D0A' : '#211913',
+      '--td-sider-2': isDark ? '#211A15' : '#2E241D',
     }
     for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v)
   }, [token, isDark])

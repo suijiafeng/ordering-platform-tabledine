@@ -59,4 +59,21 @@ describe('ResponsiveTable', () => {
     expect(onRowClick).toHaveBeenCalledWith(1)
     expect(screen.getByText('共 2 条')).toBeTruthy()
   })
+
+  it('uses a custom card body on mobile, reusing column cells, and keeps the action footer', () => {
+    mobileState.value = true
+    render(
+      <ResponsiveTable
+        rowKey="id"
+        columns={columns}
+        dataSource={rows}
+        pagination={false}
+        renderCard={(r, cell) => <div data-testid={`card-${r.id}`}>桌 {r.name} · {cell('金额')}</div>}
+      />,
+    )
+    expect(screen.getByTestId('card-1').textContent).toBe('桌 A1 · 10')
+    // 自定义正文时不再逐列显示「标题：值」
+    expect(screen.queryByText('名称')).toBeNull()
+    expect(screen.getAllByText('详情')).toHaveLength(2)
+  })
 })
