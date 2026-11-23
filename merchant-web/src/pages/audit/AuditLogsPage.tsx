@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, DatePicker, Descriptions, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
-import dayjs, { type Dayjs } from 'dayjs'
+import type { Dayjs } from 'dayjs'
 import { listAuditLogs } from '../../api/audit'
 import { listStaff } from '../../api/staff'
 import type { AuditLogItem, AuditOpType, StaffItem } from '../../api/types'
@@ -12,6 +12,7 @@ import { ROLE_META } from '../../utils/auth'
 import { ignoreShownError } from '../../utils/errors'
 import Panel, { PageToolbar } from '../../components/Panel'
 import SyncStatus from '../../components/SyncStatus'
+import { storeTime, storeDay } from '../../utils/storeTime'
 
 const PAGE_SIZE = 20
 
@@ -123,7 +124,7 @@ export default function AuditLogsPage() {
   }
 
   const columns: ColumnsType<AuditLogItem> = [
-    { title: '时间', dataIndex: 'createdAt', width: 150, render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss') },
+    { title: '时间', dataIndex: 'createdAt', width: 150, render: (v: string) => storeTime(v).format('MM-DD HH:mm:ss') },
     {
       title: '操作人',
       width: 180,
@@ -177,11 +178,11 @@ export default function AuditLogsPage() {
           value={range}
           allowClear
           placeholder={['开始时间', '结束时间']}
-          disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+          disabledDate={(d) => d.isAfter(storeDay(), 'day')}
           presets={[
-            { label: '今天', value: [dayjs(), dayjs()] },
-            { label: '近 7 天', value: [dayjs().subtract(6, 'day'), dayjs()] },
-            { label: '近 30 天', value: [dayjs().subtract(29, 'day'), dayjs()] },
+            { label: '今天', value: [storeDay(), storeDay()] },
+            { label: '近 7 天', value: [storeDay().subtract(6, 'day'), storeDay()] },
+            { label: '近 30 天', value: [storeDay().subtract(29, 'day'), storeDay()] },
           ]}
           onChange={(v) => filter(setRange)(v?.[0] && v[1] ? [v[0], v[1]] : null)}
         />

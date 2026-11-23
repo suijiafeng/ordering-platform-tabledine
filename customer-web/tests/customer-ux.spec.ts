@@ -461,8 +461,9 @@ test('结算页已登录条、支付卡片与实付说明不被底栏遮挡', as
   expect(errors).toEqual([])
 })
 
+/** 门店（Asia/Shanghai）当天的某个时刻；H5 按门店时区显示，与浏览器时区无关 */
 function localAt(hour: number, minute: number) {
-  return new Date(2026, 10, 22, hour, minute, 0).toISOString()
+  return new Date(`2026-11-22T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+08:00`).toISOString()
 }
 
 test('制作中订单展示五步进度、制作时长与同桌再点', async ({ page }) => {

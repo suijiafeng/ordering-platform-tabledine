@@ -11,6 +11,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import { ignoreShownError } from '../../utils/errors'
+import { storeDay } from '../../utils/storeTime'
 
 /** 区间统计与导出共用的最大天数（与后端一致） */
 const MAX_RANGE_DAYS = 92
@@ -19,7 +20,7 @@ type Range = [Dayjs, Dayjs]
 
 /** 快捷区间：每次渲染时按当前日期计算（页面开过午夜后「今天」仍然正确） */
 function quickRanges(): { label: string; value: Range }[] {
-  const today = dayjs()
+  const today = storeDay()
   return [
     { label: '今天', value: [today, today] },
     { label: '昨天', value: [today.subtract(1, 'day'), today.subtract(1, 'day')] },
@@ -30,7 +31,7 @@ function quickRanges(): { label: string; value: Range }[] {
 
 /** 日期选择器下拉里的更多快捷项 */
 function morePresets(): { label: string; value: Range }[] {
-  const today = dayjs()
+  const today = storeDay()
   return [
     { label: '本周', value: [today.startOf('week'), today] },
     { label: '本月', value: [today.startOf('month'), today] },
@@ -48,7 +49,7 @@ export default function ReportsPage() {
   const isMobile = useIsMobile()
   const { message } = App.useApp()
   const { token } = antdTheme.useToken()
-  const [range, setRange] = useState<Range>([dayjs().subtract(6, 'day'), dayjs()])
+  const [range, setRange] = useState<Range>(() => [storeDay().subtract(6, 'day'), storeDay()])
   const [summary, setSummary] = useState<ReportSummary | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
@@ -150,7 +151,7 @@ export default function ReportsPage() {
             onChange={(v) => {
               if (v?.[0] && v[1]) pickRange([v[0], v[1]])
             }}
-            disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+            disabledDate={(d) => d.isAfter(storeDay(), 'day')}
             presets={morePresets()}
           />
           {quickRanges().map((q) => (

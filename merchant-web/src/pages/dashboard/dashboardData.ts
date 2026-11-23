@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import type { OrderSummary, TableItem } from '../../api/types'
+import { storeTime } from '../../utils/storeTime'
 
 /** 已收款且未取消 / 关闭的订单才计入收款（先吃后付未结账的没有 paidAt） */
 function counted(o: OrderSummary): boolean {
@@ -22,7 +23,7 @@ export function hourlySeries(orders: OrderSummary[], fromHour: number, toHour: n
   for (let h = fromHour; h <= toHour; h++) points.push({ hour: h, amount: 0, orders: 0 })
   for (const o of orders) {
     if (!counted(o)) continue
-    const h = dayjs(o.paidAt).hour()
+    const h = storeTime(o.paidAt).hour()
     const p = points.find((x) => x.hour === h)
     if (!p) continue
     p.amount += o.payAmount - o.refundedAmount
@@ -44,7 +45,7 @@ export function chartHours(businessHours: string | null | undefined, orders: Ord
   }
   for (const o of orders) {
     if (!o.paidAt) continue
-    const h = dayjs(o.paidAt).hour()
+    const h = storeTime(o.paidAt).hour()
     from = Math.min(from, h)
     to = Math.max(to, h)
   }

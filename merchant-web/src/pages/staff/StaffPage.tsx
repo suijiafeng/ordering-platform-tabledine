@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { App, Button, Form, Input, Modal, Popconfirm, Radio, Space, Switch, Tag, Typography, theme as antdTheme } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined } from '@ant-design/icons'
-import dayjs from 'dayjs'
 import { createStaff, listStaff, setStaffEnabled, updateStaff } from '../../api/staff'
 import type { StaffItem, StaffRole } from '../../api/types'
 import { ROLE_META } from '../../utils/auth'
@@ -13,6 +12,7 @@ import ResponsiveTable from '../../components/ResponsiveTable'
 import { useLatestRequest } from '../../hooks/useLatestRequest'
 import { useVisiblePolling } from '../../hooks/useVisiblePolling'
 import SyncStatus from '../../components/SyncStatus'
+import { storeTime } from '../../utils/storeTime'
 
 type EditState = 'new' | StaffItem | null
 /** 可分配的岗位：店主由系统初始化，不能在这里设置 */
@@ -132,7 +132,7 @@ export default function StaffPage() {
           </Popconfirm>
         ),
     },
-    { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm') },
+    { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v: string) => storeTime(v).format('YYYY-MM-DD HH:mm') },
     {
       title: '操作',
       width: 120,
@@ -174,7 +174,7 @@ export default function StaffPage() {
               <span className="td-table-badge" style={{ borderRadius: '50%' }}>{r.name.slice(0, 1)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {cell('姓名')}
-                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>账号 {r.username} · {dayjs(r.createdAt).format('YYYY-MM-DD')} 创建</div>
+                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>账号 {r.username} · {storeTime(r.createdAt).format('YYYY-MM-DD')} 创建</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                 {cell('角色')}

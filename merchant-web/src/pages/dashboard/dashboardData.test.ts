@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import dayjs from 'dayjs'
 import type { OrderSummary, TableItem } from '../../api/types'
 import { changeRate, chartHours, hourlySeries, prepStats, tableStates } from './dashboardData'
 
 const day = '2026-11-23'
-const at = (hm: string) => dayjs(`${day}T${hm}:00`).format()
+/** 门店时间（Asia/Shanghai）的某个时刻；与运行测试的机器时区无关 */
+const at = (hm: string) => `${day}T${hm}:00+08:00`
 function order(p: Partial<OrderSummary>): OrderSummary {
   return {
     id: 1, orderNo: 'X', status: 'DONE', refundStatus: 'NONE', tableCode: 'A1', platform: 'H5', totalAmount: 0, payAmount: 1000,
@@ -27,6 +27,15 @@ describe('dashboard data', () => {
       { hour: 10, amount: 2500, orders: 2 },
       { hour: 11, amount: 0, orders: 0 },
       { hour: 12, amount: 3000, orders: 1 },
+    ])
+  })
+
+  it('buckets by store hour even when the browser is in another time zone', () => {
+    // 东京 13:30 = 门店 12:30，应计入 12 点
+    const s = hourlySeries([order({ paidAt: `${day}T13:30:00+09:00`, payAmount: 1000 })], 12, 13)
+    expect(s).toEqual([
+      { hour: 12, amount: 1000, orders: 1 },
+      { hour: 13, amount: 0, orders: 0 },
     ])
   })
 
