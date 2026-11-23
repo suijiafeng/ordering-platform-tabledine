@@ -38,7 +38,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
             if (!location.endsWith("/")) {
                 location = location + "/";
             }
-            registry.addResourceHandler(storage.getPublicPath() + "**").addResourceLocations(location);
+            // classpath:/dev-uploads/ 是开发种子数据的演示菜品图（/uploads/demo/*.jpg），本地上传目录优先
+            registry.addResourceHandler(storage.getPublicPath() + "**").addResourceLocations(location, "classpath:/dev-uploads/");
         }
     }
 
