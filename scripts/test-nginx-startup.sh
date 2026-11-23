@@ -48,4 +48,13 @@ for path in / /h5/; do
     grep -qi '<html' "$work/page.html"
     if grep -q 'Welcome to nginx!' "$work/page.html"; then exit 1; fi
 done
-echo 'Production nginx startup, rendered domain, PID 1 and both web routes passed.'
+# 商家端主包：gzip 压缩、长期缓存；入口页不缓存；安全头仍在
+asset=$(docker exec "$name" sh -c 'ls /usr/share/nginx/merchant/assets/*.js | head -n 1 | xargs basename')
+docker exec "$name" wget --no-check-certificate -S --header='Accept-Encoding: gzip' -qO /dev/null "https://127.0.0.1/assets/$asset" 2> "$work/asset.headers"
+grep -qi 'Content-Encoding: gzip' "$work/asset.headers"
+grep -qi 'Cache-Control: public, max-age=31536000, immutable' "$work/asset.headers"
+grep -qi 'Content-Security-Policy' "$work/asset.headers"
+docker exec "$name" wget --no-check-certificate -S -qO /dev/null https://127.0.0.1/ 2> "$work/index.headers"
+grep -qi 'Cache-Control: no-cache' "$work/index.headers"
+grep -qi 'X-Frame-Options' "$work/index.headers"
+echo 'Production nginx startup, rendered domain, PID 1, both web routes, gzip and cache headers passed.'
