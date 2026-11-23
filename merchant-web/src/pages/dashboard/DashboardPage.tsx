@@ -187,7 +187,7 @@ export default function DashboardPage() {
   const openState = store ? (store.businessStatus === 1 ? '营业中' : '已暂停营业') : ''
 
   const Rate = ({ v, suffix }: { v: number | null; suffix: string }) => v === null
-    ? <span>{suffix.replace('较', '昨日同时段无数据，')}</span>
+    ? <span>昨日同时段无数据</span>
     : v === 0
       ? <span className="td-flat">持平 <span style={{ color: 'var(--td-text-3)' }}>{suffix}</span></span>
       : <span className={v > 0 ? 'td-up' : 'td-down'}>{v > 0 ? '▲' : '▼'} {Math.abs(v * 100).toFixed(1)}% <span style={{ color: 'var(--td-text-3)' }}>{suffix}</span></span>
@@ -290,7 +290,8 @@ export default function DashboardPage() {
     </section>
   )
 
-  const top = stats?.topDishes ?? []
+  // 整单退款后净销量为 0 的菜不进热销榜
+  const top = (stats?.topDishes ?? []).filter((d) => d.quantity > 0)
   const topMax = Math.max(1, ...top.map((d) => d.quantity))
   const hotList = top.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有售出菜品" /> : top.slice(0, 5).map((d, i) => (
     <div key={d.dishName} className="td-hot">

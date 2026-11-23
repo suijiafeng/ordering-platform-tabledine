@@ -74,7 +74,7 @@ export default function HourlyTrendChart({ today, yesterday, metric, nowHour, he
                   fill={current ? `url(#${hatchId})` : token.colorPrimary}
                 />
               )}
-              {current && (
+              {current && !empty && (
                 <text x={x} y={Math.min(top, padT + plotH) - 6} textAnchor="middle" fontSize={11} fill={token.colorPrimary}>现在</text>
               )}
               <text x={x} y={height - 8} textAnchor="middle" fontSize={11} fill={hover === i ? token.colorText : token.colorTextTertiary}>{`${p.hour}:00`}</text>
