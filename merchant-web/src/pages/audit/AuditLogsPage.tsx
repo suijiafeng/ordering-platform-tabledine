@@ -251,7 +251,7 @@ export default function AuditLogsPage() {
         <Button size="large" icon={<ReloadOutlined />} onClick={reset}>重置</Button>
       </PageToolbar>
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 16 }}>
-        记录员工、顾客与系统的所有写操作、登录和敏感数据查看；日志只能追加，任何人都无法修改或删除。查看本页同样会被记录。
+        查看本页会被记录。
       </Typography.Paragraph>
       <Panel>
         <Table<AuditLogItem>

@@ -167,7 +167,7 @@ export default function CheckoutPage() {
     return (
       <div className="screen">
         <AppBar title="确认订单" fallback={returnToMenu} />
-        <EmptyState title="购物车还是空的" desc="快去挑选喜欢的菜品吧" action={<PillButton onClick={() => router.replace(returnToMenu)}>去点餐</PillButton>} />
+        <EmptyState title="购物车还是空的" action={<PillButton onClick={() => router.replace(returnToMenu)}>去点餐</PillButton>} />
       </div>
     )
   }
@@ -189,7 +189,7 @@ export default function CheckoutPage() {
           <span className="table-mark" aria-hidden="true">{table.tableCode}</span>
           <div>
             <div className="value">{table.tableCode}桌 · 堂食</div>
-            <div className="checkout-store"><strong>{table.storeName}</strong><span>请确认桌号与座位一致</span></div>
+            <div className="checkout-store"><strong>{table.storeName}</strong></div>
           </div>
           <button className="text-action table-switch" onClick={() => void alertDialog('不是这桌？', '请扫描正确桌台上的二维码后再下单。已选菜品会保留。')}>不是这桌？</button>
         </Card>
@@ -247,10 +247,8 @@ export default function CheckoutPage() {
             {loggedIn && <button className="text-action" disabled={balanceLoading} onClick={() => void refreshBalance()}>{balanceLoading ? '刷新中…' : '刷新余额'}</button>}
           </div>
           {!loggedIn && <p className="payment-note">本店使用会员余额。首次用餐或忘记密码，请联系店员协助。</p>}
-          {loggedIn && !balanceLoading && !balanceFailed && balance !== null && (
-            insufficient
-              ? <p className="balance-warning">还差 ¥{yuan(total - balance)}，请联系店员充值后刷新余额。</p>
-              : <p className="payment-note">本次支付 ¥{yuan(total)}，预计剩余 ¥{yuan(balance - total)}</p>
+          {loggedIn && !balanceLoading && !balanceFailed && balance !== null && insufficient && (
+            <p className="balance-warning">还差 ¥{yuan(total - balance)}，请联系店员充值后刷新余额。</p>
           )}
           <div className="kv"><span>菜品小计</span><span>¥{yuan(total)}</span></div>
           <div className="kv strong checkout-pay-total"><span>实付</span><span>¥{yuan(total)}</span></div>

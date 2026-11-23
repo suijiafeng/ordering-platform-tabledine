@@ -29,7 +29,7 @@ export default function WalletPage() {
           : failed && !transactions.length
             ? <EmptyState icon="!" title="记录加载失败" desc="请检查网络后重试" action={<PillButton onClick={() => void refresh()}>重新加载</PillButton>} />
             : <Card>
-              {transactions.length === 0 && <EmptyState inset title="还没有收支记录" desc="充值、点餐消费和退款都会记在这里" />}
+              {transactions.length === 0 && <EmptyState inset title="还没有收支记录" />}
               {transactions.map((item) => (
                 <div
                   className="flow-row"

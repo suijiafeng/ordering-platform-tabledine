@@ -331,7 +331,7 @@ export default function TablesPage() {
         <Typography.Text type="secondary" style={{ fontSize: 13 }}>
           {selected.length
             ? `已选 ${selected.length} 张`
-            : `共 ${tables.length} 张 · 勾选卡片后只打印选中的，不勾选则打印全部可用桌台`}
+            : `共 ${tables.length} 张`}
         </Typography.Text>
         {tables.length > 0 && (
           <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setSelected(allSelected ? [] : tables.map((t) => t.id))}>
@@ -403,9 +403,6 @@ export default function TablesPage() {
             <InputNumber min={1} max={999} />
           </Form.Item>
         </Form>
-        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-          例如前缀 A、从 1 到 10，生成 A1 ~ A10；一次最多 200 张。
-        </Typography.Paragraph>
       </Modal>
     </div>
   )

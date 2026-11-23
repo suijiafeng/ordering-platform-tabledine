@@ -112,7 +112,7 @@ for (const width of [320, 375, 430, 768]) {
     await page.setViewportSize({ width, height: 812 })
     const { errors } = await setup(page)
     await page.goto('/h5/?token=demo-table')
-    await expect(page.getByRole('button', { name: /会员余额支付/ })).toBeVisible()
+    await expect(page.getByText('会员余额支付')).toBeVisible()
     const add = page.locator('.dishes').getByRole('button', { name: '增加招牌红烧肉', exact: true })
     await add.click()
     expect(await add.evaluate(el => [el.clientWidth, el.clientHeight])).toEqual([44, 44])
@@ -158,7 +158,7 @@ test('登录返回结算保留草稿；再次确认才创建订单和支付', as
   await page.getByLabel('密码', { exact: true }).fill('test-password')
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page.getByLabel('口味备注')).toHaveValue('少盐，不放葱')
-  await expect(page.getByText('本次支付 ¥38，预计剩余 ¥62')).toBeVisible()
+  await expect(page.getByText('可用 ¥100 · 支付后剩 ¥62')).toBeVisible()
   expect(state.created).toHaveLength(0)
   await page.getByRole('button', { name: '确认并支付', exact: true }).click()
   // 下单即扣款：先弹窗确认桌号与金额，取消则不创建订单
@@ -184,7 +184,7 @@ test('余额不足先充值刷新，不创建占库存的订单', async ({ page 
   expect(state.created).toHaveLength(0)
   state.balance = 10000
   await page.locator('.bottom-bar').getByRole('button', { name: '刷新余额', exact: true }).click()
-  await expect(page.getByText('本次支付 ¥38，预计剩余 ¥62')).toBeVisible()
+  await expect(page.getByText('可用 ¥100 · 支付后剩 ¥62')).toBeVisible()
   await expect(page.getByRole('button', { name: '确认并支付', exact: true })).toBeEnabled()
   expect(state.created).toHaveLength(0)
 })
@@ -196,7 +196,7 @@ test('余额刷新失败展示可恢复提示，重试后恢复', async ({ page 
   await expect(page.getByText(/暂时无法查询余额/)).toBeVisible()
   state.balanceFailure = false
   await page.getByRole('button', { name: '刷新余额', exact: true }).click()
-  await expect(page.getByText('本次支付 ¥38，预计剩余 ¥62')).toBeVisible()
+  await expect(page.getByText('可用 ¥100 · 支付后剩 ¥62')).toBeVisible()
 })
 
 test('提交后菜价变化时不自动支付，跳到收银台核对', async ({ page }) => {

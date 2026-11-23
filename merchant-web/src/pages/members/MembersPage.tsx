@@ -331,10 +331,6 @@ export default function MembersPage() {
           onSearch={(v) => { setKeyword(v.trim()); setPage(1) }}
         />
       </PageToolbar>
-      <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 16 }}>
-        顾客用手机号 + 密码登录 H5 点餐页；下单时直接从账户余额扣费，不经过微信 / 支付宝。
-        余额由店主或前厅在这里充值（线下收款后登记），取消订单或退款会自动返还到余额。
-      </Typography.Paragraph>
       <Panel bareOnMobile>
         <ResponsiveTable
           rowKey="id"
@@ -390,7 +386,7 @@ export default function MembersPage() {
             <Input.Password placeholder={isNew ? '6~64 位' : '留空不修改'} />
           </Form.Item>}
           {isNew && (
-            <Form.Item name="initialYuan" label="开户充值（元，可选）" extra="线下收款后在这里登记，顾客即可开始点餐">
+            <Form.Item name="initialYuan" label="开户充值（元，可选）">
               <InputNumber min={0} max={1000000} precision={2} style={{ width: '100%' }} prefix="¥" placeholder="0.00" />
             </Form.Item>
           )}
@@ -429,7 +425,7 @@ export default function MembersPage() {
           <Form.Item name="yuan" label="充值金额（元）" rules={[{ required: true, type: 'number', min: 0.01, max: 1000000, message: '请输入 0.01 ~ 1000000 之间的金额' }]}>
             <InputNumber min={0.01} max={1000000} precision={2} style={{ width: '100%' }} prefix="¥" autoFocus />
           </Form.Item>
-          <Form.Item name="remark" label="备注（可选）" extra="如：现金 / 转账，便于日后核对">
+          <Form.Item name="remark" label="备注（可选）">
             <Input maxLength={100} />
           </Form.Item>
           <Typography.Text type="secondary">充值只登记余额，不会向顾客收款；请先线下收款再操作。</Typography.Text>

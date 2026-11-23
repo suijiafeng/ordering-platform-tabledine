@@ -382,8 +382,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .login-form { margin-top: 32px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
 .login .submit { margin-top: 20px; }
 .login .terms { margin-top: 22px; color: var(--ink-4); font-size: 12px; line-height: 1.6; }
-.login .alt { display: flex; align-items: center; gap: 12px; margin-top: 36px; color: var(--ink-5); font-size: 12px; }
-.login .alt::before, .login .alt::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.login .browse { margin-top: 36px; }
 
 /* ---------- 我的账户 / 流水 ---------- */
 .wallet-card { padding: 22px; border-radius: var(--r-card); background: var(--brand); color: #fff; }

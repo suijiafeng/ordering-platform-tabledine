@@ -64,11 +64,7 @@ function MeView() {
           <div className="label">余额</div>
           <div className="value">¥{yuan(profile.balance)}</div>
         </div>
-        <p className="t-faint" style={{ margin: '12px 4px 16px', lineHeight: 1.6 }}>
-          余额由店员充值，点餐时直接抵扣；取消订单或退款会退回到余额。
-        </p>
-
-        <div className="menu-list">
+        <div className="menu-list" style={{ marginTop: 16 }}>
           <button onClick={() => router.push('/orders')}>我的订单<span className="arrow">›</span></button>
           <button onClick={() => router.push('/wallet')}>余额明细<span className="arrow">›</span></button>
           <PasswordItem onChanged={() => router.replace('/login?redirect=%2Fme')} />

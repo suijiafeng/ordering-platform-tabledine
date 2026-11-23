@@ -9,7 +9,6 @@ import { imageSrc, yuan } from '@/lib/format'
 import type { Dish, MenuView, Selection, TableInfo } from '@/lib/types'
 import { MAX_QUANTITY, dishLimit, dishQuantity, useOrdering } from '@/store/ordering'
 import { notify } from '@/store/feedback'
-import { alertDialog } from '@/lib/ui'
 import { CloseIcon, EmptyState, PersonIcon, Price, PillButton, SearchIcon, Skeleton, Stepper, Tile } from './ui'
 import { CartBar } from './CartBar'
 import { DishDetail } from './DishDetail'
@@ -257,7 +256,6 @@ export function MenuClient() {
       <div className="center-state full">
         <span className="login-mark" style={{ margin: 0 }}>餐</span>
         <div className="t-hero">请扫描桌上的二维码点餐</div>
-        <div className="t-note">用手机相机或浏览器扫码即可打开菜单；下单时登录会员账号，从余额支付。</div>
         {process.env.NODE_ENV === 'development' && (
           <PillButton onClick={() => router.replace('/?token=dev-table-a1')}>打开开发桌台 A1</PillButton>
         )}
@@ -282,15 +280,14 @@ export function MenuClient() {
           </div>
           <div className="search-field">
             <SearchIcon />
-            <input ref={searchRef} type="search" enterKeyHint="search" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="想吃什么？搜菜名或口味" aria-label="搜索菜品" />
+            <input ref={searchRef} type="search" enterKeyHint="search" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索菜品" aria-label="搜索菜品" />
             {keyword && <button className="icon-button search-clear" aria-label="清空搜索" onClick={clearSearch}><CloseIcon /></button>}
           </div>
         </div>
       </header>
-      <button className="menu-payment-note" onClick={() => void alertDialog('本店使用会员余额支付', '可以先选菜，结算前再登录。没有会员账号或余额不足，请联系店员开户、充值。充值后可在结算页刷新余额。')}>
-        <span><strong>会员余额支付</strong><span>首次用餐请联系店员开户</span></span>
-        <span className="menu-note-link">须知 ›</span>
-      </button>
+      <div className="menu-payment-note">
+        <span><strong>会员余额支付</strong><span>没有账号请联系店员</span></span>
+      </div>
       {!table.storeOpen && <div className="menu-closed">店铺已打烊，当前可以浏览菜单，暂不能下单</div>}
       {syncFailed && <div className="notice" role="status">菜单暂未更新，正在自动重试…</div>}
 
@@ -298,7 +295,7 @@ export function MenuClient() {
       {matched ? (
         <div className="dishes search-results">
           <div className="search-summary" role="status">找到 {matched.length} 道菜品</div>
-          {matched.length ? matched.map(dishRow) : <EmptyState inset title="没有找到相关菜品" desc={`试试换个词，当前搜索「${keyword.trim()}」`} action={<PillButton variant="plain" onClick={clearSearch}>查看全部菜品</PillButton>} />}
+          {matched.length ? matched.map(dishRow) : <EmptyState inset title="没有找到相关菜品" action={<PillButton variant="plain" onClick={clearSearch}>查看全部菜品</PillButton>} />}
         </div>
       ) : (
         <div className="menu-body">
@@ -319,7 +316,7 @@ export function MenuClient() {
             })}
           </nav>
           <div className="dishes" ref={dishesRef} onScroll={syncActiveCategory}>
-            {menu && menu.categories.length === 0 && <EmptyState inset title="暂无菜品" desc="店家还没有上架菜品" />}
+            {menu && menu.categories.length === 0 && <EmptyState inset title="暂无菜品" />}
             {menu?.categories.map((category) => (
               <section id={`cat-${category.id}`} key={category.id}>
                 <h2 className="cat-head">{category.name}{category.dishes.length > 0 && <span className="cat-count">{category.dishes.length} 道</span>}</h2>

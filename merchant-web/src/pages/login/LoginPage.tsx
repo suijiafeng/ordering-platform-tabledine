@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { Alert, Button, Checkbox, Form, Input, Typography } from 'antd'
+import { Alert, Button, Checkbox, Form, Input } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { login } from '../../api/auth'
 import { useAuthStore } from '../../store/auth'
@@ -67,12 +67,6 @@ export default function LoginPage() {
         <BrandLogo size={32} showSubtitle inverted />
         <div>
           <h1>顾客扫码下单，<br />后厨按单出餐，<em>账一目了然。</em></h1>
-          <p>会员余额支付、按请求号幂等扣款；前厅接单、后厨队列、退款审核、经营看板，一套后台搞定。</p>
-        </div>
-        <div className="td-login-facts">
-          <div><b>30 秒</b><span>扫码到下单</span></div>
-          <div><b>0 重复扣款</b><span>请求号幂等</span></div>
-          <div><b>3 种角色</b><span>店主 / 前厅 / 后厨</span></div>
         </div>
         <div className="td-login-preview">
           <div className="dots"><i /><i /><i /></div>
@@ -92,7 +86,6 @@ export default function LoginPage() {
             <BrandLogo size={32} showSubtitle />
           </div>
           <h2>登录{BRAND.subtitle}</h2>
-          <Typography.Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 28 }}>使用店主或员工账号登录</Typography.Paragraph>
           {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
           <Form<LoginForm> layout="vertical" onFinish={onFinish} size="large" autoComplete="off" requiredMark={false} initialValues={{ username: initialUsername, remember: true }}>
             <Form.Item name="username" label="账号" rules={[{ required: true, message: '请输入账号' }]}>
@@ -112,7 +105,6 @@ export default function LoginPage() {
             <Button type="primary" htmlType="submit" block loading={submitting}>登录</Button>
           </Form>
           {DEMO_ACCOUNT && <div className="td-login-demo"><b>演示账号</b>{DEMO_ACCOUNT}</div>}
-          <div className="td-login-foot">{BRAND.name} · Spring Boot + React + Ant Design</div>
         </div>
       </main>
     </div>

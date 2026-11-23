@@ -25,33 +25,6 @@
   font-style: normal;
   color: #f7843a;
 }
-.td-login-aside p {
-  margin: 16px 0 0;
-  max-width: 480px;
-  font-size: 14px;
-  line-height: 1.8;
-  color: rgba(255, 255, 255, 0.65);
-}
-.td-login-facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  max-width: 600px;
-}
-.td-login-facts div {
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.td-login-facts b {
-  display: block;
-  font-size: 20px;
-}
-.td-login-facts span {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
-}
 /* 右下角的后台预览示意（纯装饰） */
 .td-login-preview {
   position: absolute;
@@ -125,7 +98,7 @@
   max-width: 360px;
 }
 .td-login-form h2 {
-  margin: 0;
+  margin: 0 0 28px;
   font-size: 24px;
   font-weight: 600;
   color: var(--td-text);
@@ -142,12 +115,6 @@
 .td-login-demo b {
   color: var(--td-primary);
   margin-right: 10px;
-}
-.td-login-foot {
-  margin-top: 32px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--td-text-3);
 }
 @media (max-width: 1023.98px) {
   .td-login {
