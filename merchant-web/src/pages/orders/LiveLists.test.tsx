@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import { App, ConfigProvider } from 'antd'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
@@ -60,8 +60,10 @@ describe('live order and refund lists', () => {
     expect(screen.getByText(summary.orderNo)).toBeTruthy()
     expect(document.querySelector('.ant-spin-spinning')).toBeNull()
     await act(async () => { background.resolve({ list: [{ ...summary, cookingStartedAt: '2026-10-12T09:01:00' }], total: 1, page: 1, pageSize: 20 }) })
-    expect(screen.queryByText('待制作')).toBeNull()
-    expect(screen.getByText('制作中')).toBeTruthy()
+    // 「制作中」也是页签名，只在表格行里找状态标签
+    const body = within(screen.getByText(summary.orderNo).closest('tr, [role="button"]') as HTMLElement)
+    expect(body.queryByText('待制作')).toBeNull()
+    expect(body.getByText('制作中')).toBeTruthy()
     expect(listOrders).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'MAKING', page: 1 }), { silent: true })
   })
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Alert, App, Button, Descriptions, Divider, Drawer, Input, Modal, Space, Spin, Table, Tag, Timeline, Tooltip, Typography } from 'antd'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Alert, App, Button, Descriptions, Divider, Drawer, Input, Modal, Space, Spin, Table, Tag, Timeline, Tooltip, Typography, theme as antdTheme } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { acceptOrder, approveCancelRequest, cancelOrder, deliverOrder, getOrder, readyOrder, rejectCancelRequest, rejectOrder, startCooking } from '../../api/order'
@@ -64,6 +64,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
   // 权责分离：后厨只能出餐；接单 / 拒单 / 送达由前厅（或店主）操作，后端同样会拒绝
   const isKitchen = useIsKitchen()
   const isMobile = useIsMobile()
+  const { token } = antdTheme.useToken()
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [syncFailed, setSyncFailed] = useState(false)
@@ -257,67 +258,82 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
     const unsettled = isUnsettled(order)
     const canRefund = isOwner && !unsettled && (s === 'MAKING' || s === 'READY' || s === 'DONE') && order.refundableAmount > 0
     const cancelApplying = order.cancelRequest?.status === 'APPLYING'
+    // 左侧：拒绝 / 退款 / 取消等次要或危险操作；右侧：推进订单的主操作
+    const secondary: ReactNode[] = []
+    const primary: ReactNode[] = []
+    if (s === 'PAID' && !isKitchen) {
+      secondary.push(<Button key="reject" danger loading={acting} onClick={() => { setReason(''); setReasonModal('reject') }}>拒单并退款</Button>)
+      primary.push(<ConfirmButton key="accept" type="primary" loading={acting} confirmText="确认接单？" onConfirm={() => void runOrderAction(() => acceptOrder(order.orderNo), '已接单')}>接单</ConfirmButton>)
+    }
+    if (s === 'MAKING' && cancelApplying && !isKitchen) {
+      // 顾客申请取消：前厅 / 店主先处理，处理完之前后厨不能开始制作
+      secondary.push(<Button key="reject-cancel" loading={acting} onClick={() => { setReason(''); setReasonModal('rejectCancel') }}>拒绝取消</Button>)
+      primary.push(<Button key="approve-cancel" type="primary" danger loading={acting} onClick={approveCancel}>同意取消并退款</Button>)
+    }
+    if (s === 'MAKING' && !cancelApplying) {
+      // 与后厨看板一致：接单后先「开始制作」，再「制作完成」；旧版后端没有 cookingStartedAt 时直接出餐
+      primary.push(order.cookingStartedAt === null
+        ? <ConfirmButton key="start" type="primary" loading={acting} confirmText="确认开始制作？" onConfirm={() => void runOrderAction(() => startCooking(order.orderNo), '已开始制作')}>开始制作</ConfirmButton>
+        : <ConfirmButton key="ready" type="primary" loading={acting} confirmText="确认制作完成？" onConfirm={() => void runOrderAction(() => readyOrder(order.orderNo), '制作完成，等待取餐')}>制作完成</ConfirmButton>)
+    }
+    if (s === 'READY' && !isKitchen) {
+      primary.push(<ConfirmButton key="deliver" type="primary" loading={acting} confirmText="确认送达？" onConfirm={() => void runOrderAction(() => deliverOrder(order.orderNo), '已送达')}>送达完成</ConfirmButton>)
+    }
+    if (unsettled && !isKitchen) {
+      primary.push(<Button key="settle" type="primary" danger onClick={() => setSettleOpen(true)}>结账 {formatYuan(order.payAmount)}</Button>)
+    }
+    if (canRefund) {
+      secondary.push(<Tooltip key="refund" title={blockedTip}><Button disabled={!!activeRefund} onClick={() => setRefundOpen(true)}>退款</Button></Tooltip>)
+    }
+    if (isOwner && (s === 'MAKING' || s === 'READY')) {
+      secondary.push(<Tooltip key="cancel" title={blockedTip}><Button danger disabled={!!activeRefund} onClick={() => { setReason(''); setReasonModal('cancel') }}>整单取消</Button></Tooltip>)
+    }
+    if (secondary.length === 0 && primary.length === 0) return null
     return (
-      <Space wrap>
-        {unsettled && !isKitchen && (
-          <Button type="primary" danger onClick={() => setSettleOpen(true)}>结账 {formatYuan(order.payAmount)}</Button>
-        )}
-        {s === 'PAID' && !isKitchen && (
-          <>
-            <ConfirmButton type="primary" loading={acting} confirmText="确认接单？" onConfirm={() => void runOrderAction(() => acceptOrder(order.orderNo), '已接单')}>接单</ConfirmButton>
-            <Button danger loading={acting} onClick={() => { setReason(''); setReasonModal('reject') }}>拒单并退款</Button>
-          </>
-        )}
-        {s === 'MAKING' && cancelApplying && !isKitchen && (
-          // 顾客申请取消：前厅 / 店主先处理，处理完之前后厨不能开始制作
-          <>
-            <Button type="primary" danger loading={acting} onClick={approveCancel}>同意取消并退款</Button>
-            <Button loading={acting} onClick={() => { setReason(''); setReasonModal('rejectCancel') }}>拒绝取消</Button>
-          </>
-        )}
-        {s === 'MAKING' && !cancelApplying && (
-          // 与后厨看板一致：接单后先「开始制作」，再「制作完成」；旧版后端没有 cookingStartedAt 时直接出餐
-          order.cookingStartedAt === null
-            ? <ConfirmButton type="primary" loading={acting} confirmText="确认开始制作？" onConfirm={() => void runOrderAction(() => startCooking(order.orderNo), '已开始制作')}>开始制作</ConfirmButton>
-            : <ConfirmButton type="primary" loading={acting} confirmText="确认制作完成？" onConfirm={() => void runOrderAction(() => readyOrder(order.orderNo), '制作完成，等待取餐')}>制作完成</ConfirmButton>
-        )}
-        {s === 'READY' && !isKitchen && (
-          <ConfirmButton type="primary" loading={acting} confirmText="确认送达？" onConfirm={() => void runOrderAction(() => deliverOrder(order.orderNo), '已送达')}>送达完成</ConfirmButton>
-        )}
-        {canRefund && <Tooltip title={blockedTip}><Button disabled={!!activeRefund} onClick={() => setRefundOpen(true)}>退款</Button></Tooltip>}
-        {isOwner && (s === 'MAKING' || s === 'READY') && (
-          <Tooltip title={blockedTip}><Button danger disabled={!!activeRefund} onClick={() => { setReason(''); setReasonModal('cancel') }}>整单取消</Button></Tooltip>
-        )}
-      </Space>
+      <div className="td-drawer-footer">
+        {secondary}
+        <div className="td-drawer-footer-main">{primary}</div>
+      </div>
     )
   }
+  const footerActions = actions()
 
   return (
     <Drawer
       closable={{ placement: 'end' }}
       title={
         order ? (
-          <Space wrap size={4} style={{ maxWidth: '100%' }}>
-            <Typography.Text
-              copyable={{ text: order.orderNo, tooltips: ['复制单号', '已复制'] }}
-              ellipsis={{ tooltip: `订单 ${order.orderNo}` }}
-              strong
-              style={{ maxWidth: isMobile ? 180 : 280 }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <span
+              aria-hidden
+              style={{ width: 40, height: 40, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: order.tableCode && order.tableCode.length > 3 ? 12 : 15, color: token.colorPrimary, background: token.colorPrimaryBg }}
             >
-              {isMobile ? `桌 ${order.tableCode ?? '-'}` : `订单 ${order.orderNo}`}
-            </Typography.Text>
-            <OrderStatusTag status={order.status} cookingStartedAt={order.cookingStartedAt} />
-            <OrderRefundTag status={order.refundStatus} />
-          </Space>
+              {order.tableCode ?? '外带'}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <Space wrap size={4} style={{ maxWidth: '100%' }}>
+                <span>{order.tableCode ? `${order.tableCode} 桌 · 订单详情` : '订单详情'}</span>
+                <OrderStatusTag status={order.status} cookingStartedAt={order.cookingStartedAt} />
+                <OrderRefundTag status={order.refundStatus} />
+              </Space>
+              <Typography.Text
+                type="secondary"
+                className="order-no"
+                copyable={{ text: order.orderNo, tooltips: ['复制单号', '已复制'] }}
+                style={{ display: 'block', fontWeight: 400 }}
+              >
+                {`订单 ${order.orderNo}`}
+              </Typography.Text>
+            </div>
+          </div>
         ) : '订单详情'
       }
       width={isMobile ? '100%' : 760}
       open={open}
       onClose={onClose}
       destroyOnHidden
-      // 手机上标题栏放不下操作按钮，移到底部固定区
-      extra={isMobile ? undefined : actions()}
-      footer={isMobile && order && !readOnly ? <div style={{ overflowX: 'auto' }}>{actions()}</div> : undefined}
+      // 操作统一放在底部固定栏：左侧次要操作，右侧主操作；关闭按钮在右上角
+      footer={order && !readOnly && footerActions ? footerActions : undefined}
     >
       {!order ? (
         <div style={{ textAlign: 'center', padding: 48 }}><Spin spinning={loading} /></div>
@@ -330,7 +346,7 @@ export default function OrderDetailDrawer({ orderNo, open, onClose, onChanged, r
               showIcon
               type="warning"
               message={`先吃后付 · 未结账 ${formatYuan(order.payAmount)}`}
-              description={isKitchen ? '前厅会在顾客离店时结账。' : '顾客离店时点右上角「结账」登记收款；结账后才计入营收。'}
+              description={isKitchen ? '前厅会在顾客离店时结账。' : '顾客离店时点底部「结账」登记收款；结账后才计入营收。'}
             />
           )}
           {order.cancelRequest && (
