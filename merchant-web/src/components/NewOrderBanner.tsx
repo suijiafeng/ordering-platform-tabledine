@@ -10,6 +10,7 @@ import { formatYuan } from '../utils/money'
 import { ignoreShownError } from '../utils/errors'
 import { useOrderEvents } from '../store/orderEvents'
 import ConfirmButton from './ConfirmButton'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 dayjs.extend(relativeTime)
 
@@ -45,6 +46,7 @@ export default function NewOrderBanner({ pendingOrderNos, latestHint, onChanged 
 }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const isMobile = useIsMobile()
   const { message } = App.useApp()
   const bump = useOrderEvents((s) => s.bump)
   const [dismissed, setDismissed] = useState<Set<string>>(readDismissed)
@@ -66,8 +68,9 @@ export default function NewOrderBanner({ pendingOrderNos, latestHint, onChanged 
     return () => { alive = false }
   }, [latest])
 
-  // 后厨页、代客下单页不显示：前者有自己的队列，后者正在录单
-  if (!latest || pathname.startsWith('/kitchen') || pathname === '/orders/new') return null
+  // 工作台有「待处理」卡片、后厨页有自己的队列、代客下单页正在录单：这三处不显示；
+  // 手机订单页本身就是按状态排的卡片，横幅会把第一张卡片重复一遍，也不显示
+  if (!latest || pathname === '/' || pathname.startsWith('/kitchen') || pathname === '/orders/new' || (isMobile && pathname === '/orders')) return null
 
   const dismiss = () => {
     const next = new Set([...dismissed, ...pendingOrderNos])

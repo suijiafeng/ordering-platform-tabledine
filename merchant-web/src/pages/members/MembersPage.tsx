@@ -335,13 +335,27 @@ export default function MembersPage() {
         顾客用手机号 + 密码登录 H5 点餐页；下单时直接从账户余额扣费，不经过微信 / 支付宝。
         余额由店主或前厅在这里充值（线下收款后登记），取消订单或退款会自动返还到余额。
       </Typography.Paragraph>
-      <Panel>
+      <Panel bareOnMobile>
         <ResponsiveTable
           rowKey="id"
           columns={columns}
           dataSource={data.list}
           loading={loading}
           scrollX={960}
+          // 手机卡片：头像 + 姓名 / 手机号，右侧余额；状态开关和操作沿用列定义
+          renderCard={(r, cell) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className="td-table-badge" style={{ borderRadius: '50%' }}>{r.name.slice(0, 1)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Typography.Text strong>{r.name}</Typography.Text>
+                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>{r.phone} · {dayjs(r.createdAt).format('YYYY-MM-DD')} 开户</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 16 }}>{cell('余额')}</div>
+                <div style={{ marginTop: 4 }}>{cell('状态')}</div>
+              </div>
+            </div>
+          )}
           pagination={{ current: page, pageSize: PAGE_SIZE, total: data.total, showSizeChanger: false, onChange: setPage, showTotal: (t) => `共 ${t} 位会员` }}
         />
       </Panel>

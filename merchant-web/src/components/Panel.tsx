@@ -1,13 +1,17 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { theme as antdTheme } from 'antd'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 /**
  * 内容面板：白底圆角、无描边（对应设计稿的列表 / 表格容器）。
  * 页面上的操作（标签页、按钮、搜索）直接放在页面背景上，只有数据区域用 Panel 包起来，
  * 不再把整页套进一个大卡片。表格用默认内边距，左右留白给分页器。
  */
-export default function Panel({ children, padding = '4px 16px', style }: { children: ReactNode; padding?: CSSProperties['padding']; style?: CSSProperties }) {
+export default function Panel({ children, padding = '4px 16px', style, bareOnMobile = false }: { children: ReactNode; padding?: CSSProperties['padding']; style?: CSSProperties; bareOnMobile?: boolean }) {
   const { token } = antdTheme.useToken()
+  const isMobile = useIsMobile()
+  // 手机上列表已经是一张张卡片，外面再套一层白底会出现「卡片套卡片」
+  if (bareOnMobile && isMobile) return <div>{children}</div>
   return (
     <div style={{ background: token.colorBgContainer, borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}`, padding, ...style }}>
       {children}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Alert, App, Button, Drawer, Grid, Layout, Space, theme as antdTheme } from 'antd'
 import dayjs from 'dayjs'
-import { MenuOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, DashboardOutlined, FireOutlined, MenuOutlined, PlusOutlined, UnorderedListOutlined, WalletOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import UserMenu from '../components/UserMenu'
 import ThemeToggle from '../components/ThemeToggle'
@@ -227,38 +227,67 @@ export default function MainLayout() {
   const group = navGroupOf(location.pathname)
 
   if (isMobile) {
-    // 手机：顶栏 + 抽屉菜单；内容区留给页面
+    // 手机：顶栏（标题 + 代客下单 / 消息 / 主题 / 账号）+ 底部标签栏；其余页面收在「更多」抽屉里
+    const tabs = isKitchen
+      ? [
+          { key: '/kitchen', label: '后厨', icon: <FireOutlined /> },
+          { key: '/orders', label: '订单', icon: <UnorderedListOutlined /> },
+          { key: '/dishes', label: '菜品', icon: <AppstoreOutlined /> },
+        ]
+      : [
+          { key: '/', label: '工作台', icon: <DashboardOutlined /> },
+          { key: '/orders', label: '订单', icon: <UnorderedListOutlined /> },
+          { key: '/kitchen', label: '后厨', icon: <FireOutlined /> },
+          { key: '/members', label: '会员', icon: <WalletOutlined /> },
+        ]
+    const activeTab = tabs.find((t) => (t.key === '/' ? location.pathname === '/' : location.pathname === t.key))?.key ?? null
     return (
       <Layout style={{ minHeight: '100vh' }}>
         <Layout.Header
-          style={{ background: token.colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingInline: 12, height: 52, lineHeight: '52px', position: 'sticky', top: 0, zIndex: 10, boxShadow: `0 1px 0 ${token.colorSplit}` }}
+          style={{ background: token.colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingInline: 16, height: 52, lineHeight: '52px', position: 'sticky', top: 0, zIndex: 10, boxShadow: `0 1px 0 ${token.colorSplit}` }}
         >
-          <Space align="center" style={{ minWidth: 0 }}>
-            <Button type="text" icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} aria-label="打开菜单" />
-            <PageBreadcrumb compact />
-          </Space>
-          <Space size={4}>
+          <div style={{ minWidth: 0 }}><PageBreadcrumb compact /></div>
+          <Space size={2}>
+            {!isKitchen && location.pathname !== '/orders/new' && (
+              <Button type="text" icon={<PlusOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />} onClick={() => navigate('/orders/new')} aria-label="代客下单" />
+            )}
             <NotificationBell />
             <ThemeToggle size="small" />
             <UserMenu compact />
           </Space>
         </Layout.Header>
         <Drawer
-          closable={{ placement: 'end' }}
           placement="left"
           open={menuOpen}
           onClose={() => setMenuOpen(false)}
-          width={260}
+          width={264}
+          closable={false}
           styles={{ body: { padding: 0, background: 'var(--td-sider)' }, header: { display: 'none' } }}
         >
-          <SideNav badgeFor={badgeFor} onNavigate={() => setMenuOpen(false)} />
+          <SideNav badgeFor={badgeFor} onNavigate={() => setMenuOpen(false)} onClose={() => setMenuOpen(false)} />
         </Drawer>
-        <Layout.Content style={{ padding: 12 }}>
+        <Layout.Content style={{ padding: 12, paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }}>
           {netBanner}
           {soundBanner}
           {banner}
           <Outlet />
         </Layout.Content>
+        <nav className="td-tabbar" aria-label="底部导航">
+          {tabs.map((t) => {
+            const n = badgeFor(t.key).count
+            return (
+              <button key={t.key} type="button" className={activeTab === t.key ? 'is-on' : undefined} aria-current={activeTab === t.key ? 'page' : undefined} onClick={() => navigate(t.key)}>
+                {t.icon}
+                <span>{t.label}</span>
+                {n > 0 && <span className="td-tabbar-badge">{n > 99 ? '99+' : n}</span>}
+              </button>
+            )
+          })}
+          <button type="button" className={activeTab === null ? 'is-on' : undefined} onClick={() => setMenuOpen(true)} aria-label="更多菜单">
+            <MenuOutlined />
+            <span>更多</span>
+          </button>
+        </nav>
       </Layout>
     )
   }

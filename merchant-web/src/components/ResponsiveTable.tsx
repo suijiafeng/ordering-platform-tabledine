@@ -41,6 +41,11 @@ export type ResponsiveTableProps<T extends object> = {
   size?: TableProps<T>['size']
   scrollX?: number | string
   onRow?: TableProps<T>['onRow']
+  /**
+   * 手机卡片的自定义正文（不传则逐列「标题：值」排列）。
+   * cell(title) 渲染指定标题那一列的单元格，开关、标签等交互可以直接复用列定义。操作列仍自动放在卡片底部。
+   */
+  renderCard?: (record: T, cell: (title: string) => ReactNode, index: number) => ReactNode
 }
 
 /**
@@ -56,6 +61,7 @@ export default function ResponsiveTable<T extends object>({
   size = 'middle',
   scrollX,
   onRow,
+  renderCard,
 }: ResponsiveTableProps<T>) {
   const isMobile = useIsMobile()
   const { token } = antdTheme.useToken()
@@ -123,6 +129,10 @@ export default function ResponsiveTable<T extends object>({
                   }
                 }}
               >
+                {renderCard ? renderCard(record, (title) => {
+                  const col = flat.find((c) => c.title === title)
+                  return col ? cellContent(col, record, index) : null
+                }, index) : (<>
                 {dataCols.map((col, colIndex) => (
                   <div
                     key={String(col.key ?? (Array.isArray(col.dataIndex) ? col.dataIndex.join('.') : col.dataIndex) ?? colIndex)}
@@ -142,6 +152,7 @@ export default function ResponsiveTable<T extends object>({
                     </div>
                   </div>
                 ))}
+                </>)}
                 {actionCol && (
                   <div
                     style={{

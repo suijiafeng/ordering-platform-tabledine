@@ -161,8 +161,28 @@ export default function StaffPage() {
           <div>仅店主可：退款审核 · 菜品桌台维护 · 店铺设置 · 数据看板与导出 · 员工管理</div>
         </div>
       </div>
-      <Panel>
-        <ResponsiveTable rowKey="id" columns={columns} dataSource={list} loading={loading} pagination={false} scrollX={900} />
+      <Panel bareOnMobile>
+        <ResponsiveTable
+          rowKey="id"
+          columns={columns}
+          dataSource={list}
+          loading={loading}
+          pagination={false}
+          scrollX={900}
+          renderCard={(r, cell) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className="td-table-badge" style={{ borderRadius: '50%' }}>{r.name.slice(0, 1)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {cell('姓名')}
+                <div style={{ fontSize: 12, color: 'var(--td-text-3)' }}>账号 {r.username} · {dayjs(r.createdAt).format('YYYY-MM-DD')} 创建</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                {cell('角色')}
+                {cell('状态')}
+              </div>
+            </div>
+          )}
+        />
       </Panel>
 
       <Modal

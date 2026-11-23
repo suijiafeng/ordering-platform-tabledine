@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, DatePicker, Dropdown, Input, Space, Tabs, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -174,17 +174,18 @@ export default function OrdersPage() {
   const primaryAction = (r: OrderSummary) => {
     if (isKitchen) return null
     const busy = actingNo === r.orderNo
+    const size = isMobile ? 'large' as const : 'small' as const
     if (r.status === 'PAID') {
-      return <ConfirmButton type="primary" size="small" loading={busy} confirmText={`确认接单${r.tableCode ? `（${r.tableCode} 桌）` : ''}？`} onConfirm={() => void quickAction(r, acceptOrder, '已接单')}>接单</ConfirmButton>
+      return <ConfirmButton type="primary" size={size} block={isMobile} loading={busy} confirmText={`确认接单${r.tableCode ? `（${r.tableCode} 桌）` : ''}？`} onConfirm={() => void quickAction(r, acceptOrder, '已接单')}>接单</ConfirmButton>
     }
     if (r.status === 'MAKING' && r.cancelRequestStatus === 'APPLYING') {
-      return <Button size="small" danger onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>处理申请</Button>
+      return <Button size={size} block={isMobile} danger onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>处理申请</Button>
     }
     if (isUnsettledRow(r)) {
-      return <Button size="small" color="gold" variant="solid" onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>结账</Button>
+      return <Button size={size} block={isMobile} color="gold" variant="solid" onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>结账</Button>
     }
     if (r.status === 'READY') {
-      return <ConfirmButton size="small" color="blue" variant="solid" loading={busy} confirmText={`确认送达${r.tableCode ? `（${r.tableCode} 桌）` : ''}？`} onConfirm={() => void quickAction(r, deliverOrder, '已送达')}>送达</ConfirmButton>
+      return <ConfirmButton size={size} block={isMobile} color="blue" variant="solid" loading={busy} confirmText={`确认送达${r.tableCode ? `（${r.tableCode} 桌）` : ''}？`} onConfirm={() => void quickAction(r, deliverOrder, '已送达')}>送达</ConfirmButton>
     }
     return null
   }
@@ -253,14 +254,47 @@ export default function OrdersPage() {
       width: 150,
       fixed: 'right',
       align: 'right',
-      render: (_, r) => (
-        <Space size={6}>
-          {primaryAction(r)}
-          <Button size="small" onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>详情</Button>
-        </Space>
-      ),
+      render: (_, r) => {
+        const main = primaryAction(r)
+        const detailBtn = <Button size={isMobile ? 'large' : 'small'} block={isMobile} onClick={(e) => { e.stopPropagation(); openDetail(r.orderNo) }}>详情</Button>
+        // 手机：整行大按钮，左「详情」右主操作（主操作更宽，便于单手点按）
+        if (isMobile) {
+          return (
+            <div className="td-card-actions" style={{ gridTemplateColumns: main ? '1fr 2fr' : '1fr' }}>
+              {detailBtn}
+              {main}
+            </div>
+          )
+        }
+        return (
+          <Space size={6}>
+            {main}
+            {detailBtn}
+          </Space>
+        )
+      },
     },
   ]
+
+  /** 手机订单卡片（R4 设计稿）：桌号块 + 状态 / 时间 + 金额，下一行菜品与备注 */
+  const renderOrderCard = (r: OrderSummary, cell: (title: string) => ReactNode) => (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span className="td-table-badge">{r.tableCode ?? '外带'}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {cell('状态')}
+        </div>
+        <div style={{ textAlign: 'right' }}>{cell('金额')}</div>
+      </div>
+      <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 6 }}>
+        {dayjs(r.createdAt).format('HH:mm')} · {r.payMode === 'PAY_LATER' ? (r.paidAt ? '先吃后付·已结账' : '先吃后付') : PLATFORM[r.platform]} · {r.peopleCount} 人 · <span className="order-no">{r.orderNo}</span>
+      </Typography.Text>
+      <div style={{ marginTop: 8 }}>
+        {r.items.map((i) => `${i.dishName}${i.specDesc ? `(${i.specDesc})` : ''} ×${i.quantity}`).join('、') || '-'}
+      </div>
+      {r.remark && <div style={{ fontSize: 12, color: '#D97706' }}>备注：{r.remark}</div>}
+    </div>
+  )
 
   const countOf = (t: TabDef) => (counts && t.count ? t.count(counts) : 0)
   const tabLabel = (t: TabDef) => {
@@ -285,9 +319,58 @@ export default function OrdersPage() {
   const resetFilters = () => { setKeyword(''); setSearchText(''); setDate(null); setPage(1) }
   const filtered = keyword !== '' || date !== null
 
+  const syncAlert = syncFailed && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="订单同步暂时中断，当前显示上次结果，恢复后会自动更新。" action={<Button size="small" onClick={() => void load()}>重试</Button>} />
+  const table = (
+    <ResponsiveTable<OrderSummary>
+      rowKey="id"
+      size="middle"
+      scrollX={1080}
+      loading={loading}
+      columns={columns}
+      dataSource={data.list}
+      renderCard={renderOrderCard}
+      onRow={(r) => ({ onClick: () => openDetail(r.orderNo), style: { cursor: 'pointer' } })}
+      pagination={{ current: page, pageSize: PAGE_SIZE, total: data.total, onChange: setPage, showTotal: (t) => `共 ${t} 单`, style: { paddingInline: 20 } }}
+    />
+  )
+
+  if (isMobile) {
+    // 手机：搜索 + 横向滑动的状态胶囊，下面是订单卡片；代客下单在顶栏「＋」
+    return (
+      <div>
+        {syncAlert}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <Input.Search
+            allowClear
+            placeholder="订单号 / 桌号"
+            value={searchText}
+            onChange={(e) => { setSearchText(e.target.value); if (!e.target.value) { setKeyword(''); setPage(1) } }}
+            onSearch={(v) => { setKeyword(v.trim()); setPage(1) }}
+            style={{ flex: 1 }}
+          />
+          <DatePicker value={date} onChange={(d) => { setDate(d); setPage(1) }} placeholder="日期" allowClear inputReadOnly style={{ width: 118 }} />
+        </div>
+        <div className="td-chips" role="tablist" aria-label="订单状态">
+          {[...TABS, ...MORE_TABS].map((t) => {
+            const n = countOf(t)
+            const on = t.key === status
+            return (
+              <button key={t.key} type="button" role="tab" aria-selected={on} className={`td-chip${on ? ' is-on' : ''}`} onClick={() => switchTab(t.key)}>
+                {t.label}{n > 0 && <span className={`td-chip-n${t.hot ? ' is-hot' : ''}`}>{n}</span>}
+              </button>
+            )
+          })}
+        </div>
+        {isKitchen && <Tag style={{ marginBottom: 10 }}>后厨账号仅可查看</Tag>}
+        {table}
+        <OrderDetailDrawer orderNo={detail} open={!!detail} onClose={() => openDetail(null)} onChanged={() => void load()} readOnly={isKitchen} />
+      </div>
+    )
+  }
+
   return (
     <div>
-      {syncFailed && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="订单同步暂时中断，当前显示上次结果，恢复后会自动更新。" action={<Button size="small" onClick={() => void load()}>重试</Button>} />}
+      {syncAlert}
       <Panel padding={0} style={{ overflow: 'hidden' }}>
         <div className="td-orders-card">
           <Tabs
@@ -300,7 +383,7 @@ export default function OrdersPage() {
                   trigger={['click']}
                   menu={{ items: MORE_TABS.map((t) => ({ key: t.key, label: t.label })), selectable: true, selectedKeys: moreActive ? [moreActive.key] : [], onClick: ({ key }) => switchTab(key) }}
                 >
-                  <Button type="text" size="small">{isMobile ? '更多' : '更多状态'} <DownOutlined /></Button>
+                  <Button type="text" size="small">更多状态 <DownOutlined /></Button>
                 </Dropdown>
               ),
             }}
@@ -311,28 +394,17 @@ export default function OrdersPage() {
               placeholder="订单号 / 桌号"
               value={searchText}
               onChange={(e) => { setSearchText(e.target.value); if (!e.target.value) { setKeyword(''); setPage(1) } }}
-              style={{ width: isMobile ? '100%' : 220 }}
+              style={{ width: 220 }}
               onSearch={(v) => { setKeyword(v.trim()); setPage(1) }}
             />
-            <DatePicker value={date} onChange={(d) => { setDate(d); setPage(1) }} placeholder="下单日期" allowClear style={{ width: isMobile ? 'calc(50% - 4px)' : 140 }} />
+            <DatePicker value={date} onChange={(d) => { setDate(d); setPage(1) }} placeholder="下单日期" allowClear style={{ width: 140 }} />
             {filtered && <Button type="link" onClick={resetFilters}>重置</Button>}
             {isKitchen && <Tag style={{ marginInlineEnd: 0 }}>后厨账号仅可查看</Tag>}
             <span className="td-spacer" />
             <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
             {!isKitchen && <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/orders/new')}>代客下单</Button>}
           </div>
-          <div style={isMobile ? { padding: '0 12px 12px' } : undefined}>
-            <ResponsiveTable<OrderSummary>
-              rowKey="id"
-              size="middle"
-              scrollX={1080}
-              loading={loading}
-              columns={columns}
-              dataSource={data.list}
-              onRow={(r) => ({ onClick: () => openDetail(r.orderNo), style: { cursor: 'pointer' } })}
-              pagination={{ current: page, pageSize: PAGE_SIZE, total: data.total, onChange: setPage, showTotal: (t) => `共 ${t} 单`, style: { paddingInline: 20 } }}
-            />
-          </div>
+          {table}
         </div>
       </Panel>
       <OrderDetailDrawer orderNo={detail} open={!!detail} onClose={() => openDetail(null)} onChanged={() => void load()} readOnly={isKitchen} />

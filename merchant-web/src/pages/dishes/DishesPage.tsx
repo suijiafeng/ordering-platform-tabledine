@@ -285,9 +285,26 @@ export default function DishesPage() {
             {categoryId === null ? '全部菜品' : categoryName(categoryId)}
           </Typography.Text>
         </PageToolbar>
-        <Panel>
+        <Panel bareOnMobile>
           <ResponsiveTable<DishItem>
             scrollX={980}
+            // 手机卡片：缩略图 + 名称 / 分类 / 价格，下一行上架、沽清开关和每日限量
+            renderCard={(r, cell) => (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {cell('图片')}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {cell('名称')}
+                  </div>
+                  <Typography.Text strong style={{ fontSize: 16 }}>{formatYuan(r.price)}</Typography.Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Typography.Text type="secondary">上架</Typography.Text>{cell('上架')}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Typography.Text type="secondary">沽清</Typography.Text>{cell('沽清')}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}><Typography.Text type="secondary">限量</Typography.Text>{cell('每日限量')}</span>
+                </div>
+              </div>
+            )}
             rowKey="id"
             size="middle"
             loading={loading}
