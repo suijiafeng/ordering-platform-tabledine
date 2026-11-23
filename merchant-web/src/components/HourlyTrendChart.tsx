@@ -28,12 +28,15 @@ export default function HourlyTrendChart({ today, yesterday, metric, nowHour, he
   const padB = 28
   const plotW = width - padL - padR
   const plotH = height - padT - padB
-  const max = Math.max(1, ...today.map(val), ...yesterday.map(val))
-  const niceMax = niceCeil(max)
+  const dataMax = Math.max(0, ...today.map(val), ...yesterday.map(val))
+  const empty = dataMax === 0
+  // 刻度取 4 等分且每格是整数（金额按整元、订单按整单），避免出现「¥0 ¥0 ¥0」或「0 0 1 1 1」
+  const step = (metric === 'amount' ? 100 : 1) * 4
+  const niceMax = Math.max(step, Math.ceil(niceCeil(Math.max(1, dataMax)) / step) * step)
   const slot = plotW / Math.max(1, today.length)
   const barW = Math.min(28, slot * 0.5)
   const y = (v: number) => padT + plotH - (v / niceMax) * plotH
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => niceMax * f)
+  const ticks = (empty ? [0] : [0, 0.25, 0.5, 0.75, 1]).map((f) => niceMax * f)
   const cx = (i: number) => padL + slot * i + slot / 2
   const yPath = yesterday.map((p, i) => `${i === 0 ? 'M' : 'L'}${cx(i).toFixed(1)},${y(val(p)).toFixed(1)}`).join(' ')
   const tickLabel = (t: number) => (metric === 'amount' ? `¥${Math.round(t / 100)}` : String(Math.round(t)))
@@ -78,7 +81,12 @@ export default function HourlyTrendChart({ today, yesterday, metric, nowHour, he
             </g>
           )
         })}
-        {yesterday.length > 1 && (
+        {empty && (
+          <text x={padL + plotW / 2} y={padT + plotH / 2} textAnchor="middle" fontSize={13} fill={token.colorTextTertiary}>
+            {metric === 'amount' ? '今天和昨天同时段还没有收入' : '今天和昨天同时段还没有订单'}
+          </text>
+        )}
+        {!empty && yesterday.length > 1 && (
           <path d={yPath} fill="none" stroke={token.colorTextTertiary} strokeWidth={1.5} strokeDasharray="4 4" pointerEvents="none" />
         )}
       </svg>

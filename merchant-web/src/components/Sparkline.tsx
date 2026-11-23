@@ -3,7 +3,8 @@ import { theme as antdTheme } from 'antd'
 /** KPI 卡片右上角的迷你折线（近 7 天），只做趋势示意，不带坐标轴 */
 export default function Sparkline({ values, color, width = 72, height = 24 }: { values: number[]; color?: string; width?: number; height?: number }) {
   const { token } = antdTheme.useToken()
-  if (values.length < 2) return null
+  // 少于两个点或全是 0（新店）时不画，避免一条误导的平线
+  if (values.length < 2 || values.every((v) => v === 0)) return null
   const max = Math.max(...values)
   const min = Math.min(...values)
   const span = max - min || 1
