@@ -17,7 +17,7 @@ export default function ImageUpload({ value, onChange }: Props) {
 
   return (
     <Space align="start">
-      {value && <Image src={value} width={96} height={96} style={{ objectFit: 'cover', borderRadius: 8 }} />}
+      {value && <Image src={value} alt="已上传图片" width={96} height={96} style={{ objectFit: 'cover', borderRadius: 8 }} />}
       <Space direction="vertical">
         <Upload
           accept="image/jpeg,image/png"

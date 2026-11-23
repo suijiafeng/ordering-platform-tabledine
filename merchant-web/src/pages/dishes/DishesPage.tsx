@@ -99,8 +99,8 @@ export default function DishesPage() {
       title: '图片',
       dataIndex: 'image',
       width: 72,
-      render: (src: string | null) =>
-        src ? <Image src={src} width={48} height={48} style={{ objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 48, height: 48, background: 'rgba(128,128,128,0.12)', borderRadius: 6 }} />,
+      render: (src: string | null, r) =>
+        src ? <Image src={src} alt={r.name} width={48} height={48} style={{ objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 48, height: 48, background: 'rgba(128,128,128,0.12)', borderRadius: 6 }} />,
     },
     {
       title: '名称',
